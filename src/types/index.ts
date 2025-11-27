@@ -87,10 +87,11 @@ export interface Simulado {
 }
 
 export interface SimuladoConfig {
-  embaralhar_questoes: boolean;
-  embaralhar_alternativas: boolean;
-  mostrar_gabarito_apos: boolean;
-  permitir_revisao: boolean;
+  embaralhar_questoes?: boolean;
+  embaralhar_alternativas?: boolean;
+  mostrar_gabarito_apos?: boolean;
+  permitir_revisao?: boolean;
+  pontuacao_questao?: number;
 }
 
 export interface Aplicacao {
