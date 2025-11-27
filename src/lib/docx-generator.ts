@@ -305,7 +305,7 @@ export function gerarSimuladoDocx(config: SimuladoDocConfig): Document {
   })
 
   // Gabarito (opcional, em página separada)
-  const gabaritoContent: Paragraph[] = []
+ const gabaritoContent: (Paragraph | Table)[] = []
   
   if (mostrarGabarito) {
     gabaritoContent.push(
