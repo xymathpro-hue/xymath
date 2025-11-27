@@ -46,10 +46,15 @@ export default function TurmasPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingTurma, setEditingTurma] = useState<Turma | null>(null)
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    nome: string;
+    ano_serie: string;
+    turno: 'matutino' | 'vespertino' | 'noturno';
+    ano_letivo: number;
+  }>({
     nome: '',
     ano_serie: '',
-    turno: 'matutino' as const,
+    turno: 'matutino',
     ano_letivo: new Date().getFullYear(),
   })
   const [saving, setSaving] = useState(false)
