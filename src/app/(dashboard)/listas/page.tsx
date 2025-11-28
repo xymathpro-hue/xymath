@@ -1,292 +1,775 @@
--- =====================================================
--- XYMATH - ESTRUTURA COMPLETA FASE 2
--- Execute no Supabase SQL Editor
--- =====================================================
+'use client'
 
--- =====================================================
--- 1. ATUALIZAR QUESTÕES PARA PÚBLICAS
--- =====================================================
+import { useEffect, useState, useCallback } from 'react'
+import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
+import { useAuth } from '@/contexts/AuthContext'
+import { createClient } from '@/lib/supabase-browser'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Copy, Download, FileDown, Printer, QrCode, CheckSquare } from 'lucide-react'
 
-UPDATE questoes 
-SET is_publica = true 
-WHERE usuario_id = 'fb9b212c-9912-4539-a1c0-3c1a5110a27c';
+interface Lista {
+  id: string
+  titulo: string
+  descricao: string
+  ano_serie: string
+  instrucoes: string
+  mostrar_gabarito: boolean
+  mostrar_resolucao: boolean
+  is_publica: boolean
+  created_at: string
+  questoes_count?: number
+}
 
--- =====================================================
--- 2. TABELA: LISTAS DE EXERCÍCIOS
--- =====================================================
+interface Questao {
+  id: string
+  enunciado: string
+  alternativa_a: string
+  alternativa_b: string
+  alternativa_c: string
+  alternativa_d: string
+  alternativa_e?: string
+  resposta_correta: string
+  dificuldade: string
+  ano_serie: string
+  habilidade_bncc_id?: string
+}
 
-CREATE TABLE IF NOT EXISTS listas_exercicios (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    titulo VARCHAR(200) NOT NULL,
-    descricao TEXT,
-    ano_serie VARCHAR(20),
-    disciplina VARCHAR(50) DEFAULT 'Matemática',
-    instrucoes TEXT,
-    mostrar_gabarito BOOLEAN DEFAULT false,
-    mostrar_resolucao BOOLEAN DEFAULT false,
-    is_publica BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+interface QuestaoSelecionada extends Questao {
+  ordem: number
+}
 
--- Índices para listas
-CREATE INDEX IF NOT EXISTS idx_listas_usuario ON listas_exercicios(usuario_id);
-CREATE INDEX IF NOT EXISTS idx_listas_publica ON listas_exercicios(is_publica);
+const ANO_SERIE_OPTIONS = [
+  { value: '6º ano EF', label: '6º ano EF' },
+  { value: '7º ano EF', label: '7º ano EF' },
+  { value: '8º ano EF', label: '8º ano EF' },
+  { value: '9º ano EF', label: '9º ano EF' },
+  { value: '1º ano EM', label: '1º ano EM' },
+  { value: '2º ano EM', label: '2º ano EM' },
+  { value: '3º ano EM', label: '3º ano EM' },
+]
 
--- =====================================================
--- 3. TABELA: QUESTÕES DA LISTA
--- =====================================================
+export default function ListasExerciciosPage() {
+  const { usuario } = useAuth()
+  const [listas, setListas] = useState<Lista[]>([])
+  const [questoesDisponiveis, setQuestoesDisponiveis] = useState<Questao[]>([])
+  const [questoesSelecionadas, setQuestoesSelecionadas] = useState<QuestaoSelecionada[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchQuestoes, setSearchQuestoes] = useState('')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [viewModalOpen, setViewModalOpen] = useState(false)
+  const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [editingLista, setEditingLista] = useState<Lista | null>(null)
+  const [viewingLista, setViewingLista] = useState<Lista | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [step, setStep] = useState(1) // 1: Dados, 2: Questões
 
-CREATE TABLE IF NOT EXISTS lista_questoes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lista_id UUID NOT NULL REFERENCES listas_exercicios(id) ON DELETE CASCADE,
-    questao_id UUID NOT NULL REFERENCES questoes(id) ON DELETE CASCADE,
-    ordem INTEGER NOT NULL DEFAULT 0,
-    peso DECIMAL(3,1) DEFAULT 1.0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+  const [formData, setFormData] = useState({
+    titulo: '',
+    descricao: '',
+    ano_serie: '6º ano EF',
+    instrucoes: '',
+    mostrar_gabarito: false,
+    mostrar_resolucao: false,
+  })
 
--- Índice para ordenação
-CREATE INDEX IF NOT EXISTS idx_lista_questoes_ordem ON lista_questoes(lista_id, ordem);
+  const [filtroQuestoes, setFiltroQuestoes] = useState({
+    ano_serie: '',
+    dificuldade: '',
+  })
 
--- =====================================================
--- 4. TABELA: GABARITOS (para correção QR)
--- =====================================================
+  const supabase = createClient()
 
-CREATE TABLE IF NOT EXISTS gabaritos (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    codigo VARCHAR(20) UNIQUE NOT NULL, -- Código curto para QR (ex: XY2024ABC)
-    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('simulado', 'lista')),
-    referencia_id UUID NOT NULL, -- ID do simulado ou lista
-    usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    respostas JSONB NOT NULL, -- {"1": "A", "2": "C", "3": "B", ...}
-    total_questoes INTEGER NOT NULL,
-    valor_questao DECIMAL(4,2) DEFAULT 1.0,
-    data_aplicacao DATE,
-    turma_id UUID REFERENCES turmas(id),
-    ativo BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+  const fetchListas = useCallback(async () => {
+    if (!usuario?.id) return
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('listas_exercicios')
+        .select('*')
+        .eq('usuario_id', usuario.id)
+        .order('created_at', { ascending: false })
 
--- Índices para gabaritos
-CREATE INDEX IF NOT EXISTS idx_gabaritos_codigo ON gabaritos(codigo);
-CREATE INDEX IF NOT EXISTS idx_gabaritos_usuario ON gabaritos(usuario_id);
+      if (error) throw error
+      
+      // Buscar contagem de questões para cada lista
+      const listasComContagem = await Promise.all((data || []).map(async (lista) => {
+        const { count } = await supabase
+          .from('lista_questoes')
+          .select('*', { count: 'exact', head: true })
+          .eq('lista_id', lista.id)
+        return { ...lista, questoes_count: count || 0 }
+      }))
+      
+      setListas(listasComContagem)
+    } catch (error) {
+      console.error('Erro:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [usuario?.id, supabase])
 
--- =====================================================
--- 5. TABELA: CORREÇÕES (respostas dos alunos)
--- =====================================================
+  const fetchQuestoes = useCallback(async () => {
+    if (!usuario?.id) return
+    try {
+      let query = supabase
+        .from('questoes')
+        .select('*')
+        .or(`usuario_id.eq.${usuario.id},is_publica.eq.true`)
+        .order('created_at', { ascending: false })
 
-CREATE TABLE IF NOT EXISTS correcoes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    gabarito_id UUID NOT NULL REFERENCES gabaritos(id) ON DELETE CASCADE,
-    aluno_nome VARCHAR(200),
-    aluno_id UUID REFERENCES usuarios(id), -- Futuro: quando aluno tiver conta
-    turma_id UUID REFERENCES turmas(id),
-    respostas JSONB NOT NULL, -- {"1": "A", "2": "B", "3": "C", ...}
-    acertos INTEGER NOT NULL DEFAULT 0,
-    erros INTEGER NOT NULL DEFAULT 0,
-    em_branco INTEGER NOT NULL DEFAULT 0,
-    nota DECIMAL(5,2),
-    percentual DECIMAL(5,2),
-    tempo_correcao INTEGER, -- segundos
-    corrigido_por UUID REFERENCES usuarios(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+      if (filtroQuestoes.ano_serie) {
+        query = query.eq('ano_serie', filtroQuestoes.ano_serie)
+      }
+      if (filtroQuestoes.dificuldade) {
+        query = query.eq('dificuldade', filtroQuestoes.dificuldade)
+      }
 
--- Índices para correções
-CREATE INDEX IF NOT EXISTS idx_correcoes_gabarito ON correcoes(gabarito_id);
-CREATE INDEX IF NOT EXISTS idx_correcoes_aluno ON correcoes(aluno_nome);
+      const { data, error } = await query
+      if (error) throw error
+      setQuestoesDisponiveis(data || [])
+    } catch (error) {
+      console.error('Erro:', error)
+    }
+  }, [usuario?.id, supabase, filtroQuestoes])
 
--- =====================================================
--- 6. TABELA: ESTATÍSTICAS POR QUESTÃO
--- =====================================================
+  useEffect(() => {
+    fetchListas()
+  }, [fetchListas])
 
-CREATE TABLE IF NOT EXISTS estatisticas_questao (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    questao_id UUID NOT NULL REFERENCES questoes(id) ON DELETE CASCADE,
-    gabarito_id UUID NOT NULL REFERENCES gabaritos(id) ON DELETE CASCADE,
-    total_respostas INTEGER DEFAULT 0,
-    acertos INTEGER DEFAULT 0,
-    erros INTEGER DEFAULT 0,
-    em_branco INTEGER DEFAULT 0,
-    percentual_acerto DECIMAL(5,2),
-    distribuicao_respostas JSONB, -- {"A": 10, "B": 5, "C": 20, "D": 15}
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(questao_id, gabarito_id)
-);
+  useEffect(() => {
+    if (modalOpen && step === 2) {
+      fetchQuestoes()
+    }
+  }, [modalOpen, step, fetchQuestoes])
 
--- =====================================================
--- 7. POLÍTICAS RLS (Row Level Security)
--- =====================================================
+  const handleOpenModal = (lista?: Lista) => {
+    if (lista) {
+      setEditingLista(lista)
+      setFormData({
+        titulo: lista.titulo,
+        descricao: lista.descricao || '',
+        ano_serie: lista.ano_serie || '6º ano EF',
+        instrucoes: lista.instrucoes || '',
+        mostrar_gabarito: lista.mostrar_gabarito,
+        mostrar_resolucao: lista.mostrar_resolucao,
+      })
+      // TODO: Carregar questões da lista
+    } else {
+      setEditingLista(null)
+      setFormData({
+        titulo: '',
+        descricao: '',
+        ano_serie: '6º ano EF',
+        instrucoes: '',
+        mostrar_gabarito: false,
+        mostrar_resolucao: false,
+      })
+      setQuestoesSelecionadas([])
+    }
+    setStep(1)
+    setModalOpen(true)
+  }
 
--- Listas de Exercícios
-ALTER TABLE listas_exercicios ENABLE ROW LEVEL SECURITY;
+  const handleSave = async () => {
+    if (!usuario?.id || !formData.titulo) return
+    setSaving(true)
+    try {
+      if (editingLista) {
+        // Atualizar lista existente
+        const { error } = await supabase
+          .from('listas_exercicios')
+          .update({
+            titulo: formData.titulo,
+            descricao: formData.descricao,
+            ano_serie: formData.ano_serie,
+            instrucoes: formData.instrucoes,
+            mostrar_gabarito: formData.mostrar_gabarito,
+            mostrar_resolucao: formData.mostrar_resolucao,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingLista.id)
 
-DROP POLICY IF EXISTS "Usuarios veem suas listas e publicas" ON listas_exercicios;
-CREATE POLICY "Usuarios veem suas listas e publicas" ON listas_exercicios
-    FOR SELECT USING (usuario_id = auth.uid() OR is_publica = true);
+        if (error) throw error
+      } else {
+        // Criar nova lista
+        const { data: novaLista, error } = await supabase
+          .from('listas_exercicios')
+          .insert({
+            usuario_id: usuario.id,
+            titulo: formData.titulo,
+            descricao: formData.descricao,
+            ano_serie: formData.ano_serie,
+            instrucoes: formData.instrucoes,
+            mostrar_gabarito: formData.mostrar_gabarito,
+            mostrar_resolucao: formData.mostrar_resolucao,
+          })
+          .select()
+          .single()
 
-DROP POLICY IF EXISTS "Usuarios criam suas listas" ON listas_exercicios;
-CREATE POLICY "Usuarios criam suas listas" ON listas_exercicios
-    FOR INSERT WITH CHECK (usuario_id = auth.uid());
+        if (error) throw error
 
-DROP POLICY IF EXISTS "Usuarios editam suas listas" ON listas_exercicios;
-CREATE POLICY "Usuarios editam suas listas" ON listas_exercicios
-    FOR UPDATE USING (usuario_id = auth.uid());
+        // Inserir questões selecionadas
+        if (questoesSelecionadas.length > 0 && novaLista) {
+          const questoesInsert = questoesSelecionadas.map((q, idx) => ({
+            lista_id: novaLista.id,
+            questao_id: q.id,
+            ordem: idx + 1,
+          }))
 
-DROP POLICY IF EXISTS "Usuarios deletam suas listas" ON listas_exercicios;
-CREATE POLICY "Usuarios deletam suas listas" ON listas_exercicios
-    FOR DELETE USING (usuario_id = auth.uid());
+          const { error: questoesError } = await supabase
+            .from('lista_questoes')
+            .insert(questoesInsert)
 
--- Lista Questões
-ALTER TABLE lista_questoes ENABLE ROW LEVEL SECURITY;
+          if (questoesError) throw questoesError
+        }
+      }
 
-DROP POLICY IF EXISTS "Usuarios gerenciam questoes de suas listas" ON lista_questoes;
-CREATE POLICY "Usuarios gerenciam questoes de suas listas" ON lista_questoes
-    FOR ALL USING (
-        EXISTS (SELECT 1 FROM listas_exercicios WHERE id = lista_id AND usuario_id = auth.uid())
-    );
+      setModalOpen(false)
+      fetchListas()
+    } catch (error) {
+      console.error('Erro:', error)
+      alert('Erro ao salvar lista')
+    } finally {
+      setSaving(false)
+    }
+  }
 
--- Gabaritos
-ALTER TABLE gabaritos ENABLE ROW LEVEL SECURITY;
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta lista?')) return
+    try {
+      const { error } = await supabase.from('listas_exercicios').delete().eq('id', id)
+      if (error) throw error
+      fetchListas()
+    } catch (error) {
+      console.error('Erro:', error)
+    }
+  }
 
-DROP POLICY IF EXISTS "Usuarios veem seus gabaritos" ON gabaritos;
-CREATE POLICY "Usuarios veem seus gabaritos" ON gabaritos
-    FOR SELECT USING (usuario_id = auth.uid());
+  const handleAddQuestao = (questao: Questao) => {
+    if (questoesSelecionadas.find(q => q.id === questao.id)) return
+    setQuestoesSelecionadas([
+      ...questoesSelecionadas,
+      { ...questao, ordem: questoesSelecionadas.length + 1 }
+    ])
+  }
 
-DROP POLICY IF EXISTS "Usuarios criam gabaritos" ON gabaritos;
-CREATE POLICY "Usuarios criam gabaritos" ON gabaritos
-    FOR INSERT WITH CHECK (usuario_id = auth.uid());
+  const handleRemoveQuestao = (id: string) => {
+    setQuestoesSelecionadas(
+      questoesSelecionadas
+        .filter(q => q.id !== id)
+        .map((q, idx) => ({ ...q, ordem: idx + 1 }))
+    )
+  }
 
-DROP POLICY IF EXISTS "Usuarios editam seus gabaritos" ON gabaritos;
-CREATE POLICY "Usuarios editam seus gabaritos" ON gabaritos
-    FOR UPDATE USING (usuario_id = auth.uid());
+  const handleMoveQuestao = (index: number, direction: 'up' | 'down') => {
+    const newList = [...questoesSelecionadas]
+    const newIndex = direction === 'up' ? index - 1 : index + 1
+    if (newIndex < 0 || newIndex >= newList.length) return
+    [newList[index], newList[newIndex]] = [newList[newIndex], newList[index]]
+    setQuestoesSelecionadas(newList.map((q, idx) => ({ ...q, ordem: idx + 1 })))
+  }
 
--- Correções
-ALTER TABLE correcoes ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Usuarios veem correcoes de seus gabaritos" ON correcoes;
-CREATE POLICY "Usuarios veem correcoes de seus gabaritos" ON correcoes
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM gabaritos WHERE id = gabarito_id AND usuario_id = auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Usuarios criam correcoes" ON correcoes;
-CREATE POLICY "Usuarios criam correcoes" ON correcoes
-    FOR INSERT WITH CHECK (
-        EXISTS (SELECT 1 FROM gabaritos WHERE id = gabarito_id AND usuario_id = auth.uid())
-    );
-
--- Estatísticas
-ALTER TABLE estatisticas_questao ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Usuarios veem estatisticas de seus gabaritos" ON estatisticas_questao;
-CREATE POLICY "Usuarios veem estatisticas de seus gabaritos" ON estatisticas_questao
-    FOR ALL USING (
-        EXISTS (SELECT 1 FROM gabaritos WHERE id = gabarito_id AND usuario_id = auth.uid())
-    );
-
--- =====================================================
--- 8. FUNÇÃO: GERAR CÓDIGO ÚNICO PARA QR
--- =====================================================
-
-CREATE OR REPLACE FUNCTION gerar_codigo_gabarito()
-RETURNS VARCHAR(20) AS $$
-DECLARE
-    codigo VARCHAR(20);
-    existe BOOLEAN;
-BEGIN
-    LOOP
-        -- Gera código: XY + ano + 5 caracteres aleatórios
-        codigo := 'XY' || TO_CHAR(CURRENT_DATE, 'YY') || 
-                  UPPER(SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 5));
-        
-        -- Verifica se já existe
-        SELECT EXISTS(SELECT 1 FROM gabaritos WHERE gabaritos.codigo = gerar_codigo_gabarito.codigo) INTO existe;
-        
-        IF NOT existe THEN
-            RETURN codigo;
-        END IF;
-    END LOOP;
-END;
-$$ LANGUAGE plpgsql;
-
--- =====================================================
--- 9. FUNÇÃO: CALCULAR ESTATÍSTICAS
--- =====================================================
-
-CREATE OR REPLACE FUNCTION calcular_estatisticas_gabarito(p_gabarito_id UUID)
-RETURNS VOID AS $$
-DECLARE
-    v_questao RECORD;
-    v_gabarito_respostas JSONB;
-    v_total INTEGER;
-    v_acertos INTEGER;
-    v_erros INTEGER;
-    v_branco INTEGER;
-    v_distribuicao JSONB;
-BEGIN
-    -- Pega respostas do gabarito
-    SELECT respostas INTO v_gabarito_respostas FROM gabaritos WHERE id = p_gabarito_id;
+  const handleExport = async (formato: 'pdf' | 'docx') => {
+    if (!viewingLista) return
     
-    -- Para cada questão do gabarito
-    FOR v_questao IN 
-        SELECT DISTINCT key::INTEGER as numero 
-        FROM jsonb_each_text(v_gabarito_respostas)
-        ORDER BY numero
-    LOOP
-        -- Calcula estatísticas
-        SELECT 
-            COUNT(*),
-            COUNT(*) FILTER (WHERE (respostas->>v_questao.numero::TEXT) = (v_gabarito_respostas->>v_questao.numero::TEXT)),
-            COUNT(*) FILTER (WHERE (respostas->>v_questao.numero::TEXT) IS NOT NULL AND (respostas->>v_questao.numero::TEXT) != (v_gabarito_respostas->>v_questao.numero::TEXT)),
-            COUNT(*) FILTER (WHERE (respostas->>v_questao.numero::TEXT) IS NULL OR (respostas->>v_questao.numero::TEXT) = '')
-        INTO v_total, v_acertos, v_erros, v_branco
-        FROM correcoes
-        WHERE gabarito_id = p_gabarito_id;
-        
-        -- Calcula distribuição de respostas
-        SELECT jsonb_object_agg(resp, cnt) INTO v_distribuicao
-        FROM (
-            SELECT respostas->>v_questao.numero::TEXT as resp, COUNT(*) as cnt
-            FROM correcoes
-            WHERE gabarito_id = p_gabarito_id
-            GROUP BY respostas->>v_questao.numero::TEXT
-        ) sub;
-        
-        -- Atualiza ou insere estatísticas
-        INSERT INTO estatisticas_questao (questao_id, gabarito_id, total_respostas, acertos, erros, em_branco, percentual_acerto, distribuicao_respostas)
-        VALUES (
-            NULL, -- TODO: Mapear questao_id
-            p_gabarito_id,
-            v_total,
-            v_acertos,
-            v_erros,
-            v_branco,
-            CASE WHEN v_total > 0 THEN (v_acertos::DECIMAL / v_total * 100) ELSE 0 END,
-            v_distribuicao
-        )
-        ON CONFLICT (questao_id, gabarito_id) 
-        DO UPDATE SET
-            total_respostas = EXCLUDED.total_respostas,
-            acertos = EXCLUDED.acertos,
-            erros = EXCLUDED.erros,
-            em_branco = EXCLUDED.em_branco,
-            percentual_acerto = EXCLUDED.percentual_acerto,
-            distribuicao_respostas = EXCLUDED.distribuicao_respostas,
-            updated_at = NOW();
-    END LOOP;
-END;
-$$ LANGUAGE plpgsql;
+    // Aqui será implementada a exportação
+    // Por enquanto, apenas mostra mensagem
+    alert(`Exportando para ${formato.toUpperCase()}...\n\nEsta funcionalidade será implementada com:\n- Documento editável (DOCX)\n- PDF pronto para impressão\n- Gabarito com QR Code`)
+  }
 
--- =====================================================
--- 10. VERIFICAÇÃO FINAL
--- =====================================================
+  const filteredListas = listas.filter(l => 
+    l.titulo.toLowerCase().includes(searchTerm.toLowerCase())
+  )
 
-SELECT 'Tabelas criadas:' as info;
-SELECT table_name FROM information_schema.tables 
-WHERE table_schema = 'public' 
-AND table_name IN ('listas_exercicios', 'lista_questoes', 'gabaritos', 'correcoes', 'estatisticas_questao');
+  const questoesFiltradas = questoesDisponiveis.filter(q =>
+    q.enunciado.toLowerCase().includes(searchQuestoes.toLowerCase()) &&
+    !questoesSelecionadas.find(qs => qs.id === q.id)
+  )
 
-SELECT 'Questões públicas:' as info, COUNT(*) as total FROM questoes WHERE is_publica = true;
+  const getDificuldadeColor = (dif: string) => {
+    return dif === 'facil' ? 'success' : dif === 'medio' ? 'warning' : 'danger'
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Listas de Exercícios</h1>
+          <p className="text-gray-600">Crie listas para treino e tarefas dos alunos</p>
+        </div>
+        <Button onClick={() => handleOpenModal()}>
+          <Plus className="w-5 h-5 mr-2" />
+          Nova Lista
+        </Button>
+      </div>
+
+      {/* Busca */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Input
+              placeholder="Buscar listas..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Estatísticas */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-600">Total de Listas</p>
+            <p className="text-2xl font-bold">{listas.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-600">Total de Questões</p>
+            <p className="text-2xl font-bold text-indigo-600">
+              {listas.reduce((acc, l) => acc + (l.questoes_count || 0), 0)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-600">Com Gabarito</p>
+            <p className="text-2xl font-bold text-green-600">
+              {listas.filter(l => l.mostrar_gabarito).length}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-600">Questões Disponíveis</p>
+            <p className="text-2xl font-bold text-purple-600">
+              {questoesDisponiveis.length}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Lista de Listas */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
+        </div>
+      ) : filteredListas.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">
+              {searchTerm ? 'Nenhuma lista encontrada' : 'Nenhuma lista criada'}
+            </h3>
+            <p className="text-gray-500 mb-6">
+              {searchTerm ? 'Tente outro termo de busca' : 'Comece criando sua primeira lista de exercícios'}
+            </p>
+            {!searchTerm && (
+              <Button onClick={() => handleOpenModal()}>
+                <Plus className="w-5 h-5 mr-2" />
+                Criar Lista
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredListas.map((lista) => (
+            <Card key={lista.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 line-clamp-1">{lista.titulo}</h3>
+                    <p className="text-sm text-gray-500 line-clamp-2 mt-1">
+                      {lista.descricao || 'Sem descrição'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <Badge variant="info">{lista.ano_serie}</Badge>
+                  <Badge>{lista.questoes_count || 0} questões</Badge>
+                  {lista.mostrar_gabarito && (
+                    <Badge variant="success">Com gabarito</Badge>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t">
+                  <span className="text-xs text-gray-400">
+                    {new Date(lista.created_at).toLocaleDateString('pt-BR')}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setViewingLista(lista)
+                        setViewModalOpen(true)
+                      }}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setViewingLista(lista)
+                        setExportModalOpen(true)
+                      }}
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleOpenModal(lista)}>
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(lista.id)}>
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Modal Criar/Editar */}
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingLista ? 'Editar Lista' : 'Nova Lista de Exercícios'}
+        size="xl"
+      >
+        <div className="space-y-6">
+          {/* Steps */}
+          <div className="flex items-center justify-center gap-4 mb-6">
+            <div className={`flex items-center gap-2 ${step >= 1 ? 'text-indigo-600' : 'text-gray-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>1</div>
+              <span className="font-medium">Dados</span>
+            </div>
+            <div className="w-16 h-0.5 bg-gray-200" />
+            <div className={`flex items-center gap-2 ${step >= 2 ? 'text-indigo-600' : 'text-gray-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>2</div>
+              <span className="font-medium">Questões</span>
+            </div>
+          </div>
+
+          {step === 1 ? (
+            /* Step 1: Dados da Lista */
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+                <Input
+                  placeholder="Ex: Lista de Frações - 6º Ano"
+                  value={formData.titulo}
+                  onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                <textarea
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  rows={2}
+                  placeholder="Descrição opcional..."
+                  value={formData.descricao}
+                  onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={formData.ano_serie}
+                    onChange={(e) => setFormData({ ...formData, ano_serie: e.target.value })}
+                  >
+                    {ANO_SERIE_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Instruções (aparece no documento)</label>
+                <textarea
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  rows={3}
+                  placeholder="Ex: Resolva as questões abaixo mostrando os cálculos..."
+                  value={formData.instrucoes}
+                  onChange={(e) => setFormData({ ...formData, instrucoes: e.target.value })}
+                />
+              </div>
+
+              <div className="flex gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.mostrar_gabarito}
+                    onChange={(e) => setFormData({ ...formData, mostrar_gabarito: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded"
+                  />
+                  <span className="text-sm">Incluir gabarito no documento</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.mostrar_resolucao}
+                    onChange={(e) => setFormData({ ...formData, mostrar_resolucao: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded"
+                  />
+                  <span className="text-sm">Incluir resolução</span>
+                </label>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t">
+                <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => setStep(2)}
+                  disabled={!formData.titulo}
+                >
+                  Próximo: Selecionar Questões
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /* Step 2: Seleção de Questões */
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {/* Questões Disponíveis */}
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-medium mb-3">Questões Disponíveis</h4>
+                  
+                  {/* Filtros */}
+                  <div className="flex gap-2 mb-3">
+                    <select
+                      className="flex-1 px-2 py-1 text-sm border rounded"
+                      value={filtroQuestoes.ano_serie}
+                      onChange={(e) => setFiltroQuestoes({ ...filtroQuestoes, ano_serie: e.target.value })}
+                    >
+                      <option value="">Todos os anos</option>
+                      {ANO_SERIE_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="flex-1 px-2 py-1 text-sm border rounded"
+                      value={filtroQuestoes.dificuldade}
+                      onChange={(e) => setFiltroQuestoes({ ...filtroQuestoes, dificuldade: e.target.value })}
+                    >
+                      <option value="">Todas</option>
+                      <option value="facil">Fácil</option>
+                      <option value="medio">Médio</option>
+                      <option value="dificil">Difícil</option>
+                    </select>
+                  </div>
+
+                  <Input
+                    placeholder="Buscar questão..."
+                    value={searchQuestoes}
+                    onChange={(e) => setSearchQuestoes(e.target.value)}
+                    className="mb-3"
+                  />
+
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {questoesFiltradas.slice(0, 20).map((q) => (
+                      <div
+                        key={q.id}
+                        className="p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                        onClick={() => handleAddQuestao(q)}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant={getDificuldadeColor(q.dificuldade) as any} className="text-xs">
+                            {q.dificuldade}
+                          </Badge>
+                          <span className="text-xs text-gray-500">{q.ano_serie}</span>
+                        </div>
+                        <p className="text-sm line-clamp-2">{q.enunciado}</p>
+                      </div>
+                    ))}
+                    {questoesFiltradas.length > 20 && (
+                      <p className="text-sm text-gray-500 text-center py-2">
+                        +{questoesFiltradas.length - 20} questões...
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Questões Selecionadas */}
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-medium mb-3">
+                    Questões Selecionadas ({questoesSelecionadas.length})
+                  </h4>
+
+                  <div className="max-h-80 overflow-y-auto space-y-2">
+                    {questoesSelecionadas.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-8">
+                        Clique nas questões ao lado para adicionar
+                      </p>
+                    ) : (
+                      questoesSelecionadas.map((q, idx) => (
+                        <div key={q.id} className="p-2 border rounded bg-indigo-50">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-indigo-700">#{q.ordem}</span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => handleMoveQuestao(idx, 'up')}
+                                disabled={idx === 0}
+                                className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                onClick={() => handleMoveQuestao(idx, 'down')}
+                                disabled={idx === questoesSelecionadas.length - 1}
+                                className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                              >
+                                ↓
+                              </button>
+                              <button
+                                onClick={() => handleRemoveQuestao(q.id)}
+                                className="p-1 text-red-400 hover:text-red-600"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-sm line-clamp-2">{q.enunciado}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t">
+                <Button variant="outline" onClick={() => setStep(1)}>
+                  Voltar
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleSave}
+                  loading={saving}
+                  disabled={questoesSelecionadas.length === 0}
+                >
+                  {editingLista ? 'Salvar Alterações' : `Criar Lista (${questoesSelecionadas.length} questões)`}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal Exportar */}
+      <Modal
+        isOpen={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        title="Exportar Lista"
+        size="md"
+      >
+        {viewingLista && (
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Escolha o formato para exportar "{viewingLista.titulo}":
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => handleExport('docx')}
+                className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center"
+              >
+                <FileDown className="w-12 h-12 mx-auto mb-3 text-blue-600" />
+                <h4 className="font-medium">Word (DOCX)</h4>
+                <p className="text-sm text-gray-500 mt-1">Editável - adicione logo e cabeçalho</p>
+              </button>
+
+              <button
+                onClick={() => handleExport('pdf')}
+                className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center"
+              >
+                <Printer className="w-12 h-12 mx-auto mb-3 text-red-600" />
+                <h4 className="font-medium">PDF</h4>
+                <p className="text-sm text-gray-500 mt-1">Pronto para impressão</p>
+              </button>
+            </div>
+
+            <div className="bg-yellow-50 p-4 rounded-lg">
+              <div className="flex items-start gap-3">
+                <QrCode className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-yellow-800">Gabarito com QR Code</h4>
+                  <p className="text-sm text-yellow-700 mt-1">
+                    O gabarito incluirá um QR Code para correção rápida pelo celular.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t">
+              <Button variant="outline" className="flex-1" onClick={() => setExportModalOpen(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal Visualizar */}
+      <Modal
+        isOpen={viewModalOpen}
+        onClose={() => setViewModalOpen(false)}
+        title="Visualizar Lista"
+        size="lg"
+      >
+        {viewingLista && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="info">{viewingLista.ano_serie}</Badge>
+              <Badge>{viewingLista.questoes_count || 0} questões</Badge>
+              {viewingLista.mostrar_gabarito && <Badge variant="success">Com gabarito</Badge>}
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-lg">{viewingLista.titulo}</h3>
+              {viewingLista.descricao && (
+                <p className="text-gray-600 mt-1">{viewingLista.descricao}</p>
+              )}
+            </div>
+
+            {viewingLista.instrucoes && (
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium text-sm text-gray-700 mb-1">Instruções:</h4>
+                <p className="text-gray-600">{viewingLista.instrucoes}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-4 border-t">
+              <Button variant="outline" className="flex-1" onClick={() => setViewModalOpen(false)}>
+                Fechar
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  setViewModalOpen(false)
+                  setExportModalOpen(true)
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Exportar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  )
+}
