@@ -27,38 +27,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createClient()
 
   useEffect(() => {
-    // Buscar sessão inicial
+    let mounted = true
+
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setSession(session)
-      setUser(session?.user ?? null)
-      
-      if (session?.user) {
-        await fetchUsuario(session.user.id)
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Erro ao buscar sessão:', error)
+        }
+
+        if (mounted) {
+          setSession(session)
+          setUser(session?.user ?? null)
+          
+          if (session?.user) {
+            const { data } = await supabase
+              .from('usuarios')
+              .select('*')
+              .eq('id', session.user.id)
+              .single()
+            
+            if (mounted && data) {
+              setUsuario(data)
+            }
+          }
+          
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Erro na autenticação:', error)
+        if (mounted) {
+          setLoading(false)
+        }
       }
-      
-      setLoading(false)
     }
+
+    // Timeout de segurança - garante que loading será false
+    const timeout = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('Auth timeout - forçando loading = false')
+        setLoading(false)
+      }
+    }, 2000)
 
     getInitialSession()
 
-    // Escutar mudanças na autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setSession(session)
-        setUser(session?.user ?? null)
-        
-        if (session?.user) {
-          await fetchUsuario(session.user.id)
-        } else {
-          setUsuario(null)
+        if (mounted) {
+          setSession(session)
+          setUser(session?.user ?? null)
+          
+          if (session?.user) {
+            const { data } = await supabase
+              .from('usuarios')
+              .select('*')
+              .eq('id', session.user.id)
+              .single()
+            
+            if (data) {
+              setUsuario(data)
+            }
+          } else {
+            setUsuario(null)
+          }
+          
+          setLoading(false)
         }
-        
-        setLoading(false)
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   const fetchUsuario = async (userId: string) => {
@@ -88,7 +132,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     if (!error && data.user) {
-      // Criar perfil do usuário
       const { error: profileError } = await supabase
         .from('usuarios')
         .insert({
