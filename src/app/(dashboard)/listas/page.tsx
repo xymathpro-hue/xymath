@@ -137,10 +137,16 @@ export default function ListasExerciciosPage() {
   }, [fetchListas])
 
   useEffect(() => {
-    if (modalOpen && step === 2) {
-      fetchQuestoes()
-    }
-  }, [modalOpen, step, fetchQuestoes])
+  if (usuario?.id) {
+    fetchQuestoes()
+  }
+}, [usuario?.id, fetchQuestoes])
+
+useEffect(() => {
+  if (modalOpen && step === 2) {
+    fetchQuestoes()
+  }
+}, [modalOpen, step, fetchQuestoes])
 
   const handleOpenModal = (lista?: Lista) => {
     if (lista) {
