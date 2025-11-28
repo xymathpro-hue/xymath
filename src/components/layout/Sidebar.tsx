@@ -24,6 +24,7 @@ const menuItems = [
   { href: '/turmas', label: 'Turmas', icon: Users },
   { href: '/alunos', label: 'Alunos', icon: GraduationCap },
   { href: '/questoes', label: 'Banco de Questões', icon: BookOpen },
+  { href: '/listas', label: 'Listas de Exercícios', icon: ClipboardList },
   { href: '/simulados', label: 'Simulados', icon: FileText },
   { href: '/resultados', label: 'Resultados', icon: BarChart3 },
   { href: '/configuracoes', label: 'Configurações', icon: Settings },
