@@ -18,56 +18,93 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Singleton do cliente Supabase
+let supabaseInstance: ReturnType<typeof createClient> | null = null
+function getSupabase() {
+  if (!supabaseInstance) {
+    supabaseInstance = createClient()
+  }
+  return supabaseInstance
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [supabase] = useState(() => createClient())
+  
+  const supabase = getSupabase()
+
+  // Função para buscar usuario com timeout
+  const fetchUsuario = async (userId: string): Promise<Usuario | null> => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 2000)
+    
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('id', userId)
+        .single()
+        .abortSignal(controller.signal)
+      
+      clearTimeout(timeoutId)
+      
+      if (error) {
+        console.error('Erro ao buscar usuario:', error)
+        return null
+      }
+      
+      return data
+    } catch (err) {
+      clearTimeout(timeoutId)
+      console.error('Timeout ou erro ao buscar usuario:', err)
+      return null
+    }
+  }
 
   useEffect(() => {
     let mounted = true
-    let timeoutId: ReturnType<typeof setTimeout>
-    
-    const init = async () => {
-      // Timeout absoluto de 3 segundos
-      timeoutId = setTimeout(() => {
-        if (mounted && loading) {
-          console.warn('Timeout - redirecionando para login')
-          setLoading(false)
-          window.location.href = '/login'
-        }
-      }, 3000)
 
+    const init = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        // Busca sessão com timeout de 3 segundos
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<null>((resolve) => 
+          setTimeout(() => resolve(null), 3000)
+        )
+        
+        const result = await Promise.race([sessionPromise, timeoutPromise])
         
         if (!mounted) return
         
-        if (!session?.user) {
-          clearTimeout(timeoutId)
+        // Timeout ou sem sessão
+        if (!result || !result.data?.session?.user) {
+          setUser(null)
+          setUsuario(null)
+          setSession(null)
           setLoading(false)
           return
         }
         
-        setSession(session)
-        setUser(session.user)
+        const { data: { session } } = result
         
-        const { data: usuarioData } = await supabase
-          .from('usuarios')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
+        setSession(session)
+        setUser(session!.user)
+        
+        // Busca usuario (com timeout interno)
+        const usuarioData = await fetchUsuario(session!.user.id)
         
         if (mounted) {
-          clearTimeout(timeoutId)
-          setUsuario(usuarioData || null)
+          setUsuario(usuarioData)
           setLoading(false)
         }
       } catch (error) {
-        console.error('Erro:', error)
+        console.error('Erro na inicialização:', error)
         if (mounted) {
-          clearTimeout(timeoutId)
+          setUser(null)
+          setUsuario(null)
+          setSession(null)
           setLoading(false)
         }
       }
@@ -76,32 +113,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event, newSession) => {
         if (!mounted) return
         
-        if (!session?.user) {
+        console.log('Auth event:', event)
+        
+        if (event === 'SIGNED_OUT' || !newSession?.user) {
           setUser(null)
           setUsuario(null)
           setSession(null)
           return
         }
         
-        setSession(session)
-        setUser(session.user)
+        setSession(newSession)
+        setUser(newSession.user)
         
-        const { data } = await supabase
-          .from('usuarios')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
-        
-        if (mounted) setUsuario(data || null)
+        // Busca usuario em background (não bloqueia)
+        fetchUsuario(newSession.user.id).then(data => {
+          if (mounted) setUsuario(data)
+        })
       }
     )
 
     return () => {
       mounted = false
-      clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, [supabase])
@@ -120,10 +155,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    // Limpa estado ANTES de chamar signOut do Supabase
     setUser(null)
     setUsuario(null)
     setSession(null)
+    
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.error('Erro no signOut:', err)
+    }
   }
 
   const updateProfile = async (data: Partial<Usuario>) => {
