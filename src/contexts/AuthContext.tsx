@@ -18,162 +18,98 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const supabase = createClient()
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  
-  const supabase = createClient()
-
-  // Função para buscar usuário da tabela
-  const fetchUsuario = async (userId: string): Promise<Usuario | null> => {
-    try {
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('id', userId)
-        .single()
-      
-      if (error) {
-        console.error('Erro ao buscar usuario:', error)
-        return null
-      }
-      return data
-    } catch (e) {
-      console.error('Erro ao buscar usuario:', e)
-      return null
-    }
-  }
 
   useEffect(() => {
     let mounted = true
 
-    const getInitialSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+    // Buscar sessão inicial
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return
+      
+      setSession(session)
+      setUser(session?.user ?? null)
+      
+      if (session?.user) {
+        // Buscar dados do usuario
+        const { data } = await supabase
+          .from('usuarios')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
         
-        if (error) {
-          console.error('Erro ao buscar sessão:', error)
-          if (mounted) setLoading(false)
-          return
+        if (mounted) {
+          setUsuario(data || null)
         }
+      }
+      
+      if (mounted) {
+        setLoading(false)
+      }
+    })
 
+    // Listener para mudanças de auth
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
         if (!mounted) return
-
+        
+        setSession(session)
+        setUser(session?.user ?? null)
+        
         if (session?.user) {
-          setSession(session)
-          setUser(session.user)
-          
-          // Busca o usuario da tabela
-          const usuarioData = await fetchUsuario(session.user.id)
+          const { data } = await supabase
+            .from('usuarios')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
           
           if (mounted) {
-            if (usuarioData) {
-              setUsuario(usuarioData)
-            } else {
-              // Se não encontrou o usuario, faz logout
-              console.warn('Usuario não encontrado na tabela, fazendo logout')
-              await supabase.auth.signOut()
-              setUser(null)
-              setSession(null)
-            }
-            setLoading(false)
+            setUsuario(data || null)
           }
         } else {
-          // Não tem sessão
-          setSession(null)
-          setUser(null)
-          setUsuario(null)
-          if (mounted) setLoading(false)
-        }
-      } catch (error) {
-        console.error('Erro na autenticação:', error)
-        if (mounted) setLoading(false)
-      }
-    }
-
-    getInitialSession()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return
-        
-        console.log('Auth state changed:', event)
-        
-        if (session?.user) {
-          setSession(session)
-          setUser(session.user)
-          
-          const usuarioData = await fetchUsuario(session.user.id)
-          if (mounted && usuarioData) {
-            setUsuario(usuarioData)
-          }
-        } else {
-          setSession(null)
-          setUser(null)
           setUsuario(null)
         }
         
-        if (mounted) setLoading(false)
+        setLoading(false)
       }
     )
 
-    // Timeout de segurança maior - 5 segundos
-    const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn('Auth timeout - forçando loading = false')
-        setLoading(false)
-      }
-    }, 5000)
-
     return () => {
       mounted = false
-      clearTimeout(timeout)
       subscription.unsubscribe()
     }
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    if (error) setLoading(false)
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
     return { error: error as Error | null }
   }
 
   const signUp = async (email: string, password: string, nome: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
+    const { data, error } = await supabase.auth.signUp({ email, password })
 
     if (!error && data.user) {
-      const { error: profileError } = await supabase
-        .from('usuarios')
-        .insert({
-          id: data.user.id,
-          email,
-          nome,
-        })
-      
-      if (profileError) {
-        return { error: profileError as Error }
-      }
+      await supabase.from('usuarios').insert({
+        id: data.user.id,
+        email,
+        nome,
+      })
     }
 
     return { error: error as Error | null }
   }
 
   const signOut = async () => {
-    setLoading(true)
     await supabase.auth.signOut()
     setUser(null)
     setUsuario(null)
     setSession(null)
-    setLoading(false)
   }
 
   const updateProfile = async (data: Partial<Usuario>) => {
