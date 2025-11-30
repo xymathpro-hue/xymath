@@ -32,12 +32,15 @@ export default function SimuladosPage() {
   const supabase = createClient()
 
   const fetchData = useCallback(async () => {
-    if (!usuario?.id) return
+    if (!usuario?.id) {
+      setLoading(false)
+      return
+    }
     try {
       const [sRes, tRes, qRes] = await Promise.all([
         supabase.from('simulados').select('*').eq('usuario_id', usuario.id).order('created_at', { ascending: false }),
         supabase.from('turmas').select('*').eq('usuario_id', usuario.id).eq('ativa', true),
-        supabase.from('questoes').select('*').eq('usuario_id', usuario.id).eq('ativa', true),
+        supabase.from('questoes').select('*').or(`usuario_id.eq.${usuario.id},is_publica.eq.true`).eq('ativa', true),
       ])
       setSimulados(sRes.data || [])
       setTurmas(tRes.data || [])
