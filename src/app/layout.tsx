@@ -9,39 +9,40 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user, loading } = useAuth()
-  const [mounted, setMounted] = useState(false)
+  const { user, usuario, loading } = useAuth()
+  const [checked, setChecked] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (mounted && !loading && !user) {
-      window.location.href = '/login'
+    // Aguarda o loading terminar
+    if (!loading) {
+      // Se não tem user OU não tem usuario, redireciona
+      if (!user || !usuario) {
+        console.log('Não autenticado - redirecionando...')
+        window.location.replace('/login')
+        return
+      }
+      setChecked(true)
     }
-  }, [user, loading, mounted])
+  }, [user, usuario, loading])
 
+  // Timeout de segurança
   useEffect(() => {
-    if (!mounted) return
     const timeout = setTimeout(() => {
-      if (loading || !user) {
-        window.location.href = '/login'
+      if (!checked) {
+        console.log('Timeout - redirecionando para login')
+        window.location.replace('/login')
       }
     }, 3000)
     return () => clearTimeout(timeout)
-  }, [mounted, loading, user])
+  }, [checked])
 
-  if (!mounted || loading) {
+  // Enquanto verifica, mostra loading
+  if (!checked) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
       </div>
     )
-  }
-
-  if (!user) {
-    return null
   }
 
   return (
