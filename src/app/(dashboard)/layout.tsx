@@ -10,44 +10,66 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user, loading } = useAuth()
+  const { user, usuario, loading } = useAuth()
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
+  const [shouldRedirect, setShouldRedirect] = useState(false)
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
+  // Verificar autenticação e redirecionar
   useEffect(() => {
-    if (mounted && !loading && !user) {
-      router.push('/login')
-    }
-  }, [user, loading, router, mounted])
+    if (!mounted) return
 
-  // Timeout de segurança - máximo 3 segundos de loading
+    // Se não está mais carregando e não tem usuário, redireciona
+    if (!loading && !user) {
+      console.log('Sem usuário autenticado - redirecionando para /login')
+      setShouldRedirect(true)
+      window.location.href = '/login'
+    }
+  }, [user, loading, mounted])
+
+  // Timeout de segurança - se ficar mais de 3 segundos em loading, força redirecionamento
   useEffect(() => {
+    if (!mounted) return
+
     const timeout = setTimeout(() => {
-      if (loading) {
-        console.warn('Auth timeout - recarregando...')
-        window.location.reload()
+      if (loading || !user) {
+        console.warn('Timeout - forçando redirecionamento para /login')
+        window.location.href = '/login'
       }
     }, 3000)
 
     return () => clearTimeout(timeout)
-  }, [loading])
+  }, [mounted, loading, user])
 
+  // Enquanto verifica autenticação
   if (!mounted || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-500">Carregando...</p>
+        </div>
       </div>
     )
   }
 
-  if (!user) {
-    return null
+  // Se não tem usuário, mostra tela de redirecionamento
+  if (!user || shouldRedirect) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-500">Redirecionando para login...</p>
+        </div>
+      </div>
+    )
   }
 
+  // Usuário autenticado - renderiza o dashboard
   return (
     <div className="min-h-screen bg-gray-50">
       <Sidebar />
