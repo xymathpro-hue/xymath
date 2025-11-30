@@ -37,18 +37,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Função para buscar usuario com timeout
   const fetchUsuario = async (userId: string): Promise<Usuario | null> => {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 2000)
-    
     try {
-      const { data, error } = await supabase
+      const queryPromise = supabase
         .from('usuarios')
         .select('*')
         .eq('id', userId)
         .single()
-        .abortSignal(controller.signal)
       
-      clearTimeout(timeoutId)
+      const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) => 
+        setTimeout(() => resolve({ data: null, error: new Error('Timeout') }), 2000)
+      )
+      
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise])
       
       if (error) {
         console.error('Erro ao buscar usuario:', error)
@@ -57,8 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       return data
     } catch (err) {
-      clearTimeout(timeoutId)
-      console.error('Timeout ou erro ao buscar usuario:', err)
+      console.error('Erro ao buscar usuario:', err)
       return null
     }
   }
