@@ -63,7 +63,10 @@ export default function TurmasPage() {
   const supabase = createClient()
 
   const fetchTurmas = useCallback(async () => {
-    if (!usuario?.id) return
+    if (!usuario?.id) {
+      setLoading(false)
+      return
+    }
 
     try {
       const { data, error } = await supabase
