@@ -50,7 +50,10 @@ export default function ResultadosPage() {
 
   // Carregar simulados e turmas
   const fetchBase = useCallback(async () => {
-    if (!usuario?.id) return
+    if (!usuario?.id) {
+      setLoading(false)
+      return
+    }
     try {
       const [simRes, turRes] = await Promise.all([
         supabase.from('simulados').select('*').eq('usuario_id', usuario.id).order('created_at', { ascending: false }),
