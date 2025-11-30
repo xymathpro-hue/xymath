@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase-browser'
 import { Usuario } from '@/types'
@@ -18,30 +18,35 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const supabase = createClient()
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const loadingRef = useRef(true)
-  const initDone = useRef(false)
+  const [supabase] = useState(() => createClient())
 
   useEffect(() => {
-    if (initDone.current) return
-    initDone.current = true
+    let mounted = true
+    let timeoutId: ReturnType<typeof setTimeout>
     
     const init = async () => {
+      // Timeout absoluto de 3 segundos
+      timeoutId = setTimeout(() => {
+        if (mounted && loading) {
+          console.warn('Timeout - redirecionando para login')
+          setLoading(false)
+          window.location.href = '/login'
+        }
+      }, 3000)
+
       try {
         const { data: { session } } = await supabase.auth.getSession()
         
+        if (!mounted) return
+        
         if (!session?.user) {
-          setUser(null)
-          setUsuario(null)
-          setSession(null)
+          clearTimeout(timeoutId)
           setLoading(false)
-          loadingRef.current = false
           return
         }
         
@@ -54,68 +59,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .eq('id', session.user.id)
           .single()
         
-        if (usuarioData) {
-          setUsuario(usuarioData)
-        } else {
-          await supabase.auth.signOut()
-          setUser(null)
-          setSession(null)
+        if (mounted) {
+          clearTimeout(timeoutId)
+          setUsuario(usuarioData || null)
+          setLoading(false)
         }
-        
-        setLoading(false)
-        loadingRef.current = false
       } catch (error) {
         console.error('Erro:', error)
-        setLoading(false)
-        loadingRef.current = false
+        if (mounted) {
+          clearTimeout(timeoutId)
+          setLoading(false)
+        }
       }
     }
 
-    // Timeout de segurança
-    const timeout = setTimeout(() => {
-      if (loadingRef.current) {
-        console.warn('Timeout atingido - forçando fim do loading')
-        supabase.auth.signOut()
-        setUser(null)
-        setUsuario(null)
-        setSession(null)
-        setLoading(false)
-        loadingRef.current = false
-      }
-    }, 3000)
-
-    init().finally(() => clearTimeout(timeout))
+    init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_OUT') {
+        if (!mounted) return
+        
+        if (!session?.user) {
           setUser(null)
           setUsuario(null)
           setSession(null)
           return
         }
         
-        if (session?.user) {
-          setSession(session)
-          setUser(session.user)
-          
-          const { data } = await supabase
-            .from('usuarios')
-            .select('*')
-            .eq('id', session.user.id)
-            .single()
-          
-          if (data) {
-            setUsuario(data)
-          }
-        }
+        setSession(session)
+        setUser(session.user)
+        
+        const { data } = await supabase
+          .from('usuarios')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+        
+        if (mounted) setUsuario(data || null)
       }
     )
 
     return () => {
+      mounted = false
+      clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
-  }, [])
+  }, [supabase])
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
