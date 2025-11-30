@@ -28,44 +28,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true
+    let timeoutId: NodeJS.Timeout
     
     const init = async () => {
+      // Timeout de segurança - 3 segundos máximo
+      timeoutId = setTimeout(async () => {
+        if (mounted && loading) {
+          console.warn('Timeout - limpando sessão e redirecionando')
+          await supabase.auth.signOut()
+          localStorage.clear()
+          setLoading(false)
+          window.location.href = '/login'
+        }
+      }, 3000)
+
       try {
-        // Força refresh da sessão para garantir token válido
-        const { data: { session }, error } = await supabase.auth.refreshSession()
+        const { data: { session } } = await supabase.auth.getSession()
         
         if (!mounted) return
         
-        // Se deu erro ou não tem sessão, usuário não está logado
-        if (error || !session?.user) {
-          setUser(null)
-          setUsuario(null)
-          setSession(null)
+        if (!session?.user) {
+          clearTimeout(timeoutId)
           setLoading(false)
           return
         }
         
-        // Tem sessão válida
         setSession(session)
         setUser(session.user)
         
-        // Busca usuario da tabela
-        const { data: usuarioData } = await supabase
-          .from('usuarios')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
+        // Busca usuario com timeout
+        const controller = new AbortController()
+        const fetchTimeout = setTimeout(() => controller.abort(), 2000)
         
-        if (mounted) {
-          setUsuario(usuarioData || null)
-          setLoading(false)
+        try {
+          const { data: usuarioData, error } = await supabase
+            .from('usuarios')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+          
+          clearTimeout(fetchTimeout)
+          
+          if (mounted) {
+            if (usuarioData) {
+              setUsuario(usuarioData)
+              clearTimeout(timeoutId)
+              setLoading(false)
+            } else {
+              // Falhou - limpa tudo
+              console.warn('Usuario não encontrado - limpando sessão')
+              await supabase.auth.signOut()
+              setUser(null)
+              setSession(null)
+              clearTimeout(timeoutId)
+              setLoading(false)
+            }
+          }
+        } catch (fetchError) {
+          console.error('Erro ao buscar usuario:', fetchError)
+          if (mounted) {
+            await supabase.auth.signOut()
+            setUser(null)
+            setSession(null)
+            clearTimeout(timeoutId)
+            setLoading(false)
+          }
         }
       } catch (error) {
         console.error('Erro:', error)
         if (mounted) {
-          setUser(null)
-          setUsuario(null)
-          setSession(null)
+          clearTimeout(timeoutId)
           setLoading(false)
         }
       }
@@ -81,7 +113,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null)
           setUsuario(null)
           setSession(null)
-          setLoading(false)
           return
         }
         
@@ -94,15 +125,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .eq('id', session.user.id)
           .single()
         
-        if (mounted) {
-          setUsuario(data || null)
-          setLoading(false)
+        if (mounted && data) {
+          setUsuario(data)
         }
       }
     )
 
     return () => {
       mounted = false
+      clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, [])
