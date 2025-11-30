@@ -26,6 +26,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   const supabase = createClient()
 
+  // Função para buscar usuário da tabela
+  const fetchUsuario = async (userId: string): Promise<Usuario | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('id', userId)
+        .single()
+      
+      if (error) {
+        console.error('Erro ao buscar usuario:', error)
+        return null
+      }
+      return data
+    } catch (e) {
+      console.error('Erro ao buscar usuario:', e)
+      return null
+    }
+  }
+
   useEffect(() => {
     let mounted = true
 
@@ -35,68 +55,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (error) {
           console.error('Erro ao buscar sessão:', error)
+          if (mounted) setLoading(false)
+          return
         }
 
-        if (mounted) {
+        if (!mounted) return
+
+        if (session?.user) {
           setSession(session)
-          setUser(session?.user ?? null)
+          setUser(session.user)
           
-          if (session?.user) {
-            const { data } = await supabase
-              .from('usuarios')
-              .select('*')
-              .eq('id', session.user.id)
-              .single()
-            
-            if (mounted && data) {
-              setUsuario(data)
+          // Busca o usuario da tabela
+          const usuarioData = await fetchUsuario(session.user.id)
+          
+          if (mounted) {
+            if (usuarioData) {
+              setUsuario(usuarioData)
+            } else {
+              // Se não encontrou o usuario, faz logout
+              console.warn('Usuario não encontrado na tabela, fazendo logout')
+              await supabase.auth.signOut()
+              setUser(null)
+              setSession(null)
             }
+            setLoading(false)
           }
-          
-          setLoading(false)
+        } else {
+          // Não tem sessão
+          setSession(null)
+          setUser(null)
+          setUsuario(null)
+          if (mounted) setLoading(false)
         }
       } catch (error) {
         console.error('Erro na autenticação:', error)
-        if (mounted) {
-          setLoading(false)
-        }
+        if (mounted) setLoading(false)
       }
     }
-
-    // Timeout de segurança - garante que loading será false
-    const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn('Auth timeout - forçando loading = false')
-        setLoading(false)
-      }
-    }, 2000)
 
     getInitialSession()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (mounted) {
+        if (!mounted) return
+        
+        console.log('Auth state changed:', event)
+        
+        if (session?.user) {
           setSession(session)
-          setUser(session?.user ?? null)
+          setUser(session.user)
           
-          if (session?.user) {
-            const { data } = await supabase
-              .from('usuarios')
-              .select('*')
-              .eq('id', session.user.id)
-              .single()
-            
-            if (data) {
-              setUsuario(data)
-            }
-          } else {
-            setUsuario(null)
+          const usuarioData = await fetchUsuario(session.user.id)
+          if (mounted && usuarioData) {
+            setUsuario(usuarioData)
           }
-          
-          setLoading(false)
+        } else {
+          setSession(null)
+          setUser(null)
+          setUsuario(null)
         }
+        
+        if (mounted) setLoading(false)
       }
     )
+
+    // Timeout de segurança maior - 5 segundos
+    const timeout = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('Auth timeout - forçando loading = false')
+        setLoading(false)
+      }
+    }, 5000)
 
     return () => {
       mounted = false
@@ -105,23 +134,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const fetchUsuario = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('usuarios')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    
-    if (!error && data) {
-      setUsuario(data)
-    }
-  }
-
   const signIn = async (email: string, password: string) => {
+    setLoading(true)
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
+    if (error) setLoading(false)
     return { error: error as Error | null }
   }
 
@@ -149,10 +168,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    setLoading(true)
     await supabase.auth.signOut()
     setUser(null)
     setUsuario(null)
     setSession(null)
+    setLoading(false)
   }
 
   const updateProfile = async (data: Partial<Usuario>) => {
