@@ -64,7 +64,6 @@ export default function QuestoesPage() {
   const [viewingQuestao, setViewingQuestao] = useState<Questao | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // Dados do banco
   const [unidadesTematicas, setUnidadesTematicas] = useState<UnidadeTematica[]>([])
   const [habilidades, setHabilidades] = useState<HabilidadeBncc[]>([])
   const [descritores, setDescritores] = useState<DescritorSaeb[]>([])
@@ -102,7 +101,6 @@ export default function QuestoesPage() {
 
   const supabase = createClient()
 
-  // Carregar dados auxiliares
   useEffect(() => {
     const loadAuxData = async () => {
       const [utRes, habRes, descRes, ncRes, ctxRes, fontRes] = await Promise.all([
@@ -124,7 +122,10 @@ export default function QuestoesPage() {
   }, [supabase])
 
   const fetchQuestoes = useCallback(async () => {
-    if (!usuario?.id) return
+    if (!usuario?.id) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       let query = supabase
@@ -357,7 +358,6 @@ export default function QuestoesPage() {
         </div>
       )}
 
-      {/* Modal Criar/Editar */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingQuestao ? 'Editar Questão' : 'Nova Questão'} size="xl">
         <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-2">
           <div className="bg-gray-50 p-4 rounded-lg space-y-4">
@@ -402,7 +402,6 @@ export default function QuestoesPage() {
         </div>
       </Modal>
 
-      {/* Modal Visualizar */}
       <Modal isOpen={viewModalOpen} onClose={() => setViewModalOpen(false)} title="Visualizar Questão" size="lg">
         {viewingQuestao && (
           <div className="space-y-4">
