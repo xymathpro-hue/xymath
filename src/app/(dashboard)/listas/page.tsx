@@ -80,7 +80,10 @@ export default function ListasExerciciosPage() {
   const supabase = createClient()
 
   const fetchListas = useCallback(async () => {
-    if (!usuario?.id) return
+    if (!usuario?.id) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const { data, error } = await supabase
@@ -109,7 +112,9 @@ export default function ListasExerciciosPage() {
   }, [usuario?.id, supabase])
 
   const fetchQuestoes = useCallback(async () => {
-    if (!usuario?.id) return
+    if (!usuario?.id) {
+      return
+    }
     try {
       let query = supabase
         .from('questoes')
@@ -137,16 +142,16 @@ export default function ListasExerciciosPage() {
   }, [fetchListas])
 
   useEffect(() => {
-  if (usuario?.id) {
-    fetchQuestoes()
-  }
-}, [usuario?.id, fetchQuestoes])
+    if (usuario?.id) {
+      fetchQuestoes()
+    }
+  }, [usuario?.id, fetchQuestoes])
 
-useEffect(() => {
-  if (modalOpen && step === 2) {
-    fetchQuestoes()
-  }
-}, [modalOpen, step, fetchQuestoes])
+  useEffect(() => {
+    if (modalOpen && step === 2) {
+      fetchQuestoes()
+    }
+  }, [modalOpen, step, fetchQuestoes])
 
   const handleOpenModal = (lista?: Lista) => {
     if (lista) {
