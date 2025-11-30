@@ -41,8 +41,8 @@ export default function AlunosPage() {
     setLoading(true)
     const { data: turmasData } = await supabase.from('turmas').select('id, nome').eq('usuario_id', usuario?.id)
     if (!turmasData || turmasData.length === 0) { setAlunos([]); setLoading(false); return }
-    const turmaIds = turmasData.map(t => t.id)
-    const turmasMap = new Map(turmasData.map(t => [t.id, t]))
+    const turmaIds = turmasData.map((t: any) => t.id)
+const turmasMap = new Map(turmasData.map((t: any) => [t.id, t]))
     const { data: alunosData } = await supabase.from('alunos').select('*').in('turma_id', turmaIds).order('nome')
     if (alunosData) {
       setAlunos(alunosData.map(aluno => ({ ...aluno, turma_nome: turmasMap.get(aluno.turma_id)?.nome || '' })))
