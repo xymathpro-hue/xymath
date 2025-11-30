@@ -31,13 +31,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const init = async () => {
       try {
-        // Primeiro pega a sessão
-        const { data: { session } } = await supabase.auth.getSession()
+        // Força refresh da sessão para garantir token válido
+        const { data: { session }, error } = await supabase.auth.refreshSession()
         
         if (!mounted) return
         
-        if (!session?.user) {
-          // Sem sessão - não logado
+        // Se deu erro ou não tem sessão, usuário não está logado
+        if (error || !session?.user) {
           setUser(null)
           setUsuario(null)
           setSession(null)
@@ -45,43 +45,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
         
-        // Tem sessão - busca usuario com retry
+        // Tem sessão válida
         setSession(session)
         setUser(session.user)
         
-        // Tenta buscar usuario até 3 vezes
-        let usuarioData = null
-        for (let i = 0; i < 3; i++) {
-          const { data, error } = await supabase
-            .from('usuarios')
-            .select('*')
-            .eq('id', session.user.id)
-            .single()
-          
-          if (data) {
-            usuarioData = data
-            break
-          }
-          
-          if (i < 2) {
-            await new Promise(r => setTimeout(r, 500)) // Espera 500ms antes de tentar de novo
-          }
-        }
+        // Busca usuario da tabela
+        const { data: usuarioData } = await supabase
+          .from('usuarios')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
         
         if (mounted) {
-          if (usuarioData) {
-            setUsuario(usuarioData)
-          } else {
-            // Não encontrou usuario - faz logout
-            await supabase.auth.signOut()
-            setUser(null)
-            setSession(null)
-          }
+          setUsuario(usuarioData || null)
           setLoading(false)
         }
       } catch (error) {
-        console.error('Erro na autenticação:', error)
+        console.error('Erro:', error)
         if (mounted) {
+          setUser(null)
+          setUsuario(null)
+          setSession(null)
           setLoading(false)
         }
       }
@@ -93,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         if (!mounted) return
         
-        if (event === 'SIGNED_OUT') {
+        if (!session?.user) {
           setUser(null)
           setUsuario(null)
           setSession(null)
@@ -101,22 +85,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
         
-        if (session?.user) {
-          setSession(session)
-          setUser(session.user)
-          
-          const { data } = await supabase
-            .from('usuarios')
-            .select('*')
-            .eq('id', session.user.id)
-            .single()
-          
-          if (mounted && data) {
-            setUsuario(data)
-          }
-        }
+        setSession(session)
+        setUser(session.user)
         
-        setLoading(false)
+        const { data } = await supabase
+          .from('usuarios')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+        
+        if (mounted) {
+          setUsuario(data || null)
+          setLoading(false)
+        }
       }
     )
 
