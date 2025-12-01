@@ -133,6 +133,7 @@ export default function QuestoesPage() {
         .select('*')
         .or(`usuario_id.eq.${usuario.id},is_publica.eq.true`)
         .order('created_at', { ascending: false })
+        .limit(5000) // CORREÇÃO: Aumentado limite de 1000 (padrão) para 5000
 
       if (filters.ano_serie) query = query.eq('ano_serie', filters.ano_serie)
       if (filters.dificuldade) query = query.eq('dificuldade', filters.dificuldade)
