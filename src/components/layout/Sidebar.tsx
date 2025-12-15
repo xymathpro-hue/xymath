@@ -12,22 +12,24 @@ import {
   BookOpen,
   LogOut,
   Menu,
-  X
+  X,
+  Library
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
-import { Library } from 'lucide-react'
+
 const menuItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/turmas', label: 'Turmas', icon: Users },
   { href: '/alunos', label: 'Alunos', icon: GraduationCap },
   { href: '/questoes', label: 'Banco de Questões', icon: BookOpen },
+  { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
   { href: '/listas', label: 'Listas de Exercícios', icon: ClipboardList },
   { href: '/simulados', label: 'Simulados', icon: FileText },
   { href: '/resultados', label: 'Resultados', icon: BarChart3 },
 ]
-{ name: 'Biblioteca BNCC', href: '/biblioteca-bncc', icon: Library },
+
 export function Sidebar() {
   const pathname = usePathname()
   const { usuario, signOut } = useAuth()
