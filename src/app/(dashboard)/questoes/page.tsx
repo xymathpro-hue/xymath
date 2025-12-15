@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
@@ -54,6 +55,7 @@ const DIFICULDADE_OPTIONS = [
 
 export default function QuestoesPage() {
   const { usuario } = useAuth()
+  const searchParams = useSearchParams()
   const [questoes, setQuestoes] = useState<Questao[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -100,6 +102,15 @@ export default function QuestoesPage() {
   })
 
   const supabase = createClient()
+
+  // Ler parâmetro da URL ao carregar
+  useEffect(() => {
+    const habilidadeId = searchParams.get('habilidade_bncc_id')
+    if (habilidadeId) {
+      setFilters(prev => ({ ...prev, habilidade_bncc_id: habilidadeId }))
+      setFilterOpen(true) // Abre os filtros para mostrar qual está ativo
+    }
+  }, [searchParams])
 
   useEffect(() => {
     const loadAuxData = async () => {
