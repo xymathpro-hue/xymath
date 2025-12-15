@@ -92,7 +92,7 @@ export default function LoginPage() {
                 placeholder="Seu email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="pl-10"
+                className="pl-10 text-gray-900 placeholder:text-gray-400"
                 required
               />
             </div>
@@ -104,7 +104,7 @@ export default function LoginPage() {
                 placeholder="Sua senha"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="pl-10 pr-10"
+                className="pl-10 pr-10 text-gray-900 placeholder:text-gray-400"
                 required
               />
               <button
