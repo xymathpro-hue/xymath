@@ -17,7 +17,7 @@ import {
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
-
+import { Library } from 'lucide-react'
 const menuItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/turmas', label: 'Turmas', icon: Users },
@@ -27,7 +27,7 @@ const menuItems = [
   { href: '/simulados', label: 'Simulados', icon: FileText },
   { href: '/resultados', label: 'Resultados', icon: BarChart3 },
 ]
-
+{ name: 'Biblioteca BNCC', href: '/biblioteca-bncc', icon: Library },
 export function Sidebar() {
   const pathname = usePathname()
   const { usuario, signOut } = useAuth()
