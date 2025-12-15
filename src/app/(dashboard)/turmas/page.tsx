@@ -25,18 +25,10 @@ const turnoOptions = [
 ]
 
 const anoSerieOptions = [
-  { value: '1º ano EF', label: '1º ano EF' },
-  { value: '2º ano EF', label: '2º ano EF' },
-  { value: '3º ano EF', label: '3º ano EF' },
-  { value: '4º ano EF', label: '4º ano EF' },
-  { value: '5º ano EF', label: '5º ano EF' },
   { value: '6º ano EF', label: '6º ano EF' },
   { value: '7º ano EF', label: '7º ano EF' },
   { value: '8º ano EF', label: '8º ano EF' },
   { value: '9º ano EF', label: '9º ano EF' },
-  { value: '1º ano EM', label: '1º ano EM' },
-  { value: '2º ano EM', label: '2º ano EM' },
-  { value: '3º ano EM', label: '3º ano EM' },
 ]
 
 export default function TurmasPage() {
@@ -78,7 +70,6 @@ export default function TurmasPage() {
       if (error) throw error
       setTurmas(data || [])
 
-      // Buscar contagem de alunos por turma
       if (data && data.length > 0) {
         const counts: Record<string, number> = {}
         for (const turma of data) {
@@ -188,7 +179,6 @@ export default function TurmasPage() {
 
   return (
     <div className="p-6 lg:p-8">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Turmas</h1>
@@ -200,7 +190,6 @@ export default function TurmasPage() {
         </Button>
       </div>
 
-      {/* Search */}
       <Card variant="bordered" className="mb-6">
         <CardContent className="p-4">
           <div className="relative">
@@ -215,7 +204,6 @@ export default function TurmasPage() {
         </CardContent>
       </Card>
 
-      {/* Turmas List */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
@@ -301,7 +289,6 @@ export default function TurmasPage() {
         </Card>
       )}
 
-      {/* Modal */}
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
