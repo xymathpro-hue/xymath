@@ -542,7 +542,7 @@ export default function BibliotecaBNCCPage() {
 
             {/* Botão de Filtros */}
             <Button
-              variant={filterOpen ? 'default' : 'outline'}
+              variant={filterOpen ? 'primary' : 'outline'}
               onClick={() => setFilterOpen(!filterOpen)}
               className="flex items-center gap-2"
             >
@@ -673,7 +673,7 @@ export default function BibliotecaBNCCPage() {
                 : 'As habilidades BNCC ainda não foram cadastradas'}
             </p>
             {hasActiveFilters && (
-              <Button variant="outline" onClick={clearFilters}>
+              <Button variant="ghost" onClick={clearFilters}>
                 Limpar Filtros
               </Button>
             )}
