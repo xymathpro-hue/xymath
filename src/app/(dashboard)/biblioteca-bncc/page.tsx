@@ -166,7 +166,7 @@ function HabilidadeCard({ habilidade, onClick }: {
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold text-indigo-600">{habilidade.codigo}</span>
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="default" className="text-xs">
               {getSerieLabel(habilidade.ano_serie)}
             </Badge>
           </div>
@@ -640,7 +640,7 @@ export default function BibliotecaBNCCPage() {
                     <GrupoIcon className="w-5 h-5" />
                   </div>
                   <h2 className="text-lg font-semibold text-gray-900">{grupo.unidade.nome}</h2>
-                  <Badge variant="secondary">{grupo.habilidades.length}</Badge>
+                  <Badge variant="default">{grupo.habilidades.length}</Badge>
                 </div>
 
                 {/* Grid de Cards */}
