@@ -607,6 +607,6 @@ export default function ListasExerciciosPage() {
           </div>
         )}
       </Modal>
-    </div>
+   </div>
   )
-    }
+}
