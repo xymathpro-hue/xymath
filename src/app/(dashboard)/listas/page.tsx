@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, FileText, Edit, Trash2, Eye, Download, Check, X, Wand2, Filter, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle, Printer } from 'lucide-react'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Check, X, Wand2, Filter, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle, Printer, Download } from 'lucide-react'
+import { exportToWord } from '@/lib/export-document'
 
 interface ListaExercicios {
   id: string
@@ -298,6 +299,38 @@ export default function ListaExerciciosPage() {
     setQuestoesSelecionadas(prev => prev.filter(q => q !== id))
   }
 
+  const handleExportWord = async (lista: ListaExercicios) => {
+    try {
+      const { data: questoesData } = await supabase
+        .from('questoes')
+        .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, dificuldade, habilidade_id')
+        .in('id', lista.questoes_ids)
+
+      if (!questoesData) return
+
+      const questoesOrdenadas = lista.questoes_ids
+        .map(id => questoesData.find(q => q.id === id))
+        .filter(Boolean)
+        .map(q => ({
+          ...q!,
+          habilidade_codigo: habilidades.find(h => h.id === q!.habilidade_id)?.codigo
+        }))
+
+      const config = lista.configuracoes || {}
+
+      await exportToWord({
+        titulo: lista.titulo,
+        subtitulo: lista.descricao,
+        incluirGabarito: config.incluir_gabarito ?? true,
+        incluirCabecalho: config.incluir_cabecalho ?? true,
+        questoes: questoesOrdenadas
+      })
+    } catch (e) {
+      console.error('Erro ao exportar:', e)
+      alert('Erro ao exportar documento')
+    }
+  }
+
   const filteredQuestoes = questoesDisponiveis.filter(q => {
     if (questaoFilters.ano_serie && q.ano_serie !== questaoFilters.ano_serie) return false
     if (questaoFilters.dificuldade && q.dificuldade !== questaoFilters.dificuldade) return false
@@ -424,14 +457,8 @@ export default function ListaExerciciosPage() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" title="Visualizar">
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" title="Imprimir">
-                      <Printer className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" title="Download">
-                      <Download className="w-4 h-4" />
+                    <Button variant="ghost" size="sm" onClick={() => handleExportWord(lista)} title="Exportar Word">
+                      <Download className="w-4 h-4 text-green-600" />
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => handleOpenModal(lista)} title="Editar">
                       <Edit className="w-4 h-4" />
@@ -456,7 +483,6 @@ export default function ListaExerciciosPage() {
       >
         {modalStep === 'form' ? (
           <div className="space-y-4">
-            {/* BOTÃO CRIAR/REVISAR NO TOPO */}
             <div className="flex gap-3 pb-4 border-b">
               <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
                 Cancelar
@@ -467,7 +493,6 @@ export default function ListaExerciciosPage() {
               </Button>
             </div>
 
-            {/* Título */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
               <Input
@@ -477,7 +502,6 @@ export default function ListaExerciciosPage() {
               />
             </div>
 
-            {/* Descrição */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
               <textarea
@@ -489,7 +513,6 @@ export default function ListaExerciciosPage() {
               />
             </div>
 
-            {/* Opções */}
             <div className="flex gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -511,14 +534,10 @@ export default function ListaExerciciosPage() {
               </label>
             </div>
 
-            {/* Seleção de Questões */}
             <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h4 className="font-medium text-gray-900">Questões: {questoesSelecionadas.length}/{totalQuestoes}</h4>
-                  {questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 && (
-                    <span className="text-green-500 text-sm">✓ Completo</span>
-                  )}
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setGerarAutoModalOpen(true)}>
@@ -530,7 +549,6 @@ export default function ListaExerciciosPage() {
                 </div>
               </div>
 
-              {/* Barra de progresso */}
               <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
                 <div
                   className={`h-2 rounded-full transition-all ${questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 ? 'bg-green-500' : 'bg-indigo-500'}`}
@@ -538,7 +556,6 @@ export default function ListaExerciciosPage() {
                 />
               </div>
 
-              {/* Preview das questões */}
               {questoesSelecionadas.length > 0 && (
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {questoesSelecionadas.map((id, idx) => {
@@ -562,7 +579,6 @@ export default function ListaExerciciosPage() {
               )}
             </div>
 
-            {/* Erro */}
             {saveError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
@@ -571,9 +587,7 @@ export default function ListaExerciciosPage() {
             )}
           </div>
         ) : (
-          /* PREVIEW */
           <div className="space-y-4">
-            {/* BOTÕES NO TOPO */}
             <div className="flex gap-3 pb-4 border-b">
               <Button variant="outline" onClick={handleBackToForm}>
                 <ArrowLeft className="w-4 h-4 mr-1" />Voltar
@@ -584,7 +598,6 @@ export default function ListaExerciciosPage() {
               </Button>
             </div>
 
-            {/* Resumo */}
             <div className="bg-indigo-50 p-4 rounded-lg">
               <h3 className="font-bold text-lg text-gray-900 mb-1">{formData.titulo}</h3>
               {formData.descricao && (
@@ -615,7 +628,6 @@ export default function ListaExerciciosPage() {
               </div>
             </div>
 
-            {/* Lista de Questões */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-medium text-gray-900">Questões</h4>
@@ -672,7 +684,6 @@ export default function ListaExerciciosPage() {
               </div>
             </div>
 
-            {/* Erro */}
             {saveError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
@@ -695,9 +706,6 @@ export default function ListaExerciciosPage() {
             <span className="text-sm text-indigo-700">
               <strong>{questoesSelecionadas.length}</strong> selecionadas
             </span>
-            {questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 && (
-              <Badge variant="success">✓ Completo</Badge>
-            )}
           </div>
 
           <div className="grid grid-cols-3 gap-3">
