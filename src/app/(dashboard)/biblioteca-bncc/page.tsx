@@ -183,7 +183,6 @@ function HabilidadeCard({ habilidade, onClick }: {
       onClick={onClick}
     >
       <CardContent className="p-4">
-        {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold text-indigo-600">{habilidade.codigo}</span>
@@ -196,20 +195,16 @@ function HabilidadeCard({ habilidade, onClick }: {
           </div>
         </div>
 
-        {/* Descrição */}
         <p className="text-sm text-gray-600 mb-3 line-clamp-2">
           {habilidade.descricao_simplificada || habilidade.descricao}
         </p>
 
-        {/* Footer com contadores */}
         <div className="flex items-center justify-between pt-3 border-t border-gray-100">
           <div className="flex items-center gap-3">
-            {/* Recursos */}
             <div className="flex items-center gap-1 text-xs text-gray-500">
               <Library className="w-3.5 h-3.5" />
               <span>{totalRecursos} {totalRecursos === 1 ? 'recurso' : 'recursos'}</span>
             </div>
-            {/* Questões */}
             <div className="flex items-center gap-1 text-xs text-gray-500">
               <BookMarked className="w-3.5 h-3.5" />
               <span>{habilidade.total_questoes} questões</span>
@@ -218,7 +213,6 @@ function HabilidadeCard({ habilidade, onClick }: {
           <ChevronRight className="w-4 h-4 text-gray-400" />
         </div>
 
-        {/* Preview dos tipos de recursos */}
         {totalRecursos > 0 && (
           <div className="flex gap-1 mt-2">
             {Array.from(new Set(habilidade.recursos.map(r => r.tipo))).map(tipo => {
@@ -255,7 +249,6 @@ function HabilidadeModal({
   const unidadeCodigo = habilidade.unidade_tematica?.codigo || 'NUM'
   const UnidadeIcon = getUnidadeIcon(unidadeCodigo)
 
-  // Agrupar recursos por tipo
   const recursosPorTipo = habilidade.recursos?.reduce((acc, recurso) => {
     if (!acc[recurso.tipo]) acc[recurso.tipo] = []
     acc[recurso.tipo].push(recurso)
@@ -268,7 +261,6 @@ function HabilidadeModal({
         className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className={`p-6 ${getUnidadeColor(unidadeCodigo)} border-b`}>
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -291,9 +283,7 @@ function HabilidadeModal({
           </div>
         </div>
 
-        {/* Conteúdo */}
         <div className="p-6 overflow-y-auto max-h-[60vh]">
-          {/* Descrição */}
           <div className="mb-6">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">
               Descrição da Habilidade
@@ -308,7 +298,6 @@ function HabilidadeModal({
             )}
           </div>
 
-          {/* Recursos agrupados por tipo */}
           <div className="mb-6">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
               Recursos Disponíveis ({habilidade.recursos?.length || 0})
@@ -320,13 +309,11 @@ function HabilidadeModal({
                   const TipoIcon = getTipoIcon(tipo)
                   return (
                     <div key={tipo}>
-                      {/* Título do tipo */}
                       <div className={`flex items-center gap-2 mb-2 px-2 py-1 rounded-lg ${getTipoColor(tipo)} w-fit`}>
                         <TipoIcon className="w-4 h-4" />
                         <span className="text-sm font-medium">{getTipoLabel(tipo)} ({recursos.length})</span>
                       </div>
                       
-                      {/* Lista de recursos do tipo */}
                       <div className="space-y-2 ml-2">
                         {recursos.map(recurso => (
                           
@@ -367,7 +354,6 @@ function HabilidadeModal({
             )}
           </div>
 
-          {/* Link para questões */}
           <div className="pt-4 border-t">
             <Link
               href={`/questoes?habilidade_bncc_id=${habilidade.id}`}
@@ -398,7 +384,6 @@ export default function BibliotecaBNCCPage() {
   const { usuario } = useAuth()
   const supabase = createClient()
   
-  // Estados
   const [habilidades, setHabilidades] = useState<HabilidadeComRecursos[]>([])
   const [unidadesTematicas, setUnidadesTematicas] = useState<UnidadeTematica[]>([])
   const [loading, setLoading] = useState(true)
@@ -406,14 +391,12 @@ export default function BibliotecaBNCCPage() {
   const [filterOpen, setFilterOpen] = useState(false)
   const [selectedHabilidade, setSelectedHabilidade] = useState<HabilidadeComRecursos | null>(null)
   
-  // Filtros
   const [filters, setFilters] = useState({
     ano_serie: '',
     unidade_tematica_id: '',
     tipo_recurso: '',
   })
 
-  // Buscar unidades temáticas
   useEffect(() => {
     async function loadUnidades() {
       const { data } = await supabase
@@ -425,7 +408,6 @@ export default function BibliotecaBNCCPage() {
     loadUnidades()
   }, [supabase])
 
-  // Buscar habilidades
   const fetchHabilidades = useCallback(async () => {
     if (!usuario?.id) {
       setLoading(false)
@@ -434,7 +416,6 @@ export default function BibliotecaBNCCPage() {
     
     setLoading(true)
     try {
-      // Buscar habilidades com unidade temática
       let query = supabase
         .from('habilidades_bncc')
         .select(`
@@ -454,18 +435,15 @@ export default function BibliotecaBNCCPage() {
 
       if (habError) throw habError
 
-      // Buscar recursos para cada habilidade
       const { data: recursosData } = await supabase
         .from('recursos_bncc')
         .select('*')
         .eq('ativo', true)
 
-      // Buscar contagem de questões por habilidade
       const { data: questoesData } = await supabase
         .from('questoes')
         .select('habilidade_bncc_id')
 
-      // Contar questões por habilidade
       const questoesCount: Record<string, number> = {}
       if (questoesData) {
         questoesData.forEach(q => {
@@ -475,7 +453,6 @@ export default function BibliotecaBNCCPage() {
         })
       }
 
-      // Montar habilidades com recursos e contagem
       let habilidadesComRecursos: HabilidadeComRecursos[] = (habData || []).map(hab => {
         const recursos = (recursosData || []).filter(r => r.habilidade_id === hab.id)
         const totalQuestoes = questoesCount[hab.id] || 0
@@ -487,7 +464,6 @@ export default function BibliotecaBNCCPage() {
         }
       })
 
-      // Filtrar por tipo de recurso se selecionado
       if (filters.tipo_recurso) {
         habilidadesComRecursos = habilidadesComRecursos.filter(hab => 
           hab.recursos.some(r => r.tipo === filters.tipo_recurso)
@@ -509,7 +485,6 @@ export default function BibliotecaBNCCPage() {
     fetchHabilidades()
   }, [fetchHabilidades])
 
-  // Filtrar por busca
   const habilidadesFiltradas = habilidades.filter(hab => {
     if (!searchTerm) return true
     const search = searchTerm.toLowerCase()
@@ -522,7 +497,6 @@ export default function BibliotecaBNCCPage() {
     )
   })
 
-  // Agrupar por unidade temática
   const habilidadesAgrupadas = unidadesTematicas
     .map(unidade => ({
       unidade: unidade,
@@ -530,7 +504,6 @@ export default function BibliotecaBNCCPage() {
     }))
     .filter(grupo => grupo.habilidades.length > 0)
 
-  // Limpar filtros
   const clearFilters = () => {
     setFilters({ ano_serie: '', unidade_tematica_id: '', tipo_recurso: '' })
     setSearchTerm('')
@@ -538,11 +511,9 @@ export default function BibliotecaBNCCPage() {
 
   const hasActiveFilters = filters.ano_serie || filters.unidade_tematica_id || filters.tipo_recurso || searchTerm
 
-  // Contadores
   const totalHabilidades = habilidadesFiltradas.length
   const totalRecursos = habilidadesFiltradas.reduce((acc, h) => acc + (h.recursos?.length || 0), 0)
   
-  // Contadores por tipo
   const contagemPorTipo = habilidades.reduce((acc, h) => {
     h.recursos?.forEach(r => {
       acc[r.tipo] = (acc[r.tipo] || 0) + 1
@@ -552,7 +523,6 @@ export default function BibliotecaBNCCPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -564,7 +534,6 @@ export default function BibliotecaBNCCPage() {
           </p>
         </div>
 
-        {/* Contadores */}
         <div className="flex gap-3 flex-wrap">
           <div className="text-center px-4 py-2 bg-indigo-50 rounded-lg">
             <p className="text-xl font-bold text-indigo-600">{totalHabilidades}</p>
@@ -577,7 +546,6 @@ export default function BibliotecaBNCCPage() {
         </div>
       </div>
 
-      {/* Cards de contagem por tipo */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {TIPO_RECURSO_OPTIONS.filter(t => t.value).map(tipo => {
           const TipoIcon = tipo.icon
@@ -605,11 +573,9 @@ export default function BibliotecaBNCCPage() {
         })}
       </div>
 
-      {/* Barra de Busca e Filtros */}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3">
-            {/* Busca */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
@@ -620,7 +586,6 @@ export default function BibliotecaBNCCPage() {
               />
             </div>
 
-            {/* Botão de Filtros */}
             <Button
               variant={filterOpen ? 'primary' : 'outline'}
               onClick={() => setFilterOpen(!filterOpen)}
@@ -635,7 +600,6 @@ export default function BibliotecaBNCCPage() {
               )}
             </Button>
 
-            {/* Limpar Filtros */}
             {hasActiveFilters && (
               <Button variant="ghost" onClick={clearFilters} className="text-gray-500">
                 <X className="w-4 h-4 mr-1" />
@@ -644,14 +608,10 @@ export default function BibliotecaBNCCPage() {
             )}
           </div>
 
-          {/* Painel de Filtros */}
           {filterOpen && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t">
-              {/* Série */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Série
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Série</label>
                 <select
                   value={filters.ano_serie}
                   onChange={(e) => setFilters(prev => ({ ...prev, ano_serie: e.target.value }))}
@@ -663,11 +623,8 @@ export default function BibliotecaBNCCPage() {
                 </select>
               </div>
 
-              {/* Unidade Temática */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Unidade Temática
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Unidade Temática</label>
                 <select
                   value={filters.unidade_tematica_id}
                   onChange={(e) => setFilters(prev => ({ ...prev, unidade_tematica_id: e.target.value }))}
@@ -680,11 +637,8 @@ export default function BibliotecaBNCCPage() {
                 </select>
               </div>
 
-              {/* Tipo de Recurso */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tipo de Recurso
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Recurso</label>
                 <select
                   value={filters.tipo_recurso}
                   onChange={(e) => setFilters(prev => ({ ...prev, tipo_recurso: e.target.value }))}
@@ -700,21 +654,18 @@ export default function BibliotecaBNCCPage() {
         </CardContent>
       </Card>
 
-      {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
         </div>
       )}
 
-      {/* Lista de Habilidades Agrupadas */}
       {!loading && habilidadesAgrupadas.length > 0 && (
         <div className="space-y-8">
           {habilidadesAgrupadas.map(grupo => {
             const GrupoIcon = getUnidadeIcon(grupo.unidade.codigo)
             return (
               <div key={grupo.unidade.id}>
-                {/* Título do Grupo */}
                 <div className="flex items-center gap-2 mb-4">
                   <div className={`p-2 rounded-lg ${getUnidadeColor(grupo.unidade.codigo)}`}>
                     <GrupoIcon className="w-5 h-5" />
@@ -723,7 +674,6 @@ export default function BibliotecaBNCCPage() {
                   <Badge variant="default">{grupo.habilidades.length}</Badge>
                 </div>
 
-                {/* Grid de Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {grupo.habilidades.map(hab => (
                     <HabilidadeCard
@@ -739,7 +689,6 @@ export default function BibliotecaBNCCPage() {
         </div>
       )}
 
-      {/* Estado Vazio */}
       {!loading && habilidadesAgrupadas.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center">
@@ -761,7 +710,6 @@ export default function BibliotecaBNCCPage() {
         </Card>
       )}
 
-      {/* Modal de Detalhe */}
       {selectedHabilidade && (
         <HabilidadeModal
           habilidade={selectedHabilidade}
@@ -770,4 +718,4 @@ export default function BibliotecaBNCCPage() {
       )}
     </div>
   )
-          }
+}
