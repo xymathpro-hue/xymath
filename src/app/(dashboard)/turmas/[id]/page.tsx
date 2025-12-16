@@ -24,13 +24,40 @@ export default function TurmaDetalhesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [editingAluno, setEditingAluno] = useState<Aluno | null>(null)
-  const [formData, setFormData] = useState({ nome: '', matricula: '', email: '' })
+  const [formData, setFormData] = useState({ nome: '', email: '' })
   const [saving, setSaving] = useState(false)
-  const [importData, setImportData] = useState<Array<{ nome: string; matricula?: string; email?: string }>>([])
+  const [importData, setImportData] = useState<Array<{ nome: string; email?: string }>>([])
   const [importing, setImporting] = useState(false)
 
   const supabase = createClient()
   const turmaId = params.id as string
+
+  // Função para gerar matrícula automática
+  const gerarMatricula = (turmaNome: string, anoLetivo: number, ordem: number): string => {
+    // Remove espaços e pega só letras/números do nome da turma
+    const turmaCode = turmaNome.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 4)
+    const ano = anoLetivo.toString()
+    const numero = ordem.toString().padStart(3, '0')
+    return `${turmaCode}-${ano}-${numero}`
+  }
+
+  // Função para obter próximo número sequencial
+  const getProximoNumero = async (): Promise<number> => {
+    const { data } = await supabase
+      .from('alunos')
+      .select('matricula')
+      .eq('turma_id', turmaId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    
+    if (data && data.length > 0 && data[0].matricula) {
+      // Extrai o último número da matrícula (ex: "6A-2025-003" -> 3)
+      const partes = data[0].matricula.split('-')
+      const ultimoNumero = parseInt(partes[partes.length - 1]) || 0
+      return ultimoNumero + 1
+    }
+    return 1
+  }
 
   const fetchData = useCallback(async () => {
     if (!usuario?.id || !turmaId) return
@@ -57,26 +84,35 @@ export default function TurmaDetalhesPage() {
   const handleOpenModal = (aluno?: Aluno) => {
     if (aluno) {
       setEditingAluno(aluno)
-      setFormData({ nome: aluno.nome, matricula: aluno.matricula || '', email: aluno.email || '' })
+      setFormData({ nome: aluno.nome, email: aluno.email || '' })
     } else {
       setEditingAluno(null)
-      setFormData({ nome: '', matricula: '', email: '' })
+      setFormData({ nome: '', email: '' })
     }
     setModalOpen(true)
   }
 
   const handleSave = async () => {
-    if (!formData.nome) return
+    if (!formData.nome || !turma) return
     setSaving(true)
     try {
       if (editingAluno) {
+        // Ao editar, mantém a matrícula existente
         await supabase.from('alunos').update({
-          nome: formData.nome, matricula: formData.matricula || null, email: formData.email || null,
+          nome: formData.nome, 
+          email: formData.email || null,
         }).eq('id', editingAluno.id)
       } else {
+        // Ao criar, gera matrícula automática
+        const proximoNumero = await getProximoNumero()
+        const matriculaAuto = gerarMatricula(turma.nome, turma.ano_letivo, proximoNumero)
+        
         await supabase.from('alunos').insert({
-          turma_id: turmaId, nome: formData.nome, matricula: formData.matricula || null, 
-          email: formData.email || null, ativo: true,
+          turma_id: turmaId, 
+          nome: formData.nome, 
+          matricula: matriculaAuto,
+          email: formData.email || null, 
+          ativo: true,
         })
       }
       setModalOpen(false)
@@ -108,7 +144,6 @@ export default function TurmaDetalhesPage() {
       const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(worksheet)
       const mappedData = jsonData.map(row => ({
         nome: String(row['Nome'] || row['nome'] || row['NOME'] || row['Aluno'] || '').trim(),
-        matricula: String(row['Matricula'] || row['matricula'] || row['Matrícula'] || '').trim(),
         email: String(row['Email'] || row['email'] || row['E-mail'] || '').trim()
       })).filter(item => item.nome)
       setImportData(mappedData)
@@ -120,13 +155,21 @@ export default function TurmaDetalhesPage() {
   }
 
   const handleImport = async () => {
-    if (importData.length === 0) return
+    if (importData.length === 0 || !turma) return
     setImporting(true)
     try {
-      await supabase.from('alunos').insert(importData.map(item => ({
-        turma_id: turmaId, nome: item.nome, matricula: item.matricula || null,
-        email: item.email || null, ativo: true,
-      })))
+      // Gera matrículas automáticas para cada aluno importado
+      let proximoNumero = await getProximoNumero()
+      
+      const alunosComMatricula = importData.map((item, index) => ({
+        turma_id: turmaId, 
+        nome: item.nome, 
+        matricula: gerarMatricula(turma.nome, turma.ano_letivo, proximoNumero + index),
+        email: item.email || null, 
+        ativo: true,
+      }))
+
+      await supabase.from('alunos').insert(alunosComMatricula)
       setImportModalOpen(false)
       setImportData([])
       fetchData()
@@ -139,8 +182,8 @@ export default function TurmaDetalhesPage() {
 
   const downloadTemplate = () => {
     const template = [
-      { Nome: 'João Silva', Matricula: '2024001', Email: 'joao@email.com' },
-      { Nome: 'Maria Santos', Matricula: '2024002', Email: '' },
+      { Nome: 'João Silva', Email: 'joao@email.com' },
+      { Nome: 'Maria Santos', Email: '' },
     ]
     const ws = XLSX.utils.json_to_sheet(template)
     const wb = XLSX.utils.book_new()
@@ -190,7 +233,7 @@ export default function TurmaDetalhesPage() {
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
               <Users className="w-5 h-5 text-blue-600" />
             </div>
-            <div><p className="text-2xl font-bold">{alunos.length}</p><p className="text-sm text-gray-600">Total</p></div>
+            <div><p className="text-2xl font-bold text-gray-900">{alunos.length}</p><p className="text-sm text-gray-600">Total</p></div>
           </CardContent>
         </Card>
         <Card variant="bordered">
@@ -198,7 +241,7 @@ export default function TurmaDetalhesPage() {
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <GraduationCap className="w-5 h-5 text-green-600" />
             </div>
-            <div><p className="text-2xl font-bold">{alunos.filter(a => a.ativo).length}</p><p className="text-sm text-gray-600">Ativos</p></div>
+            <div><p className="text-2xl font-bold text-gray-900">{alunos.filter(a => a.ativo).length}</p><p className="text-sm text-gray-600">Ativos</p></div>
           </CardContent>
         </Card>
       </div>
@@ -216,7 +259,7 @@ export default function TurmaDetalhesPage() {
         <Card variant="bordered">
           <CardContent className="p-12 text-center">
             <GraduationCap className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">{searchTerm ? 'Nenhum aluno encontrado' : 'Nenhum aluno cadastrado'}</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">{searchTerm ? 'Nenhum aluno encontrado' : 'Nenhum aluno cadastrado'}</h3>
             <p className="text-gray-500 mb-6">{searchTerm ? 'Tente outros termos' : 'Adicione manualmente ou importe de uma planilha'}</p>
             {!searchTerm && (
               <div className="flex gap-3 justify-center">
@@ -233,7 +276,7 @@ export default function TurmaDetalhesPage() {
               <TableRow>
                 <TableHead>#</TableHead>
                 <TableHead>Nome</TableHead>
-                <TableHead>Matrícula</TableHead>
+                <TableHead>Código</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
@@ -243,9 +286,9 @@ export default function TurmaDetalhesPage() {
               {filteredAlunos.map((aluno, index) => (
                 <TableRow key={aluno.id}>
                   <TableCell className="text-gray-500">{index + 1}</TableCell>
-                  <TableCell className="font-medium">{aluno.nome}</TableCell>
-                  <TableCell>{aluno.matricula || '-'}</TableCell>
-                  <TableCell>{aluno.email || '-'}</TableCell>
+                  <TableCell className="font-medium text-gray-900">{aluno.nome}</TableCell>
+                  <TableCell><code className="bg-gray-100 px-2 py-1 rounded text-sm text-gray-700">{aluno.matricula || '-'}</code></TableCell>
+                  <TableCell className="text-gray-600">{aluno.email || '-'}</TableCell>
                   <TableCell><Badge variant={aluno.ativo ? 'success' : 'default'}>{aluno.ativo ? 'Ativo' : 'Inativo'}</Badge></TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -263,9 +306,28 @@ export default function TurmaDetalhesPage() {
       {/* Modal Aluno */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingAluno ? 'Editar Aluno' : 'Novo Aluno'}>
         <div className="space-y-4">
-          <Input label="Nome" placeholder="Nome completo" value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} />
-          <Input label="Matrícula (opcional)" placeholder="Número" value={formData.matricula} onChange={(e) => setFormData({ ...formData, matricula: e.target.value })} />
+          <Input label="Nome *" placeholder="Nome completo" value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} />
+          
+          {editingAluno && editingAluno.matricula && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
+              <div className="px-4 py-2 bg-gray-100 rounded-lg">
+                <code className="text-gray-700">{editingAluno.matricula}</code>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Código gerado automaticamente</p>
+            </div>
+          )}
+
+          {!editingAluno && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                📝 O código do aluno será gerado automaticamente no formato: <code className="bg-blue-100 px-1 rounded">{turma?.nome.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 4)}-{turma?.ano_letivo}-XXX</code>
+              </p>
+            </div>
+          )}
+
           <Input label="Email (opcional)" type="email" placeholder="email@exemplo.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+          
           <div className="flex gap-3 pt-4">
             <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button className="flex-1" onClick={handleSave} loading={saving} disabled={!formData.nome}>{editingAluno ? 'Salvar' : 'Adicionar'}</Button>
@@ -277,14 +339,30 @@ export default function TurmaDetalhesPage() {
       <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} title="Importar Alunos" size="lg">
         <div className="space-y-4">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-blue-800"><strong>{importData.length}</strong> alunos encontrados. Confira antes de importar.</p>
+            <p className="text-blue-800"><strong>{importData.length}</strong> alunos encontrados. Os códigos serão gerados automaticamente.</p>
           </div>
           <div className="max-h-64 overflow-y-auto border rounded-lg">
             <Table>
-              <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Nome</TableHead><TableHead>Matrícula</TableHead><TableHead>Email</TableHead></TableRow></TableHeader>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Código (auto)</TableHead>
+                  <TableHead>Email</TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
                 {importData.map((item, i) => (
-                  <TableRow key={i}><TableCell>{i + 1}</TableCell><TableCell className="font-medium">{item.nome}</TableCell><TableCell>{item.matricula || '-'}</TableCell><TableCell>{item.email || '-'}</TableCell></TableRow>
+                  <TableRow key={i}>
+                    <TableCell className="text-gray-500">{i + 1}</TableCell>
+                    <TableCell className="font-medium text-gray-900">{item.nome}</TableCell>
+                    <TableCell>
+                      <code className="bg-gray-100 px-2 py-1 rounded text-xs text-gray-600">
+                        {turma ? gerarMatricula(turma.nome, turma.ano_letivo, alunos.length + i + 1) : '-'}
+                      </code>
+                    </TableCell>
+                    <TableCell className="text-gray-600">{item.email || '-'}</TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
