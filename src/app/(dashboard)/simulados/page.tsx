@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, Wand2, Filter, Users, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle, BarChart3, Download } from 'lucide-react'
-import { exportToWord } from '@/lib/export-document'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, Wand2, Filter, Users, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle, BarChart3, Download, FileDown } from 'lucide-react'
+import { exportToWord, exportToPDF } from '@/lib/export-document'
 
 interface Simulado {
   id: string
@@ -86,6 +86,8 @@ export default function SimuladosPage() {
   const [showHabilidadesFilter, setShowHabilidadesFilter] = useState(false)
   const [showTurmasSelector, setShowTurmasSelector] = useState(false)
   const [geracaoSucesso, setGeracaoSucesso] = useState(false)
+  const [exportMenuOpen, setExportMenuOpen] = useState<string | null>(null)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
 
   const [totalQuestoesInput, setTotalQuestoesInput] = useState('10')
   const [tempoInput, setTempoInput] = useState('60')
@@ -119,6 +121,17 @@ export default function SimuladosPage() {
   const qtdDificil = parseInt(qtdDificilInput) || 0
   const totalDistribuicao = qtdFacil + qtdMedio + qtdDificil
 
+  // Fechar menu ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const fetchData = useCallback(async () => {
     if (!usuario?.id) { setLoading(false); return }
     try {
@@ -128,16 +141,12 @@ export default function SimuladosPage() {
         supabase.from('questoes').select('id, enunciado, ano_serie, dificuldade, habilidade_id, is_publica, ativa, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta').eq('ativa', true),
         supabase.from('habilidades_bncc').select('id, codigo, descricao').order('codigo'),
       ])
-      if (sRes.error) console.error('Erro simulados:', sRes.error)
-      if (tRes.error) console.error('Erro turmas:', tRes.error)
-      if (qRes.error) console.error('Erro questoes:', qRes.error)
-
       setSimulados(sRes.data || [])
       setTurmas(tRes.data || [])
       setQuestoesDisponiveis(qRes.data || [])
       setHabilidades(hRes.data || [])
     } catch (e) {
-      console.error('Erro geral:', e)
+      console.error('Erro:', e)
     } finally {
       setLoading(false)
     }
@@ -251,16 +260,9 @@ export default function SimuladosPage() {
 
       let result
       if (editingSimulado) {
-        result = await supabase
-          .from('simulados')
-          .update(dataToSave)
-          .eq('id', editingSimulado.id)
-          .select()
+        result = await supabase.from('simulados').update(dataToSave).eq('id', editingSimulado.id).select()
       } else {
-        result = await supabase
-          .from('simulados')
-          .insert(dataToSave)
-          .select()
+        result = await supabase.from('simulados').insert(dataToSave).select()
       }
 
       if (result.error) {
@@ -268,13 +270,9 @@ export default function SimuladosPage() {
         return
       }
 
-      if (result.data && result.data.length > 0) {
-        setModalOpen(false)
-        setModalStep('form')
-        fetchData()
-      } else {
-        setSaveError('Nenhum dado retornado')
-      }
+      setModalOpen(false)
+      setModalStep('form')
+      fetchData()
     } catch (e: any) {
       setSaveError(e.message || 'Erro desconhecido')
     } finally {
@@ -284,21 +282,13 @@ export default function SimuladosPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir este simulado?')) return
-    const { error } = await supabase.from('simulados').delete().eq('id', id)
-    if (error) {
-      alert('Erro ao excluir: ' + error.message)
-    } else {
-      fetchData()
-    }
+    await supabase.from('simulados').delete().eq('id', id)
+    fetchData()
   }
 
   const handlePublish = async (id: string) => {
-    const { error } = await supabase.from('simulados').update({ status: 'publicado' }).eq('id', id)
-    if (error) {
-      alert('Erro ao publicar: ' + error.message)
-    } else {
-      fetchData()
-    }
+    await supabase.from('simulados').update({ status: 'publicado' }).eq('id', id)
+    fetchData()
   }
 
   const toggleQuestao = (id: string) => {
@@ -368,9 +358,9 @@ export default function SimuladosPage() {
     setQuestoesSelecionadas(prev => prev.filter(q => q !== id))
   }
 
-  const handleExportWord = async (simulado: Simulado) => {
+  const handleExport = async (simulado: Simulado, formato: 'word' | 'pdf') => {
+    setExportMenuOpen(null)
     try {
-      // Buscar questões completas
       const { data: questoesData } = await supabase
         .from('questoes')
         .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, dificuldade, habilidade_id')
@@ -378,7 +368,6 @@ export default function SimuladosPage() {
 
       if (!questoesData) return
 
-      // Ordenar conforme simulado
       const questoesOrdenadas = simulado.questoes_ids
         .map(id => questoesData.find(q => q.id === id))
         .filter(Boolean)
@@ -389,7 +378,7 @@ export default function SimuladosPage() {
 
       const turmaNome = getTurmasNomes(simulado)
 
-      await exportToWord({
+      const config = {
         titulo: simulado.titulo,
         subtitulo: simulado.descricao,
         turma: turmaNome,
@@ -397,14 +386,19 @@ export default function SimuladosPage() {
         incluirGabarito: true,
         incluirCabecalho: true,
         questoes: questoesOrdenadas
-      })
+      }
+
+      if (formato === 'word') {
+        await exportToWord(config)
+      } else {
+        await exportToPDF(config)
+      }
     } catch (e) {
       console.error('Erro ao exportar:', e)
       alert('Erro ao exportar documento')
     }
   }
 
-  // Filtros
   const filteredQuestoes = questoesDisponiveis.filter(q => {
     if (questaoFilters.ano_serie && q.ano_serie !== questaoFilters.ano_serie) return false
     if (questaoFilters.dificuldade && q.dificuldade !== questaoFilters.dificuldade) return false
@@ -426,7 +420,6 @@ export default function SimuladosPage() {
     !questaoFilters.ano_serie || h.codigo.includes(questaoFilters.ano_serie.charAt(0))
   )
 
-  // Helpers
   const getStatusVariant = (s: string): 'warning' | 'success' | 'default' => {
     if (s === 'rascunho') return 'warning'
     if (s === 'publicado') return 'success'
@@ -585,7 +578,7 @@ export default function SimuladosPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 items-center">
                     {s.status === 'rascunho' && (
                       <Button variant="ghost" size="sm" onClick={() => handlePublish(s.id)} title="Publicar">
                         <Play className="w-4 h-4 text-green-600" />
@@ -601,9 +594,37 @@ export default function SimuladosPage() {
                         <BarChart3 className="w-4 h-4 text-indigo-600" />
                       </Button>
                     </Link>
-                    <Button variant="ghost" size="sm" onClick={() => handleExportWord(s)} title="Exportar Word">
-                      <Download className="w-4 h-4 text-green-600" />
-                    </Button>
+                    
+                    {/* Menu Exportar */}
+                    <div className="relative" ref={exportMenuRef}>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setExportMenuOpen(exportMenuOpen === s.id ? null : s.id)} 
+                        title="Exportar"
+                      >
+                        <Download className="w-4 h-4 text-green-600" />
+                      </Button>
+                      {exportMenuOpen === s.id && (
+                        <div className="absolute right-0 top-full mt-1 bg-white border rounded-lg shadow-lg z-10 min-w-[140px]">
+                          <button
+                            onClick={() => handleExport(s, 'word')}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <FileDown className="w-4 h-4 text-blue-600" />
+                            Word (.docx)
+                          </button>
+                          <button
+                            onClick={() => handleExport(s, 'pdf')}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <FileDown className="w-4 h-4 text-red-600" />
+                            PDF (.pdf)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     <Link href={`/simulados/${s.id}/gabarito`}>
                       <Button variant="ghost" size="sm" title="Gabarito">
                         <QrCode className="w-4 h-4" />
@@ -632,7 +653,6 @@ export default function SimuladosPage() {
       >
         {modalStep === 'form' ? (
           <div className="space-y-4">
-            {/* Título */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
               <Input
@@ -642,7 +662,6 @@ export default function SimuladosPage() {
               />
             </div>
 
-            {/* Descrição */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
               <textarea
@@ -654,7 +673,6 @@ export default function SimuladosPage() {
               />
             </div>
 
-            {/* Turmas */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Turmas</label>
               <Button
@@ -690,7 +708,6 @@ export default function SimuladosPage() {
               )}
             </div>
 
-            {/* Configurações */}
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Questões</label>
@@ -720,7 +737,6 @@ export default function SimuladosPage() {
               </div>
             </div>
 
-            {/* Opções */}
             <div className="flex gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -742,7 +758,6 @@ export default function SimuladosPage() {
               </label>
             </div>
 
-            {/* Seleção de Questões */}
             <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -761,7 +776,6 @@ export default function SimuladosPage() {
                 </div>
               </div>
 
-              {/* Barra de progresso */}
               <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
                 <div
                   className={`h-2 rounded-full transition-all ${questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 ? 'bg-green-500' : 'bg-indigo-500'}`}
@@ -769,7 +783,6 @@ export default function SimuladosPage() {
                 />
               </div>
 
-              {/* Preview das questões selecionadas */}
               {questoesSelecionadas.length > 0 && (
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {questoesSelecionadas.slice(0, 3).map((id, idx) => {
@@ -793,7 +806,6 @@ export default function SimuladosPage() {
               )}
             </div>
 
-            {/* Erro */}
             {saveError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
@@ -801,15 +813,11 @@ export default function SimuladosPage() {
               </div>
             )}
 
-            {/* Botões */}
             <div className="flex gap-3 pt-4 border-t">
               <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button
-                className="flex-1"
-                onClick={handleGoToPreview}
-              >
+              <Button className="flex-1" onClick={handleGoToPreview}>
                 <Eye className="w-4 h-4 mr-2" />
                 Revisar ({questoesSelecionadas.length})
               </Button>
@@ -817,7 +825,6 @@ export default function SimuladosPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Resumo */}
             <div className="bg-indigo-50 p-4 rounded-lg">
               <h3 className="font-bold text-lg text-gray-900 mb-1">{formData.titulo}</h3>
               {formData.descricao && (
@@ -848,7 +855,6 @@ export default function SimuladosPage() {
               </div>
             </div>
 
-            {/* Lista de Questões */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-medium text-gray-900">Questões</h4>
@@ -905,7 +911,6 @@ export default function SimuladosPage() {
               </div>
             </div>
 
-            {/* Erro */}
             {saveError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
@@ -913,16 +918,11 @@ export default function SimuladosPage() {
               </div>
             )}
 
-            {/* Botões */}
             <div className="flex gap-3 pt-4 border-t">
               <Button variant="outline" onClick={handleBackToForm}>
                 <ArrowLeft className="w-4 h-4 mr-1" />Voltar
               </Button>
-              <Button
-                className="flex-1"
-                onClick={handleSave}
-                loading={saving}
-              >
+              <Button className="flex-1" onClick={handleSave} loading={saving}>
                 <CheckCircle className="w-4 h-4 mr-2" />
                 {editingSimulado ? 'Salvar Alterações' : 'Criar Simulado'}
               </Button>
@@ -939,7 +939,6 @@ export default function SimuladosPage() {
         size="xl"
       >
         <div className="space-y-4">
-          {/* Contador */}
           <div className="bg-indigo-50 p-3 rounded-lg flex items-center justify-between">
             <span className="text-sm text-indigo-700">
               <strong>{questoesSelecionadas.length}</strong> / {totalQuestoes} selecionadas
@@ -949,7 +948,6 @@ export default function SimuladosPage() {
             )}
           </div>
 
-          {/* Filtros */}
           <div className="grid grid-cols-3 gap-3">
             <select
               className="px-3 py-2 border rounded-lg text-gray-900"
@@ -981,7 +979,6 @@ export default function SimuladosPage() {
             </Button>
           </div>
 
-          {/* Filtro de habilidades expandido */}
           {showHabilidadesFilter && (
             <div className="border rounded-lg p-2 bg-gray-50 max-h-28 overflow-y-auto">
               {habilidadesFiltradasManual.map(h => (
@@ -998,10 +995,8 @@ export default function SimuladosPage() {
             </div>
           )}
 
-          {/* Contador de resultados */}
           <p className="text-sm text-gray-600">{filteredQuestoes.length} questões encontradas</p>
 
-          {/* Lista de questões */}
           <div className="max-h-64 overflow-y-auto space-y-2">
             {filteredQuestoes.map(q => {
               const sel = questoesSelecionadas.includes(q.id)
@@ -1036,7 +1031,6 @@ export default function SimuladosPage() {
             })}
           </div>
 
-          {/* Botão fechar */}
           <Button variant="outline" className="w-full" onClick={() => setQuestoesModalOpen(false)}>
             Fechar
           </Button>
@@ -1058,12 +1052,10 @@ export default function SimuladosPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Meta */}
             <div className="bg-blue-50 p-3 rounded-lg">
               <p className="text-sm text-blue-800">Meta: <strong>{totalQuestoes} questões</strong></p>
             </div>
 
-            {/* Ano/Série */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
               <select
@@ -1077,7 +1069,6 @@ export default function SimuladosPage() {
               </select>
             </div>
 
-            {/* Habilidades */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Habilidades (opcional)</label>
               <div className="max-h-28 overflow-y-auto border rounded-lg p-2">
@@ -1095,7 +1086,6 @@ export default function SimuladosPage() {
               </div>
             </div>
 
-            {/* Disponíveis */}
             <div className="bg-gray-50 p-3 rounded-lg text-sm">
               <p className="text-gray-600 mb-1">Disponíveis: <strong>{disponiveisAuto.total}</strong></p>
               <div className="flex gap-3 text-xs">
@@ -1105,7 +1095,6 @@ export default function SimuladosPage() {
               </div>
             </div>
 
-            {/* Distribuição */}
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">🟢 Fáceis</label>
@@ -1139,14 +1128,12 @@ export default function SimuladosPage() {
               </div>
             </div>
 
-            {/* Total */}
             <div className={`p-3 rounded-lg ${totalDistribuicao === totalQuestoes ? 'bg-green-50' : 'bg-orange-50'}`}>
               <p className={`text-sm font-medium ${totalDistribuicao === totalQuestoes ? 'text-green-800' : 'text-orange-800'}`}>
                 Total: {totalDistribuicao} {totalDistribuicao === totalQuestoes && '✓'}
               </p>
             </div>
 
-            {/* Botões */}
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setGerarAutoModalOpen(false)}>
                 Cancelar
@@ -1164,4 +1151,4 @@ export default function SimuladosPage() {
       </Modal>
     </div>
   )
-}
+  }
