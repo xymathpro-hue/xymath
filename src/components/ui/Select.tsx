@@ -16,7 +16,6 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, label, error, options, placeholder, id, ...props }, ref) => {
     const selectId = id || props.name
-
     return (
       <div className="w-full">
         {label && (
@@ -32,6 +31,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
           id={selectId}
           className={clsx(
             'w-full px-4 py-2 border rounded-lg transition-colors appearance-none bg-white',
+            'text-gray-900',
             'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent',
             'disabled:bg-gray-100 disabled:cursor-not-allowed',
             error 
@@ -42,10 +42,10 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
           {...props}
         >
           {placeholder && (
-            <option value="">{placeholder}</option>
+            <option value="" className="text-gray-400">{placeholder}</option>
           )}
           {options.map((option) => (
-            <option key={option.value} value={option.value}>
+            <option key={option.value} value={option.value} className="text-gray-900">
               {option.label}
             </option>
           ))}
