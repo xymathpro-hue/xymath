@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, FileText, Edit, Trash2, Eye, Download, FileDown, Printer, QrCode, X, Maximize2 } from 'lucide-react'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Download, FileDown, Printer, QrCode, X, Maximize2, Loader2 } from 'lucide-react'
 
 interface Lista {
   id: string
@@ -67,6 +67,7 @@ export default function ListasExerciciosPage() {
   const [editingLista, setEditingLista] = useState<Lista | null>(null)
   const [viewingLista, setViewingLista] = useState<Lista | null>(null)
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [step, setStep] = useState(1)
 
   const [formData, setFormData] = useState({
@@ -235,7 +236,43 @@ export default function ListasExerciciosPage() {
 
   const handleExport = async (formato: 'pdf' | 'docx') => {
     if (!viewingLista) return
-    alert(`Exportando para ${formato.toUpperCase()}...\n\nEsta funcionalidade será implementada em breve!`)
+    
+    if (formato === 'pdf') {
+      alert('Exportação PDF em breve! Use Word por enquanto.')
+      return
+    }
+
+    setExporting(true)
+    try {
+      const response = await fetch('/api/exportar/lista', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listaId: viewingLista.id,
+          incluirGabarito: viewingLista.mostrar_gabarito,
+          incluirResolucao: viewingLista.mostrar_resolucao,
+        }),
+      })
+
+      if (!response.ok) throw new Error('Erro ao exportar')
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${viewingLista.titulo.replace(/[^a-zA-Z0-9áéíóúãõâêôç\s-]/gi, '').trim().replace(/\s+/g, '_')}.docx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      
+      setExportModalOpen(false)
+    } catch (error) {
+      console.error('Erro:', error)
+      alert('Erro ao exportar lista. Tente novamente.')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const filteredListas = listas.filter(l => l.titulo.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -261,7 +298,7 @@ export default function ListasExerciciosPage() {
       <Card><CardContent className="p-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <Input placeholder="Buscar listas..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 text-gray-900" />
+          <Input placeholder="Buscar listas..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
         </div>
       </CardContent></Card>
 
@@ -332,7 +369,7 @@ export default function ListasExerciciosPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
-                <Input placeholder="Ex: Lista de Frações - 6º Ano" value={formData.titulo} onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} className="text-gray-900" />
+                <Input placeholder="Ex: Lista de Frações - 6º Ano" value={formData.titulo} onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
@@ -390,7 +427,7 @@ export default function ListasExerciciosPage() {
                     </select>
                   </div>
 
-                  <Input placeholder="Buscar questão..." value={searchQuestoes} onChange={(e) => setSearchQuestoes(e.target.value)} className="mb-3 text-gray-900" />
+                  <Input placeholder="Buscar questão..." value={searchQuestoes} onChange={(e) => setSearchQuestoes(e.target.value)} className="mb-3" />
 
                   <div className="flex-1 overflow-y-auto space-y-2">
                     {questoesFiltradas.map((q) => (
@@ -503,28 +540,40 @@ export default function ListasExerciciosPage() {
           <div className="space-y-4">
             <p className="text-gray-600">Escolha o formato para exportar "{viewingLista.titulo}":</p>
             <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => handleExport('docx')} className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center">
-                <FileDown className="w-12 h-12 mx-auto mb-3 text-blue-600" />
-                <h4 className="font-medium text-gray-900">Word (DOCX)</h4>
+              <button 
+                onClick={() => handleExport('docx')} 
+                disabled={exporting}
+                className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center disabled:opacity-50"
+              >
+                {exporting ? (
+                  <Loader2 className="w-12 h-12 mx-auto mb-3 text-indigo-600 animate-spin" />
+                ) : (
+                  <FileDown className="w-12 h-12 mx-auto mb-3 text-blue-600" />
+                )}
+                <h4 className="font-medium text-gray-900">{exporting ? 'Gerando...' : 'Word (DOCX)'}</h4>
                 <p className="text-sm text-gray-500 mt-1">Editável - adicione logo e cabeçalho</p>
               </button>
-              <button onClick={() => handleExport('pdf')} className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center">
+              <button 
+                onClick={() => handleExport('pdf')} 
+                disabled={exporting}
+                className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center disabled:opacity-50"
+              >
                 <Printer className="w-12 h-12 mx-auto mb-3 text-red-600" />
                 <h4 className="font-medium text-gray-900">PDF</h4>
-                <p className="text-sm text-gray-500 mt-1">Pronto para impressão</p>
+                <p className="text-sm text-gray-500 mt-1">Em breve...</p>
               </button>
             </div>
-            <div className="bg-yellow-50 p-4 rounded-lg">
+            <div className="bg-green-50 p-4 rounded-lg">
               <div className="flex items-start gap-3">
-                <QrCode className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <FileText className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-medium text-yellow-800">Gabarito com QR Code</h4>
-                  <p className="text-sm text-yellow-700 mt-1">O gabarito incluirá um QR Code para correção rápida pelo celular.</p>
+                  <h4 className="font-medium text-green-800">Documento Profissional</h4>
+                  <p className="text-sm text-green-700 mt-1">Inclui cabeçalho, campos para nome/turma/data, questões formatadas e gabarito.</p>
                 </div>
               </div>
             </div>
             <div className="flex gap-3 pt-4 border-t">
-              <Button variant="outline" className="flex-1" onClick={() => setExportModalOpen(false)}>Cancelar</Button>
+              <Button variant="outline" className="flex-1" onClick={() => setExportModalOpen(false)} disabled={exporting}>Cancelar</Button>
             </div>
           </div>
         )}
@@ -560,4 +609,4 @@ export default function ListasExerciciosPage() {
       </Modal>
     </div>
   )
-        }
+    }
