@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
+import { Card, CardContent, Button, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { ArrowLeft, Save, Upload, Download, Users, CheckCircle, XCircle, AlertCircle, Send, Calculator, FileText } from 'lucide-react'
+import { ArrowLeft, Save, Users, CheckCircle, AlertCircle, Send } from 'lucide-react'
 
 interface Simulado {
   id: string
@@ -69,10 +69,10 @@ export default function SimuladoResultadosPage() {
   const [alunos, setAlunos] = useState<Aluno[]>([])
   const [respostas, setRespostas] = useState<RespostaSimulado[]>([])
   const [respostasEditadas, setRespostasEditadas] = useState<Record<string, RespostaSimulado>>({})
-  
+
   const [turmaSelecionada, setTurmaSelecionada] = useState<string>('')
   const [modoLancamento, setModoLancamento] = useState<'nota' | 'respostas'>('nota')
-  
+
   // Modal exportar para notas
   const [modalExportarOpen, setModalExportarOpen] = useState(false)
   const [componentes, setComponentes] = useState<ComponenteAvaliacao[]>([])
@@ -204,7 +204,7 @@ export default function SimuladoResultadosPage() {
   const handleNotaChange = (alunoId: string, valor: string) => {
     const notaNum = valor === '' ? null : Math.min(10, Math.max(0, parseFloat(valor) || 0))
     const respostaExistente = respostas.find(r => r.aluno_id === alunoId)
-    
+
     setRespostasEditadas(prev => ({
       ...prev,
       [alunoId]: {
@@ -224,16 +224,16 @@ export default function SimuladoResultadosPage() {
   const handleRespostaChange = (alunoId: string, questaoIndex: number, resposta: string) => {
     const respostaExistente = respostas.find(r => r.aluno_id === alunoId)
     const respostasAtuais = respostasEditadas[alunoId]?.respostas || respostaExistente?.respostas || {}
-    
-    const novasRespostas = {
+
+    const novasRespostas: Record<string, string> = {
       ...respostasAtuais,
-      [questaoIndex + 1]: resposta.toUpperCase()
+      [String(questaoIndex + 1)]: resposta.toUpperCase()
     }
 
     // Calcular acertos
     let acertos = 0
     questoes.forEach((q, idx) => {
-      if (novasRespostas[idx + 1] === q.resposta_correta) {
+      if (novasRespostas[String(idx + 1)] === q.resposta_correta) {
         acertos++
       }
     })
@@ -378,7 +378,7 @@ export default function SimuladoResultadosPage() {
       .filter(r => r && r.nota !== null) as RespostaSimulado[]
 
     if (respostasComNota.length === 0) {
-      return { media: 0, maior: 0, menor: 0, aprovados: 0, total: alunos.length }
+      return { media: 0, maior: 0, menor: 0, aprovados: 0, total: alunos.length, responderam: 0 }
     }
 
     const notas = respostasComNota.map(r => r.nota!)
@@ -582,17 +582,17 @@ export default function SimuladoResultadosPage() {
                     const nota = getNotaAluno(aluno.id)
                     const acertos = getAcertosAluno(aluno.id)
                     const resp = getRespostaAluno(aluno.id)
-                    
+
                     return (
                       <tr key={aluno.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-500">{aluno.numero || '-'}</td>
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{aluno.nome}</td>
-                        
+
                         {modoLancamento === 'respostas' && questoes.map((q, idx) => {
-                          const respostaAluno = resp?.respostas?.[idx + 1] || ''
+                          const respostaAluno = resp?.respostas?.[String(idx + 1)] || ''
                           const correta = q.resposta_correta
                           const isCorreta = respostaAluno === correta
-                          
+
                           return (
                             <td key={idx} className="px-1 py-2">
                               <input
@@ -612,7 +612,7 @@ export default function SimuladoResultadosPage() {
                             </td>
                           )
                         })}
-                        
+
                         {modoLancamento === 'respostas' && (
                           <td className="px-4 py-3 text-center">
                             <span className="font-medium text-gray-900">
@@ -620,7 +620,7 @@ export default function SimuladoResultadosPage() {
                             </span>
                           </td>
                         )}
-                        
+
                         <td className="px-4 py-3">
                           {modoLancamento === 'nota' ? (
                             <input
@@ -639,7 +639,7 @@ export default function SimuladoResultadosPage() {
                             </span>
                           )}
                         </td>
-                        
+
                         <td className="px-4 py-3 text-center">
                           {nota !== null ? (
                             nota >= 6 ? (
@@ -730,9 +730,9 @@ export default function SimuladoResultadosPage() {
             <Button variant="outline" className="flex-1" onClick={() => setModalExportarOpen(false)}>
               Cancelar
             </Button>
-            <Button 
-              className="flex-1" 
-              onClick={handleExportarNotas} 
+            <Button
+              className="flex-1"
+              onClick={handleExportarNotas}
               loading={exportando}
               disabled={!componenteSelecionado}
             >
@@ -743,4 +743,4 @@ export default function SimuladoResultadosPage() {
       </Modal>
     </div>
   )
-            }
+}
