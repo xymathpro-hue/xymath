@@ -13,11 +13,17 @@ import {
   LogOut,
   Menu,
   X,
-  Library
+  Library,
+  Calendar,
+  Flame,
+  FileUp,
+  PieChart,
+  Shield
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase-browser'
 
 const menuItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -28,12 +34,31 @@ const menuItems = [
   { href: '/listas', label: 'Listas de Exercícios', icon: ClipboardList },
   { href: '/simulados', label: 'Simulados', icon: FileText },
   { href: '/resultados', label: 'Resultados', icon: BarChart3 },
+  { href: '/calendario', label: 'Calendário', icon: Calendar },
+  { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
+  { href: '/relatorios', label: 'Relatórios', icon: PieChart },
+  { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
 ]
 
 export function Sidebar() {
   const pathname = usePathname()
   const { usuario, signOut } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const supabase = createClient()
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      if (!usuario?.id) return
+      const { data } = await supabase
+        .from('usuarios')
+        .select('is_admin')
+        .eq('id', usuario.id)
+        .single()
+      setIsAdmin(data?.is_admin || false)
+    }
+    checkAdmin()
+  }, [usuario?.id, supabase])
 
   const handleSignOut = async () => {
     await signOut()
@@ -71,6 +96,23 @@ export function Sidebar() {
             </Link>
           )
         })}
+        
+        {/* Admin link - só aparece para admins */}
+        {isAdmin && (
+          <Link
+            href="/admin"
+            onClick={() => setMobileMenuOpen(false)}
+            className={clsx(
+              'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+              pathname === '/admin' || pathname.startsWith('/admin/')
+                ? 'bg-indigo-50 text-indigo-600' 
+                : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            <Shield className="w-5 h-5" />
+            <span className="font-medium">Admin</span>
+          </Link>
+        )}
       </nav>
 
       <div className="px-4 py-4 border-t border-gray-200">
