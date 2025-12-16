@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, Wand2, Filter, Users, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle, BarChart3 } from 'lucide-react'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, Wand2, Filter, Users, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle, BarChart3, Download } from 'lucide-react'
+import { exportToWord } from '@/lib/export-document'
 
 interface Simulado {
   id: string
@@ -35,6 +36,12 @@ interface Questao {
   habilidade_id?: string
   is_publica?: boolean
   ativa?: boolean
+  alternativa_a?: string
+  alternativa_b?: string
+  alternativa_c?: string
+  alternativa_d?: string
+  alternativa_e?: string
+  resposta_correta?: string
 }
 
 interface HabilidadeBncc {
@@ -118,7 +125,7 @@ export default function SimuladosPage() {
       const [sRes, tRes, qRes, hRes] = await Promise.all([
         supabase.from('simulados').select('*').eq('usuario_id', usuario.id).order('created_at', { ascending: false }),
         supabase.from('turmas').select('*').eq('usuario_id', usuario.id).eq('ativa', true),
-        supabase.from('questoes').select('id, enunciado, ano_serie, dificuldade, habilidade_id, is_publica, ativa').eq('ativa', true),
+        supabase.from('questoes').select('id, enunciado, ano_serie, dificuldade, habilidade_id, is_publica, ativa, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta').eq('ativa', true),
         supabase.from('habilidades_bncc').select('id, codigo, descricao').order('codigo'),
       ])
       if (sRes.error) console.error('Erro simulados:', sRes.error)
@@ -242,8 +249,6 @@ export default function SimuladosPage() {
         status: 'rascunho'
       }
 
-      console.log('Salvando simulado:', dataToSave)
-
       let result
       if (editingSimulado) {
         result = await supabase
@@ -258,16 +263,12 @@ export default function SimuladosPage() {
           .select()
       }
 
-      console.log('Resultado:', result)
-
       if (result.error) {
-        console.error('Erro Supabase:', result.error)
         setSaveError(`Erro: ${result.error.message}`)
         return
       }
 
       if (result.data && result.data.length > 0) {
-        console.log('Simulado salvo com sucesso:', result.data[0])
         setModalOpen(false)
         setModalStep('form')
         fetchData()
@@ -275,7 +276,6 @@ export default function SimuladosPage() {
         setSaveError('Nenhum dado retornado')
       }
     } catch (e: any) {
-      console.error('Exceção:', e)
       setSaveError(e.message || 'Erro desconhecido')
     } finally {
       setSaving(false)
@@ -366,6 +366,42 @@ export default function SimuladosPage() {
 
   const removerQuestao = (id: string) => {
     setQuestoesSelecionadas(prev => prev.filter(q => q !== id))
+  }
+
+  const handleExportWord = async (simulado: Simulado) => {
+    try {
+      // Buscar questões completas
+      const { data: questoesData } = await supabase
+        .from('questoes')
+        .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, dificuldade, habilidade_id')
+        .in('id', simulado.questoes_ids)
+
+      if (!questoesData) return
+
+      // Ordenar conforme simulado
+      const questoesOrdenadas = simulado.questoes_ids
+        .map(id => questoesData.find(q => q.id === id))
+        .filter(Boolean)
+        .map(q => ({
+          ...q!,
+          habilidade_codigo: habilidades.find(h => h.id === q!.habilidade_id)?.codigo
+        }))
+
+      const turmaNome = getTurmasNomes(simulado)
+
+      await exportToWord({
+        titulo: simulado.titulo,
+        subtitulo: simulado.descricao,
+        turma: turmaNome,
+        tempo: simulado.tempo_minutos,
+        incluirGabarito: true,
+        incluirCabecalho: true,
+        questoes: questoesOrdenadas
+      })
+    } catch (e) {
+      console.error('Erro ao exportar:', e)
+      alert('Erro ao exportar documento')
+    }
   }
 
   // Filtros
@@ -565,6 +601,9 @@ export default function SimuladosPage() {
                         <BarChart3 className="w-4 h-4 text-indigo-600" />
                       </Button>
                     </Link>
+                    <Button variant="ghost" size="sm" onClick={() => handleExportWord(s)} title="Exportar Word">
+                      <Download className="w-4 h-4 text-green-600" />
+                    </Button>
                     <Link href={`/simulados/${s.id}/gabarito`}>
                       <Button variant="ghost" size="sm" title="Gabarito">
                         <QrCode className="w-4 h-4" />
@@ -592,7 +631,6 @@ export default function SimuladosPage() {
         size="xl"
       >
         {modalStep === 'form' ? (
-          /* ETAPA 1: FORMULÁRIO */
           <div className="space-y-4">
             {/* Título */}
             <div>
@@ -778,7 +816,6 @@ export default function SimuladosPage() {
             </div>
           </div>
         ) : (
-          /* ETAPA 2: PREVIEW */
           <div className="space-y-4">
             {/* Resumo */}
             <div className="bg-indigo-50 p-4 rounded-lg">
