@@ -73,7 +73,6 @@ export default function QuestoesPage() {
   const supabase = createClient()
   const [urlFilterApplied, setUrlFilterApplied] = useState(false)
   
-  // Estados para exportação PDF
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [exportConfig, setExportConfig] = useState({
     showGabarito: false,
@@ -119,7 +118,7 @@ export default function QuestoesPage() {
     if (!usuario?.id) { setLoading(false); return }
     setLoading(true)
     try {
-      let query = supabase.from('questoes').select('*').or(`usuario_id.eq.${usuario.id},is_publica.eq.true`).order('created_at', { ascending: false }).limit(5000)
+      let query = supabase.from('questoes').select('*').eq('ativa', true).order('created_at', { ascending: false }).limit(5000)
       if (filters.ano_serie) query = query.eq('ano_serie', filters.ano_serie)
       if (filters.dificuldade) query = query.eq('dificuldade', filters.dificuldade)
       if (filters.unidade_tematica_id) query = query.eq('unidade_tematica_id', filters.unidade_tematica_id)
@@ -171,7 +170,6 @@ export default function QuestoesPage() {
   const getUnidadeNome = (id?: string) => id ? unidadesTematicas.find(u => u.id === id)?.nome : null
   const getContextoNome = (id?: string) => id ? contextos.find(c => c.id === id)?.nome : null
 
-  // Função para imprimir/exportar PDF
   const handlePrint = () => {
     const printContent = printRef.current
     if (!printContent) return
@@ -254,7 +252,7 @@ export default function QuestoesPage() {
       </CardContent></Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Total</p><p className="text-2xl font-bold">{questoes.length}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Total</p><p className="text-2xl font-bold text-gray-900">{questoes.length}</p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Fáceis</p><p className="text-2xl font-bold text-green-600">{questoes.filter(q => q.dificuldade === 'facil').length}</p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Médias</p><p className="text-2xl font-bold text-yellow-600">{questoes.filter(q => q.dificuldade === 'medio').length}</p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Difíceis</p><p className="text-2xl font-bold text-red-600">{questoes.filter(q => q.dificuldade === 'dificil').length}</p></CardContent></Card>
@@ -264,7 +262,7 @@ export default function QuestoesPage() {
       {loading ? (
         <div className="flex justify-center py-12"><div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" /></div>
       ) : filteredQuestoes.length === 0 ? (
-        <Card><CardContent className="p-12 text-center"><BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" /><h3 className="text-lg font-medium mb-2">{searchTerm || activeFiltersCount > 0 ? 'Nenhuma questão encontrada' : 'Nenhuma questão cadastrada'}</h3><p className="text-gray-500 mb-6">{searchTerm || activeFiltersCount > 0 ? 'Tente ajustar os filtros' : 'Comece criando sua primeira questão'}</p>{!searchTerm && activeFiltersCount === 0 && <Button onClick={() => handleOpenModal()}><Plus className="w-5 h-5 mr-2" />Criar Questão</Button>}</CardContent></Card>
+        <Card><CardContent className="p-12 text-center"><BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" /><h3 className="text-lg font-medium text-gray-900 mb-2">{searchTerm || activeFiltersCount > 0 ? 'Nenhuma questão encontrada' : 'Nenhuma questão cadastrada'}</h3><p className="text-gray-500 mb-6">{searchTerm || activeFiltersCount > 0 ? 'Tente ajustar os filtros' : 'Comece criando sua primeira questão'}</p>{!searchTerm && activeFiltersCount === 0 && <Button onClick={() => handleOpenModal()}><Plus className="w-5 h-5 mr-2" />Criar Questão</Button>}</CardContent></Card>
       ) : (
         <div className="space-y-4">
           {filteredQuestoes.map((questao, index) => (
@@ -272,7 +270,7 @@ export default function QuestoesPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    <span className="text-sm font-bold text-gray-400">#{index + 1}</span>
+                    <span className="text-sm font-bold text-gray-500">#{index + 1}</span>
                     <Badge variant="info">{questao.ano_serie}</Badge>
                     <Badge variant={getDificuldadeVariant(questao.dificuldade)}>{getDificuldadeLabel(questao.dificuldade)}</Badge>
                     {getHabilidadeCodigo(questao.habilidade_bncc_id) && <Badge>{getHabilidadeCodigo(questao.habilidade_bncc_id)}</Badge>}
@@ -283,7 +281,7 @@ export default function QuestoesPage() {
                   </div>
                   <p className="text-gray-900 line-clamp-2 mb-2">{questao.enunciado}</p>
                   {questao.imagem_url && <div className="mb-2"><img src={questao.imagem_url} alt="Imagem da questão" className="max-h-32 rounded-lg border" /></div>}
-                  <div className="flex items-center gap-4 text-sm text-gray-500"><span>Resposta: <strong className="text-indigo-600">{questao.resposta_correta}</strong></span>{getContextoNome(questao.contexto_id) && <span>Contexto: {getContextoNome(questao.contexto_id)}</span>}</div>
+                  <div className="flex items-center gap-4 text-sm text-gray-600"><span>Resposta: <strong className="text-indigo-600">{questao.resposta_correta}</strong></span>{getContextoNome(questao.contexto_id) && <span>Contexto: {getContextoNome(questao.contexto_id)}</span>}</div>
                 </div>
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="sm" onClick={() => { setViewingQuestao(questao); setViewModalOpen(true) }}><Eye className="w-4 h-4" /></Button>
@@ -299,36 +297,36 @@ export default function QuestoesPage() {
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingQuestao ? 'Editar Questão' : 'Nova Questão'} size="xl">
         <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-2">
-          <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+          <div className="bg-gray-100 p-4 rounded-lg space-y-4">
             <h3 className="font-medium text-gray-900">📚 Classificação Curricular</h3>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série *</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.ano_serie} onChange={(e) => setFormData({ ...formData, ano_serie: e.target.value })}>{ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Unidade Temática</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.unidade_tematica_id} onChange={(e) => setFormData({ ...formData, unidade_tematica_id: e.target.value })}><option value="">Selecione...</option>{unidadesTematicas.map(ut => <option key={ut.id} value={ut.id}>{ut.nome}</option>)}</select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Habilidade BNCC</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.habilidade_bncc_id} onChange={(e) => setFormData({ ...formData, habilidade_bncc_id: e.target.value })}><option value="">Selecione...</option>{habilidadesFiltradas.map(h => <option key={h.id} value={h.id}>{h.codigo} - {h.objeto_conhecimento}</option>)}</select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Descritor SAEB</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.descritor_saeb_id} onChange={(e) => setFormData({ ...formData, descritor_saeb_id: e.target.value })}><option value="">Selecione...</option>{descritores.map(d => <option key={d.id} value={d.id}>{d.codigo} - {d.descricao.substring(0, 35)}...</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série *</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white" value={formData.ano_serie} onChange={(e) => setFormData({ ...formData, ano_serie: e.target.value })}>{ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Unidade Temática</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white" value={formData.unidade_tematica_id} onChange={(e) => setFormData({ ...formData, unidade_tematica_id: e.target.value })}><option value="">Selecione...</option>{unidadesTematicas.map(ut => <option key={ut.id} value={ut.id}>{ut.nome}</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Habilidade BNCC</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white" value={formData.habilidade_bncc_id} onChange={(e) => setFormData({ ...formData, habilidade_bncc_id: e.target.value })}><option value="">Selecione...</option>{habilidadesFiltradas.map(h => <option key={h.id} value={h.id}>{h.codigo} - {h.objeto_conhecimento}</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Descritor SAEB</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white" value={formData.descritor_saeb_id} onChange={(e) => setFormData({ ...formData, descritor_saeb_id: e.target.value })}><option value="">Selecione...</option>{descritores.map(d => <option key={d.id} value={d.id}>{d.codigo} - {d.descricao.substring(0, 35)}...</option>)}</select></div>
             </div>
           </div>
-          <div className="bg-blue-50 p-4 rounded-lg space-y-4">
+          <div className="bg-blue-100 p-4 rounded-lg space-y-4">
             <h3 className="font-medium text-gray-900">🎯 Dificuldade e Contexto</h3>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Dificuldade *</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.dificuldade} onChange={(e) => setFormData({ ...formData, dificuldade: e.target.value as any })}>{DIFICULDADE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nível Cognitivo</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.nivel_cognitivo_id} onChange={(e) => setFormData({ ...formData, nivel_cognitivo_id: e.target.value })}><option value="">Selecione...</option>{niveisCognitivos.map(nc => <option key={nc.id} value={nc.id}>{nc.nome}</option>)}</select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Contexto</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.contexto_id} onChange={(e) => setFormData({ ...formData, contexto_id: e.target.value })}><option value="">Selecione...</option>{contextos.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Fonte</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.fonte_id} onChange={(e) => setFormData({ ...formData, fonte_id: e.target.value })}><option value="">Selecione...</option>{fontes.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Dificuldade *</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white" value={formData.dificuldade} onChange={(e) => setFormData({ ...formData, dificuldade: e.target.value as any })}>{DIFICULDADE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nível Cognitivo</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white" value={formData.nivel_cognitivo_id} onChange={(e) => setFormData({ ...formData, nivel_cognitivo_id: e.target.value })}><option value="">Selecione...</option>{niveisCognitivos.map(nc => <option key={nc.id} value={nc.id}>{nc.nome}</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Contexto</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white" value={formData.contexto_id} onChange={(e) => setFormData({ ...formData, contexto_id: e.target.value })}><option value="">Selecione...</option>{contextos.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Fonte</label><select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white" value={formData.fonte_id} onChange={(e) => setFormData({ ...formData, fonte_id: e.target.value })}><option value="">Selecione...</option>{fontes.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
             </div>
           </div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">Enunciado *</label><textarea className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900" rows={4} placeholder="Digite o enunciado..." value={formData.enunciado} onChange={(e) => setFormData({ ...formData, enunciado: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Enunciado *</label><textarea className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900 bg-white" rows={4} placeholder="Digite o enunciado..." value={formData.enunciado} onChange={(e) => setFormData({ ...formData, enunciado: e.target.value })} /></div>
           <div className="space-y-3">
             <label className="block text-sm font-medium text-gray-700">Alternativas *</label>
             {['A', 'B', 'C', 'D', 'E'].map((letra) => (
               <div key={letra} className="flex items-center gap-3">
-                <span className={`w-8 h-8 flex items-center justify-center rounded-full font-medium ${formData.resposta_correta === letra ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}>{letra}</span>
-                <Input placeholder={`Alternativa ${letra}${letra === 'E' ? ' (opcional)' : ''}`} value={formData[`alternativa_${letra.toLowerCase()}` as keyof typeof formData] as string} onChange={(e) => setFormData({ ...formData, [`alternativa_${letra.toLowerCase()}`]: e.target.value })} className="flex-1" />
-                <button type="button" onClick={() => setFormData({ ...formData, resposta_correta: letra as any })} className={`px-3 py-2 rounded-lg text-sm font-medium ${formData.resposta_correta === letra ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{formData.resposta_correta === letra ? '✓ Correta' : 'Marcar'}</button>
+                <span className={`w-8 h-8 flex items-center justify-center rounded-full font-medium ${formData.resposta_correta === letra ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}>{letra}</span>
+                <Input placeholder={`Alternativa ${letra}${letra === 'E' ? ' (opcional)' : ''}`} value={formData[`alternativa_${letra.toLowerCase()}` as keyof typeof formData] as string} onChange={(e) => setFormData({ ...formData, [`alternativa_${letra.toLowerCase()}`]: e.target.value })} className="flex-1 bg-white" />
+                <button type="button" onClick={() => setFormData({ ...formData, resposta_correta: letra as any })} className={`px-3 py-2 rounded-lg text-sm font-medium ${formData.resposta_correta === letra ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>{formData.resposta_correta === letra ? '✓ Correta' : 'Marcar'}</button>
               </div>
             ))}
           </div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">Comentário de Resolução (opcional)</label><textarea className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900" rows={3} placeholder="Explique como resolver..." value={formData.comentario_resolucao} onChange={(e) => setFormData({ ...formData, comentario_resolucao: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Comentário de Resolução (opcional)</label><textarea className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white" rows={3} placeholder="Explique como resolver..." value={formData.comentario_resolucao} onChange={(e) => setFormData({ ...formData, comentario_resolucao: e.target.value })} /></div>
           <div className="flex gap-3 pt-4 border-t">
             <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button className="flex-1" onClick={handleSave} loading={saving} disabled={!formData.enunciado || !formData.alternativa_a}>{editingQuestao ? 'Salvar' : 'Criar'}</Button>
@@ -345,7 +343,7 @@ export default function QuestoesPage() {
               {getHabilidadeCodigo(viewingQuestao.habilidade_bncc_id) && <Badge>{getHabilidadeCodigo(viewingQuestao.habilidade_bncc_id)}</Badge>}
               {getDescritorCodigo(viewingQuestao.descritor_saeb_id) && <Badge>{getDescritorCodigo(viewingQuestao.descritor_saeb_id)}</Badge>}
             </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="bg-gray-100 p-4 rounded-lg">
               <p className="whitespace-pre-wrap text-gray-900">{viewingQuestao.enunciado}</p>
               {viewingQuestao.imagem_url && <div className="mt-4"><img src={viewingQuestao.imagem_url} alt="Imagem da questão" className="max-w-full rounded-lg border" /></div>}
             </div>
@@ -354,10 +352,16 @@ export default function QuestoesPage() {
                 const alt = viewingQuestao[`alternativa_${letra.toLowerCase()}` as keyof Questao] as string
                 if (!alt) return null
                 const isCorrect = viewingQuestao.resposta_correta === letra
-                return <div key={letra} className={`p-3 rounded-lg border-2 ${isCorrect ? 'bg-green-50 border-green-400' : 'bg-white border-gray-200'}`}><span className={`font-bold ${isCorrect ? 'text-green-700' : 'text-gray-700'}`}>{letra})</span><span className={`ml-2 ${isCorrect ? 'text-green-700' : 'text-gray-600'}`}>{alt}</span>{isCorrect && <span className="ml-2 text-green-600 text-sm font-medium">✓ Correta</span>}</div>
+                return (
+                  <div key={letra} className={`p-3 rounded-lg border-2 ${isCorrect ? 'bg-green-100 border-green-500' : 'bg-gray-100 border-gray-300'}`}>
+                    <span className={`font-bold ${isCorrect ? 'text-green-800' : 'text-gray-900'}`}>{letra})</span>
+                    <span className={`ml-2 ${isCorrect ? 'text-green-800' : 'text-gray-900'}`}>{alt}</span>
+                    {isCorrect && <span className="ml-2 text-green-700 text-sm font-medium">✓ Correta</span>}
+                  </div>
+                )
               })}
             </div>
-            {viewingQuestao.comentario_resolucao && <div className="bg-blue-50 p-4 rounded-lg"><h4 className="font-medium text-blue-900 mb-2">💡 Resolução</h4><p className="text-blue-800">{viewingQuestao.comentario_resolucao}</p></div>}
+            {viewingQuestao.comentario_resolucao && <div className="bg-blue-100 p-4 rounded-lg"><h4 className="font-medium text-blue-900 mb-2">💡 Resolução</h4><p className="text-blue-800">{viewingQuestao.comentario_resolucao}</p></div>}
             <div className="flex gap-3 pt-4 border-t">
               <Button variant="outline" className="flex-1" onClick={() => setViewModalOpen(false)}>Fechar</Button>
               <Button className="flex-1" onClick={() => { setViewModalOpen(false); handleOpenModal(viewingQuestao) }}><Edit className="w-4 h-4 mr-2" />Editar</Button>
@@ -368,11 +372,11 @@ export default function QuestoesPage() {
 
       <Modal isOpen={exportModalOpen} onClose={() => setExportModalOpen(false)} title="Exportar Lista de Exercícios" size="xl">
         <div className="space-y-6">
-          <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+          <div className="bg-gray-100 p-4 rounded-lg space-y-4">
             <h3 className="font-medium text-gray-900 flex items-center gap-2"><FileText className="w-5 h-5" /> Configurações do Documento</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Título</label><Input value={exportConfig.titulo} onChange={(e) => setExportConfig({...exportConfig, titulo: e.target.value})} placeholder="Lista de Exercícios" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Subtítulo (opcional)</label><Input value={exportConfig.subtitulo} onChange={(e) => setExportConfig({...exportConfig, subtitulo: e.target.value})} placeholder="Ex: 6º ano - Números" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Título</label><Input value={exportConfig.titulo} onChange={(e) => setExportConfig({...exportConfig, titulo: e.target.value})} placeholder="Lista de Exercícios" className="bg-white" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Subtítulo (opcional)</label><Input value={exportConfig.subtitulo} onChange={(e) => setExportConfig({...exportConfig, subtitulo: e.target.value})} placeholder="Ex: 6º ano - Números" className="bg-white" /></div>
             </div>
             <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={exportConfig.showHabilidades} onChange={(e) => setExportConfig({...exportConfig, showHabilidades: e.target.checked})} className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /><span className="text-sm text-gray-700">Mostrar habilidades BNCC</span></label>
@@ -380,7 +384,7 @@ export default function QuestoesPage() {
               <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={exportConfig.showResolucao} onChange={(e) => setExportConfig({...exportConfig, showResolucao: e.target.checked})} className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /><span className="text-sm text-gray-700">Incluir resolução das questões</span></label>
             </div>
           </div>
-          <div className="bg-blue-50 p-4 rounded-lg"><p className="text-sm text-blue-800"><strong>{filteredQuestoes.length}</strong> questões serão exportadas.{activeFiltersCount > 0 && ` (${activeFiltersCount} filtro(s) ativo(s))`}</p></div>
+          <div className="bg-blue-100 p-4 rounded-lg"><p className="text-sm text-blue-800"><strong>{filteredQuestoes.length}</strong> questões serão exportadas.{activeFiltersCount > 0 && ` (${activeFiltersCount} filtro(s) ativo(s))`}</p></div>
           <div className="flex gap-3 pt-4 border-t">
             <Button variant="outline" className="flex-1" onClick={() => setExportModalOpen(false)}>Cancelar</Button>
             <Button className="flex-1" onClick={handlePrint}><Printer className="w-4 h-4 mr-2" />Imprimir / Salvar PDF</Button>
