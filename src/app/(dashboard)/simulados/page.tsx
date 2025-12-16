@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, Wand2, Filter, Users, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle } from 'lucide-react'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, Wand2, Filter, Users, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle, BarChart3 } from 'lucide-react'
 
 interface Simulado {
   id: string
@@ -61,7 +61,7 @@ type ModalStep = 'form' | 'preview'
 export default function SimuladosPage() {
   const { usuario } = useAuth()
   const supabase = createClient()
-  
+
   const [simulados, setSimulados] = useState<Simulado[]>([])
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [questoesDisponiveis, setQuestoesDisponiveis] = useState<Questao[]>([])
@@ -124,15 +124,15 @@ export default function SimuladosPage() {
       if (sRes.error) console.error('Erro simulados:', sRes.error)
       if (tRes.error) console.error('Erro turmas:', tRes.error)
       if (qRes.error) console.error('Erro questoes:', qRes.error)
-      
+
       setSimulados(sRes.data || [])
       setTurmas(tRes.data || [])
       setQuestoesDisponiveis(qRes.data || [])
       setHabilidades(hRes.data || [])
-    } catch (e) { 
-      console.error('Erro geral:', e) 
-    } finally { 
-      setLoading(false) 
+    } catch (e) {
+      console.error('Erro geral:', e)
+    } finally {
+      setLoading(false)
     }
   }, [usuario?.id, supabase])
 
@@ -302,7 +302,7 @@ export default function SimuladosPage() {
   }
 
   const toggleQuestao = (id: string) => {
-    setQuestoesSelecionadas(prev => 
+    setQuestoesSelecionadas(prev =>
       prev.includes(id) ? prev.filter(q => q !== id) : [...prev, id]
     )
   }
@@ -339,17 +339,17 @@ export default function SimuladosPage() {
     if (autoConfig.habilidades_ids.length > 0) {
       qFiltradas = qFiltradas.filter(q => q.habilidade_id && autoConfig.habilidades_ids.includes(q.habilidade_id))
     }
-    
+
     const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.5)
-    
+
     const faceis = shuffle(qFiltradas.filter(q => q.dificuldade === 'facil')).slice(0, qtdFacil)
     const medias = shuffle(qFiltradas.filter(q => q.dificuldade === 'medio')).slice(0, qtdMedio)
     const dificeis = shuffle(qFiltradas.filter(q => q.dificuldade === 'dificil')).slice(0, qtdDificil)
-    
+
     const selecionadas = [...faceis, ...medias, ...dificeis].map(q => q.id)
     setQuestoesSelecionadas(selecionadas)
     setGeracaoSucesso(true)
-    
+
     setTimeout(() => {
       setGerarAutoModalOpen(false)
       setGeracaoSucesso(false)
@@ -378,15 +378,15 @@ export default function SimuladosPage() {
     return true
   })
 
-  const filteredSimulados = simulados.filter(s => 
+  const filteredSimulados = simulados.filter(s =>
     s.titulo.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const habilidadesFiltradas = habilidades.filter(h => 
+  const habilidadesFiltradas = habilidades.filter(h =>
     !autoConfig.ano_serie || h.codigo.includes(autoConfig.ano_serie.charAt(0))
   )
 
-  const habilidadesFiltradasManual = habilidades.filter(h => 
+  const habilidadesFiltradasManual = habilidades.filter(h =>
     !questaoFilters.ano_serie || h.codigo.includes(questaoFilters.ano_serie.charAt(0))
   )
 
@@ -463,11 +463,11 @@ export default function SimuladosPage() {
         <CardContent className="p-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <Input 
-              placeholder="Buscar simulados..." 
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)} 
-              className="pl-10" 
+            <Input
+              placeholder="Buscar simulados..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
             />
           </div>
         </CardContent>
@@ -560,6 +560,11 @@ export default function SimuladosPage() {
                         <Eye className="w-4 h-4" />
                       </Button>
                     </Link>
+                    <Link href={`/simulados/${s.id}/resultados`}>
+                      <Button variant="ghost" size="sm" title="Resultados">
+                        <BarChart3 className="w-4 h-4 text-indigo-600" />
+                      </Button>
+                    </Link>
                     <Link href={`/simulados/${s.id}/gabarito`}>
                       <Button variant="ghost" size="sm" title="Gabarito">
                         <QrCode className="w-4 h-4" />
@@ -580,10 +585,10 @@ export default function SimuladosPage() {
       )}
 
       {/* MODAL PRINCIPAL - Criar/Editar Simulado */}
-      <Modal 
-        isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
-        title={modalStep === 'preview' ? '📋 Revisar Simulado' : (editingSimulado ? 'Editar Simulado' : 'Novo Simulado')} 
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={modalStep === 'preview' ? '📋 Revisar Simulado' : (editingSimulado ? 'Editar Simulado' : 'Novo Simulado')}
         size="xl"
       >
         {modalStep === 'form' ? (
@@ -592,31 +597,31 @@ export default function SimuladosPage() {
             {/* Título */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
-              <Input 
-                placeholder="Ex: Simulado SAEB - 9º Ano" 
-                value={formData.titulo} 
-                onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} 
+              <Input
+                placeholder="Ex: Simulado SAEB - 9º Ano"
+                value={formData.titulo}
+                onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
               />
             </div>
 
             {/* Descrição */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-              <textarea 
-                className="w-full px-4 py-2 border rounded-lg text-gray-900" 
-                rows={2} 
-                placeholder="Descrição opcional..." 
-                value={formData.descricao} 
-                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })} 
+              <textarea
+                className="w-full px-4 py-2 border rounded-lg text-gray-900"
+                rows={2}
+                placeholder="Descrição opcional..."
+                value={formData.descricao}
+                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
               />
             </div>
 
             {/* Turmas */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Turmas</label>
-              <Button 
-                variant={showTurmasSelector ? 'primary' : 'outline'} 
-                className="w-full justify-between" 
+              <Button
+                variant={showTurmasSelector ? 'primary' : 'outline'}
+                className="w-full justify-between"
                 onClick={() => setShowTurmasSelector(!showTurmasSelector)}
               >
                 <span className="flex items-center gap-2">
@@ -632,11 +637,11 @@ export default function SimuladosPage() {
                   ) : (
                     turmas.map(turma => (
                       <label key={turma.id} className="flex items-center gap-2 p-2 hover:bg-white rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={formData.turmas_ids.includes(turma.id)} 
-                          onChange={() => toggleTurma(turma.id)} 
-                          className="rounded text-indigo-600" 
+                        <input
+                          type="checkbox"
+                          checked={formData.turmas_ids.includes(turma.id)}
+                          onChange={() => toggleTurma(turma.id)}
+                          className="rounded text-indigo-600"
                         />
                         <span className="text-sm text-gray-900">{turma.nome}</span>
                         <Badge variant="info" className="text-xs">{turma.ano_serie}</Badge>
@@ -651,23 +656,23 @@ export default function SimuladosPage() {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Questões</label>
-                <input 
-                  type="number" 
-                  min={1} 
-                  max={50} 
-                  value={totalQuestoesInput} 
-                  onChange={(e) => handleTotalQuestoesChange(e.target.value)} 
-                  className="w-full px-4 py-2 border rounded-lg text-gray-900" 
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={totalQuestoesInput}
+                  onChange={(e) => handleTotalQuestoesChange(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg text-gray-900"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tempo (min)</label>
-                <input 
-                  type="number" 
-                  min={10} 
-                  value={tempoInput} 
-                  onChange={(e) => setTempoInput(e.target.value)} 
-                  className="w-full px-4 py-2 border rounded-lg text-gray-900" 
+                <input
+                  type="number"
+                  min={10}
+                  value={tempoInput}
+                  onChange={(e) => setTempoInput(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg text-gray-900"
                 />
               </div>
               <div className="flex flex-col justify-end">
@@ -680,20 +685,20 @@ export default function SimuladosPage() {
             {/* Opções */}
             <div className="flex gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={formData.embaralhar_questoes} 
-                  onChange={(e) => setFormData({ ...formData, embaralhar_questoes: e.target.checked })} 
-                  className="rounded text-indigo-600" 
+                <input
+                  type="checkbox"
+                  checked={formData.embaralhar_questoes}
+                  onChange={(e) => setFormData({ ...formData, embaralhar_questoes: e.target.checked })}
+                  className="rounded text-indigo-600"
                 />
                 <span className="text-sm text-gray-700">Embaralhar questões</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={formData.embaralhar_alternativas} 
-                  onChange={(e) => setFormData({ ...formData, embaralhar_alternativas: e.target.checked })} 
-                  className="rounded text-indigo-600" 
+                <input
+                  type="checkbox"
+                  checked={formData.embaralhar_alternativas}
+                  onChange={(e) => setFormData({ ...formData, embaralhar_alternativas: e.target.checked })}
+                  className="rounded text-indigo-600"
                 />
                 <span className="text-sm text-gray-700">Embaralhar alternativas</span>
               </label>
@@ -717,12 +722,12 @@ export default function SimuladosPage() {
                   </Button>
                 </div>
               </div>
-              
+
               {/* Barra de progresso */}
               <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
-                <div 
-                  className={`h-2 rounded-full transition-all ${questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 ? 'bg-green-500' : 'bg-indigo-500'}`} 
-                  style={{ width: `${totalQuestoes > 0 ? Math.min((questoesSelecionadas.length / totalQuestoes) * 100, 100) : 0}%` }} 
+                <div
+                  className={`h-2 rounded-full transition-all ${questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 ? 'bg-green-500' : 'bg-indigo-500'}`}
+                  style={{ width: `${totalQuestoes > 0 ? Math.min((questoesSelecionadas.length / totalQuestoes) * 100, 100) : 0}%` }}
                 />
               </div>
 
@@ -763,8 +768,8 @@ export default function SimuladosPage() {
               <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button 
-                className="flex-1" 
+              <Button
+                className="flex-1"
                 onClick={handleGoToPreview}
               >
                 <Eye className="w-4 h-4 mr-2" />
@@ -810,9 +815,9 @@ export default function SimuladosPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-medium text-gray-900">Questões</h4>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => { setModalStep('form'); setQuestoesModalOpen(true) }}
                 >
                   <Plus className="w-4 h-4 mr-1" />Adicionar
@@ -826,16 +831,16 @@ export default function SimuladosPage() {
                   return (
                     <div key={id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg border">
                       <div className="flex flex-col gap-0.5">
-                        <button 
-                          onClick={() => moverQuestao(idx, 'up')} 
-                          disabled={idx === 0} 
+                        <button
+                          onClick={() => moverQuestao(idx, 'up')}
+                          disabled={idx === 0}
                           className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"
                         >
                           <ArrowUp className="w-3 h-3" />
                         </button>
-                        <button 
-                          onClick={() => moverQuestao(idx, 'down')} 
-                          disabled={idx === questoesSelecionadas.length - 1} 
+                        <button
+                          onClick={() => moverQuestao(idx, 'down')}
+                          disabled={idx === questoesSelecionadas.length - 1}
                           className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"
                         >
                           <ArrowDown className="w-3 h-3" />
@@ -851,8 +856,8 @@ export default function SimuladosPage() {
                         </div>
                         <p className="text-sm text-gray-700 line-clamp-1">{q.enunciado}</p>
                       </div>
-                      <button 
-                        onClick={() => removerQuestao(id)} 
+                      <button
+                        onClick={() => removerQuestao(id)}
                         className="p-1 hover:bg-red-100 rounded"
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
@@ -876,9 +881,9 @@ export default function SimuladosPage() {
               <Button variant="outline" onClick={handleBackToForm}>
                 <ArrowLeft className="w-4 h-4 mr-1" />Voltar
               </Button>
-              <Button 
-                className="flex-1" 
-                onClick={handleSave} 
+              <Button
+                className="flex-1"
+                onClick={handleSave}
                 loading={saving}
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
@@ -890,10 +895,10 @@ export default function SimuladosPage() {
       </Modal>
 
       {/* MODAL - Seleção Manual de Questões */}
-      <Modal 
-        isOpen={questoesModalOpen} 
-        onClose={() => setQuestoesModalOpen(false)} 
-        title="Selecionar Questões" 
+      <Modal
+        isOpen={questoesModalOpen}
+        onClose={() => setQuestoesModalOpen(false)}
+        title="Selecionar Questões"
         size="xl"
       >
         <div className="space-y-4">
@@ -909,9 +914,9 @@ export default function SimuladosPage() {
 
           {/* Filtros */}
           <div className="grid grid-cols-3 gap-3">
-            <select 
-              className="px-3 py-2 border rounded-lg text-gray-900" 
-              value={questaoFilters.ano_serie} 
+            <select
+              className="px-3 py-2 border rounded-lg text-gray-900"
+              value={questaoFilters.ano_serie}
               onChange={(e) => setQuestaoFilters({ ...questaoFilters, ano_serie: e.target.value })}
             >
               <option value="">Todos os anos</option>
@@ -919,9 +924,9 @@ export default function SimuladosPage() {
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-            <select 
-              className="px-3 py-2 border rounded-lg text-gray-900" 
-              value={questaoFilters.dificuldade} 
+            <select
+              className="px-3 py-2 border rounded-lg text-gray-900"
+              value={questaoFilters.dificuldade}
               onChange={(e) => setQuestaoFilters({ ...questaoFilters, dificuldade: e.target.value })}
             >
               <option value="">Todas dificuldades</option>
@@ -929,12 +934,12 @@ export default function SimuladosPage() {
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-            <Button 
-              variant={showHabilidadesFilter ? 'primary' : 'outline'} 
+            <Button
+              variant={showHabilidadesFilter ? 'primary' : 'outline'}
               onClick={() => setShowHabilidadesFilter(!showHabilidadesFilter)}
             >
-              {questaoFilters.habilidades_ids.length > 0 
-                ? `${questaoFilters.habilidades_ids.length} hab.` 
+              {questaoFilters.habilidades_ids.length > 0
+                ? `${questaoFilters.habilidades_ids.length} hab.`
                 : 'Habilidades'}
             </Button>
           </div>
@@ -944,11 +949,11 @@ export default function SimuladosPage() {
             <div className="border rounded-lg p-2 bg-gray-50 max-h-28 overflow-y-auto">
               {habilidadesFiltradasManual.map(h => (
                 <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={questaoFilters.habilidades_ids.includes(h.id)} 
-                    onChange={() => toggleHabilidadeManual(h.id)} 
-                    className="rounded" 
+                  <input
+                    type="checkbox"
+                    checked={questaoFilters.habilidades_ids.includes(h.id)}
+                    onChange={() => toggleHabilidadeManual(h.id)}
+                    className="rounded"
                   />
                   <span className="text-sm text-gray-900"><strong>{h.codigo}</strong></span>
                 </label>
@@ -964,9 +969,9 @@ export default function SimuladosPage() {
             {filteredQuestoes.map(q => {
               const sel = questoesSelecionadas.includes(q.id)
               return (
-                <div 
-                  key={q.id} 
-                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${sel ? 'bg-indigo-50 border-indigo-300' : 'hover:bg-gray-50'}`} 
+                <div
+                  key={q.id}
+                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${sel ? 'bg-indigo-50 border-indigo-300' : 'hover:bg-gray-50'}`}
                   onClick={() => toggleQuestao(q.id)}
                 >
                   <div className="flex items-start gap-3">
@@ -976,8 +981,8 @@ export default function SimuladosPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex gap-1 mb-1 flex-wrap">
                         <Badge variant="info" className="text-xs">{q.ano_serie}</Badge>
-                        <Badge 
-                          variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'} 
+                        <Badge
+                          variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'}
                           className="text-xs"
                         >
                           {q.dificuldade}
@@ -1002,10 +1007,10 @@ export default function SimuladosPage() {
       </Modal>
 
       {/* MODAL - Gerar Automático */}
-      <Modal 
-        isOpen={gerarAutoModalOpen} 
-        onClose={() => { setGerarAutoModalOpen(false); setGeracaoSucesso(false) }} 
-        title="Gerar Automaticamente" 
+      <Modal
+        isOpen={gerarAutoModalOpen}
+        onClose={() => { setGerarAutoModalOpen(false); setGeracaoSucesso(false) }}
+        title="Gerar Automaticamente"
         size="lg"
       >
         {geracaoSucesso ? (
@@ -1024,9 +1029,9 @@ export default function SimuladosPage() {
             {/* Ano/Série */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
-              <select 
-                className="w-full px-3 py-2 border rounded-lg text-gray-900" 
-                value={autoConfig.ano_serie} 
+              <select
+                className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                value={autoConfig.ano_serie}
                 onChange={(e) => setAutoConfig({ ...autoConfig, ano_serie: e.target.value })}
               >
                 {ANO_SERIE_OPTIONS.map(opt => (
@@ -1041,11 +1046,11 @@ export default function SimuladosPage() {
               <div className="max-h-28 overflow-y-auto border rounded-lg p-2">
                 {habilidadesFiltradas.map(h => (
                   <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={autoConfig.habilidades_ids.includes(h.id)} 
-                      onChange={() => toggleHabilidadeAuto(h.id)} 
-                      className="rounded" 
+                    <input
+                      type="checkbox"
+                      checked={autoConfig.habilidades_ids.includes(h.id)}
+                      onChange={() => toggleHabilidadeAuto(h.id)}
+                      className="rounded"
                     />
                     <span className="text-sm text-gray-900"><strong>{h.codigo}</strong></span>
                   </label>
@@ -1067,32 +1072,32 @@ export default function SimuladosPage() {
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">🟢 Fáceis</label>
-                <input 
-                  type="number" 
-                  min={0} 
-                  value={qtdFacilInput} 
-                  onChange={(e) => setQtdFacilInput(e.target.value)} 
-                  className="w-full px-3 py-2 border rounded-lg text-gray-900" 
+                <input
+                  type="number"
+                  min={0}
+                  value={qtdFacilInput}
+                  onChange={(e) => setQtdFacilInput(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-gray-900"
                 />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">🟡 Médias</label>
-                <input 
-                  type="number" 
-                  min={0} 
-                  value={qtdMedioInput} 
-                  onChange={(e) => setQtdMedioInput(e.target.value)} 
-                  className="w-full px-3 py-2 border rounded-lg text-gray-900" 
+                <input
+                  type="number"
+                  min={0}
+                  value={qtdMedioInput}
+                  onChange={(e) => setQtdMedioInput(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-gray-900"
                 />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">🔴 Difíceis</label>
-                <input 
-                  type="number" 
-                  min={0} 
-                  value={qtdDificilInput} 
-                  onChange={(e) => setQtdDificilInput(e.target.value)} 
-                  className="w-full px-3 py-2 border rounded-lg text-gray-900" 
+                <input
+                  type="number"
+                  min={0}
+                  value={qtdDificilInput}
+                  onChange={(e) => setQtdDificilInput(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-gray-900"
                 />
               </div>
             </div>
@@ -1109,9 +1114,9 @@ export default function SimuladosPage() {
               <Button variant="outline" className="flex-1" onClick={() => setGerarAutoModalOpen(false)}>
                 Cancelar
               </Button>
-              <Button 
-                className="flex-1" 
-                onClick={gerarQuestoesAutomaticamente} 
+              <Button
+                className="flex-1"
+                onClick={gerarQuestoesAutomaticamente}
                 disabled={totalDistribuicao === 0 || disponiveisAuto.total === 0}
               >
                 <Wand2 className="w-4 h-4 mr-2" />Gerar
