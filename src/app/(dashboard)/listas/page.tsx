@@ -4,43 +4,36 @@ import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, FileText, Edit, Trash2, Eye, Download, FileDown, Printer, X, Maximize2, Loader2 } from 'lucide-react'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Download, Check, X, Wand2, Filter, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, AlertCircle, Printer } from 'lucide-react'
 
-interface Lista {
+interface ListaExercicios {
   id: string
   titulo: string
-  descricao: string
-  ano_serie: string
-  instrucoes: string
-  mostrar_gabarito: boolean
-  mostrar_resolucao: boolean
-  is_publica: boolean
+  descricao?: string
+  questoes_ids: string[]
+  configuracoes?: any
   created_at: string
-  questoes_count?: number
+  usuario_id: string
 }
 
 interface Questao {
   id: string
   enunciado: string
-  alternativa_a: string
-  alternativa_b: string
-  alternativa_c: string
-  alternativa_d: string
-  alternativa_e?: string
-  resposta_correta: string
-  dificuldade: string
   ano_serie: string
+  dificuldade: string
   habilidade_id?: string
+  alternativa_a?: string
+  alternativa_b?: string
+  alternativa_c?: string
+  alternativa_d?: string
+  alternativa_e?: string
+  resposta_correta?: string
 }
 
 interface HabilidadeBncc {
   id: string
   codigo: string
   descricao: string
-}
-
-interface QuestaoSelecionada extends Questao {
-  ordem: number
 }
 
 const ANO_SERIE_OPTIONS = [
@@ -50,297 +43,402 @@ const ANO_SERIE_OPTIONS = [
   { value: '9º ano EF', label: '9º ano EF' },
 ]
 
-export default function ListasExerciciosPage() {
+const DIFICULDADE_OPTIONS = [
+  { value: 'facil', label: '🟢 Fácil' },
+  { value: 'medio', label: '🟡 Médio' },
+  { value: 'dificil', label: '🔴 Difícil' },
+]
+
+type ModalStep = 'form' | 'preview'
+
+export default function ListaExerciciosPage() {
   const { usuario } = useAuth()
-  const [listas, setListas] = useState<Lista[]>([])
+  const supabase = createClient()
+
+  const [listas, setListas] = useState<ListaExercicios[]>([])
   const [questoesDisponiveis, setQuestoesDisponiveis] = useState<Questao[]>([])
-  const [questoesSelecionadas, setQuestoesSelecionadas] = useState<QuestaoSelecionada[]>([])
   const [habilidades, setHabilidades] = useState<HabilidadeBncc[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [searchQuestoes, setSearchQuestoes] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
-  const [viewModalOpen, setViewModalOpen] = useState(false)
-  const [exportModalOpen, setExportModalOpen] = useState(false)
-  const [previewQuestaoOpen, setPreviewQuestaoOpen] = useState(false)
-  const [previewQuestao, setPreviewQuestao] = useState<Questao | null>(null)
-  const [editingLista, setEditingLista] = useState<Lista | null>(null)
-  const [viewingLista, setViewingLista] = useState<Lista | null>(null)
+  const [modalStep, setModalStep] = useState<ModalStep>('form')
+  const [questoesModalOpen, setQuestoesModalOpen] = useState(false)
+  const [gerarAutoModalOpen, setGerarAutoModalOpen] = useState(false)
+  const [editingLista, setEditingLista] = useState<ListaExercicios | null>(null)
   const [saving, setSaving] = useState(false)
-  const [exporting, setExporting] = useState(false)
-  const [step, setStep] = useState(1)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [questoesSelecionadas, setQuestoesSelecionadas] = useState<string[]>([])
+  const [showHabilidadesFilter, setShowHabilidadesFilter] = useState(false)
+  const [geracaoSucesso, setGeracaoSucesso] = useState(false)
+
+  const [totalQuestoesInput, setTotalQuestoesInput] = useState('10')
+  const [qtdFacilInput, setQtdFacilInput] = useState('3')
+  const [qtdMedioInput, setQtdMedioInput] = useState('4')
+  const [qtdDificilInput, setQtdDificilInput] = useState('3')
 
   const [formData, setFormData] = useState({
     titulo: '',
     descricao: '',
-    ano_serie: '6º ano EF',
-    instrucoes: '',
-    mostrar_gabarito: false,
-    mostrar_resolucao: false,
+    incluir_gabarito: true,
+    incluir_cabecalho: true,
   })
 
-  const [filtroQuestoes, setFiltroQuestoes] = useState({
+  const [questaoFilters, setQuestaoFilters] = useState({
     ano_serie: '',
-    dificuldade: '',
-    habilidade_id: '',
+    habilidades_ids: [] as string[],
+    dificuldade: ''
   })
 
-  const supabase = createClient()
+  const [autoConfig, setAutoConfig] = useState({
+    ano_serie: '6º ano EF',
+    habilidades_ids: [] as string[],
+  })
 
-  const fetchListas = useCallback(async () => {
+  const totalQuestoes = parseInt(totalQuestoesInput) || 0
+  const qtdFacil = parseInt(qtdFacilInput) || 0
+  const qtdMedio = parseInt(qtdMedioInput) || 0
+  const qtdDificil = parseInt(qtdDificilInput) || 0
+  const totalDistribuicao = qtdFacil + qtdMedio + qtdDificil
+
+  const fetchData = useCallback(async () => {
     if (!usuario?.id) { setLoading(false); return }
-    setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('listas_exercicios')
-        .select('*')
-        .eq('usuario_id', usuario.id)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      const listasComContagem = await Promise.all((data || []).map(async (lista) => {
-        const { count } = await supabase
-          .from('lista_questoes')
-          .select('*', { count: 'exact', head: true })
-          .eq('lista_id', lista.id)
-        return { ...lista, questoes_count: count || 0 }
-      }))
-
-      setListas(listasComContagem)
-    } catch (error) {
-      console.error('Erro:', error)
+      const [lRes, qRes, hRes] = await Promise.all([
+        supabase.from('listas_exercicios').select('*').eq('usuario_id', usuario.id).order('created_at', { ascending: false }),
+        supabase.from('questoes').select('id, enunciado, ano_serie, dificuldade, habilidade_id, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta').eq('ativa', true),
+        supabase.from('habilidades_bncc').select('id, codigo, descricao').order('codigo'),
+      ])
+      setListas(lRes.data || [])
+      setQuestoesDisponiveis(qRes.data || [])
+      setHabilidades(hRes.data || [])
+    } catch (e) {
+      console.error('Erro:', e)
     } finally {
       setLoading(false)
     }
   }, [usuario?.id, supabase])
 
-  const fetchQuestoes = useCallback(async () => {
-    if (!usuario?.id) return
-    try {
-      let query = supabase
-        .from('questoes')
-        .select('*')
-        .or(`usuario_id.eq.${usuario.id},is_publica.eq.true`)
-        .order('created_at', { ascending: false })
+  useEffect(() => { fetchData() }, [fetchData])
 
-      if (filtroQuestoes.ano_serie) query = query.eq('ano_serie', filtroQuestoes.ano_serie)
-      if (filtroQuestoes.dificuldade) query = query.eq('dificuldade', filtroQuestoes.dificuldade)
-      if (filtroQuestoes.habilidade_id) query = query.eq('habilidade_id', filtroQuestoes.habilidade_id)
-
-      const { data, error } = await query
-      if (error) throw error
-      setQuestoesDisponiveis(data || [])
-    } catch (error) {
-      console.error('Erro:', error)
+  const handleTotalQuestoesChange = (value: string) => {
+    setTotalQuestoesInput(value)
+    const num = parseInt(value) || 0
+    if (num > 0) {
+      const facil = Math.round(num * 0.3)
+      const dificil = Math.round(num * 0.3)
+      const medio = num - facil - dificil
+      setQtdFacilInput(facil.toString())
+      setQtdMedioInput(medio.toString())
+      setQtdDificilInput(dificil.toString())
     }
-  }, [usuario?.id, supabase, filtroQuestoes])
+  }
 
-  const fetchHabilidades = useCallback(async () => {
-    const { data } = await supabase.from('habilidades_bncc').select('id, codigo, descricao').order('codigo')
-    if (data) setHabilidades(data)
-  }, [supabase])
-
-  useEffect(() => { fetchListas(); fetchHabilidades() }, [fetchListas, fetchHabilidades])
-  useEffect(() => { if (usuario?.id) fetchQuestoes() }, [usuario?.id, fetchQuestoes])
-  useEffect(() => { if (modalOpen && step === 2) fetchQuestoes() }, [modalOpen, step, fetchQuestoes])
-
-  const handleOpenModal = (lista?: Lista) => {
+  const handleOpenModal = (lista?: ListaExercicios) => {
+    setGeracaoSucesso(false)
+    setSaveError(null)
+    setModalStep('form')
     if (lista) {
       setEditingLista(lista)
+      const config = lista.configuracoes || {}
       setFormData({
         titulo: lista.titulo,
         descricao: lista.descricao || '',
-        ano_serie: lista.ano_serie || '6º ano EF',
-        instrucoes: lista.instrucoes || '',
-        mostrar_gabarito: lista.mostrar_gabarito,
-        mostrar_resolucao: lista.mostrar_resolucao,
+        incluir_gabarito: config.incluir_gabarito ?? true,
+        incluir_cabecalho: config.incluir_cabecalho ?? true,
       })
+      setTotalQuestoesInput((lista.questoes_ids?.length || 10).toString())
+      setQuestoesSelecionadas(lista.questoes_ids || [])
     } else {
       setEditingLista(null)
-      setFormData({ titulo: '', descricao: '', ano_serie: '6º ano EF', instrucoes: '', mostrar_gabarito: false, mostrar_resolucao: false })
+      setFormData({
+        titulo: '',
+        descricao: '',
+        incluir_gabarito: true,
+        incluir_cabecalho: true,
+      })
+      setTotalQuestoesInput('10')
+      setQtdFacilInput('3')
+      setQtdMedioInput('4')
+      setQtdDificilInput('3')
       setQuestoesSelecionadas([])
     }
-    setStep(1)
     setModalOpen(true)
   }
 
+  const handleGoToPreview = () => {
+    if (!formData.titulo.trim()) {
+      setSaveError('Digite um título')
+      return
+    }
+    if (questoesSelecionadas.length === 0) {
+      setSaveError('Selecione pelo menos uma questão')
+      return
+    }
+    setSaveError(null)
+    setModalStep('preview')
+  }
+
+  const handleBackToForm = () => {
+    setSaveError(null)
+    setModalStep('form')
+  }
+
   const handleSave = async () => {
-    if (!usuario?.id || !formData.titulo) return
+    if (!usuario?.id) {
+      setSaveError('Usuário não autenticado')
+      return
+    }
+    if (!formData.titulo.trim()) {
+      setSaveError('Digite um título')
+      return
+    }
+    if (questoesSelecionadas.length === 0) {
+      setSaveError('Selecione pelo menos uma questão')
+      return
+    }
+
     setSaving(true)
+    setSaveError(null)
+
     try {
-      if (editingLista) {
-        const { error } = await supabase.from('listas_exercicios').update({
-          titulo: formData.titulo, descricao: formData.descricao, ano_serie: formData.ano_serie,
-          instrucoes: formData.instrucoes, mostrar_gabarito: formData.mostrar_gabarito,
-          mostrar_resolucao: formData.mostrar_resolucao, updated_at: new Date().toISOString(),
-        }).eq('id', editingLista.id)
-        if (error) throw error
-      } else {
-        const { data: novaLista, error } = await supabase.from('listas_exercicios').insert({
-          usuario_id: usuario.id, titulo: formData.titulo, descricao: formData.descricao,
-          ano_serie: formData.ano_serie, instrucoes: formData.instrucoes,
-          mostrar_gabarito: formData.mostrar_gabarito, mostrar_resolucao: formData.mostrar_resolucao,
-        }).select().single()
-
-        if (error) throw error
-
-        if (questoesSelecionadas.length > 0 && novaLista) {
-          const questoesInsert = questoesSelecionadas.map((q, idx) => ({
-            lista_id: novaLista.id, questao_id: q.id, ordem: idx + 1,
-          }))
-          const { error: questoesError } = await supabase.from('lista_questoes').insert(questoesInsert)
-          if (questoesError) throw questoesError
+      const dataToSave = {
+        usuario_id: usuario.id,
+        titulo: formData.titulo.trim(),
+        descricao: formData.descricao?.trim() || null,
+        questoes_ids: questoesSelecionadas,
+        configuracoes: {
+          incluir_gabarito: formData.incluir_gabarito,
+          incluir_cabecalho: formData.incluir_cabecalho,
         }
       }
+
+      let result
+      if (editingLista) {
+        result = await supabase.from('listas_exercicios').update(dataToSave).eq('id', editingLista.id).select()
+      } else {
+        result = await supabase.from('listas_exercicios').insert(dataToSave).select()
+      }
+
+      if (result.error) {
+        setSaveError(`Erro: ${result.error.message}`)
+        return
+      }
+
       setModalOpen(false)
-      fetchListas()
-    } catch (error) {
-      console.error('Erro:', error)
-      alert('Erro ao salvar lista')
+      setModalStep('form')
+      fetchData()
+    } catch (e: any) {
+      setSaveError(e.message || 'Erro desconhecido')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta lista?')) return
-    try {
-      const { error } = await supabase.from('listas_exercicios').delete().eq('id', id)
-      if (error) throw error
-      fetchListas()
-    } catch (error) { console.error('Erro:', error) }
+    if (!confirm('Excluir esta lista?')) return
+    await supabase.from('listas_exercicios').delete().eq('id', id)
+    fetchData()
   }
 
-  const handleAddQuestao = (questao: Questao) => {
-    if (questoesSelecionadas.find(q => q.id === questao.id)) return
-    setQuestoesSelecionadas([...questoesSelecionadas, { ...questao, ordem: questoesSelecionadas.length + 1 }])
+  const toggleQuestao = (id: string) => {
+    setQuestoesSelecionadas(prev =>
+      prev.includes(id) ? prev.filter(q => q !== id) : [...prev, id]
+    )
   }
 
-  const handleRemoveQuestao = (id: string) => {
-    setQuestoesSelecionadas(questoesSelecionadas.filter(q => q.id !== id).map((q, idx) => ({ ...q, ordem: idx + 1 })))
+  const toggleHabilidadeAuto = (id: string) => {
+    setAutoConfig(prev => ({
+      ...prev,
+      habilidades_ids: prev.habilidades_ids.includes(id)
+        ? prev.habilidades_ids.filter(h => h !== id)
+        : [...prev.habilidades_ids, id]
+    }))
   }
 
-  const handleMoveQuestao = (index: number, direction: 'up' | 'down') => {
-    const newList = [...questoesSelecionadas]
-    const newIndex = direction === 'up' ? index - 1 : index + 1
-    if (newIndex < 0 || newIndex >= newList.length) return
-    ;[newList[index], newList[newIndex]] = [newList[newIndex], newList[index]]
-    setQuestoesSelecionadas(newList.map((q, idx) => ({ ...q, ordem: idx + 1 })))
+  const toggleHabilidadeManual = (id: string) => {
+    setQuestaoFilters(prev => ({
+      ...prev,
+      habilidades_ids: prev.habilidades_ids.includes(id)
+        ? prev.habilidades_ids.filter(h => h !== id)
+        : [...prev.habilidades_ids, id]
+    }))
   }
 
-  const handlePreviewQuestao = (questao: Questao) => {
-    setPreviewQuestao(questao)
-    setPreviewQuestaoOpen(true)
-  }
-
-  const handleExport = async (formato: 'pdf' | 'docx') => {
-    if (!viewingLista) return
-    
-    if (formato === 'pdf') {
-      alert('Exportação PDF em breve! Use Word por enquanto.')
-      return
+  const gerarQuestoesAutomaticamente = () => {
+    let qFiltradas = questoesDisponiveis.filter(q => q.ano_serie === autoConfig.ano_serie)
+    if (autoConfig.habilidades_ids.length > 0) {
+      qFiltradas = qFiltradas.filter(q => q.habilidade_id && autoConfig.habilidades_ids.includes(q.habilidade_id))
     }
 
-    setExporting(true)
-    try {
-      const response = await fetch('/api/exportar/lista', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          listaId: viewingLista.id,
-          incluirGabarito: viewingLista.mostrar_gabarito,
-          incluirResolucao: viewingLista.mostrar_resolucao,
-        }),
-      })
+    const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.5)
 
-      if (!response.ok) throw new Error('Erro ao exportar')
+    const faceis = shuffle(qFiltradas.filter(q => q.dificuldade === 'facil')).slice(0, qtdFacil)
+    const medias = shuffle(qFiltradas.filter(q => q.dificuldade === 'medio')).slice(0, qtdMedio)
+    const dificeis = shuffle(qFiltradas.filter(q => q.dificuldade === 'dificil')).slice(0, qtdDificil)
 
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${viewingLista.titulo.replace(/[^a-zA-Z0-9áéíóúãõâêôç\s-]/gi, '').trim().replace(/\s+/g, '_')}.docx`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      
-      setExportModalOpen(false)
-    } catch (error) {
-      console.error('Erro:', error)
-      alert('Erro ao exportar lista. Tente novamente.')
-    } finally {
-      setExporting(false)
-    }
+    const selecionadas = [...faceis, ...medias, ...dificeis].map(q => q.id)
+    setQuestoesSelecionadas(selecionadas)
+    setGeracaoSucesso(true)
+
+    setTimeout(() => {
+      setGerarAutoModalOpen(false)
+      setGeracaoSucesso(false)
+    }, 1500)
   }
 
-  const filteredListas = listas.filter(l => l.titulo.toLowerCase().includes(searchTerm.toLowerCase()))
+  const moverQuestao = (index: number, direcao: 'up' | 'down') => {
+    const novaOrdem = [...questoesSelecionadas]
+    const novoIndex = direcao === 'up' ? index - 1 : index + 1
+    if (novoIndex < 0 || novoIndex >= novaOrdem.length) return
+    ;[novaOrdem[index], novaOrdem[novoIndex]] = [novaOrdem[novoIndex], novaOrdem[index]]
+    setQuestoesSelecionadas(novaOrdem)
+  }
 
-  const questoesFiltradas = questoesDisponiveis.filter(q =>
-    q.enunciado.toLowerCase().includes(searchQuestoes.toLowerCase()) &&
-    !questoesSelecionadas.find(qs => qs.id === q.id)
+  const removerQuestao = (id: string) => {
+    setQuestoesSelecionadas(prev => prev.filter(q => q !== id))
+  }
+
+  const filteredQuestoes = questoesDisponiveis.filter(q => {
+    if (questaoFilters.ano_serie && q.ano_serie !== questaoFilters.ano_serie) return false
+    if (questaoFilters.dificuldade && q.dificuldade !== questaoFilters.dificuldade) return false
+    if (questaoFilters.habilidades_ids.length > 0) {
+      if (!q.habilidade_id || !questaoFilters.habilidades_ids.includes(q.habilidade_id)) return false
+    }
+    return true
+  })
+
+  const filteredListas = listas.filter(l =>
+    l.titulo.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const getDificuldadeColor = (dif: string) => dif === 'facil' ? 'success' : dif === 'medio' ? 'warning' : 'danger'
-  const getHabilidadeCodigo = (id?: string) => id ? habilidades.find(h => h.id === id)?.codigo : null
+  const habilidadesFiltradas = habilidades.filter(h =>
+    !autoConfig.ano_serie || h.codigo.includes(autoConfig.ano_serie.charAt(0))
+  )
+
+  const habilidadesFiltradasManual = habilidades.filter(h =>
+    !questaoFilters.ano_serie || h.codigo.includes(questaoFilters.ano_serie.charAt(0))
+  )
+
+  const getHabilidadeCodigo = (id?: string) => {
+    if (!id) return null
+    return habilidades.find(h => h.id === id)?.codigo || null
+  }
+
+  const getDificuldadeInfo = (d?: string) => {
+    if (d === 'facil') return { label: 'Fácil', color: 'success' as const, emoji: '🟢' }
+    if (d === 'medio') return { label: 'Médio', color: 'warning' as const, emoji: '🟡' }
+    if (d === 'dificil') return { label: 'Difícil', color: 'danger' as const, emoji: '🔴' }
+    return { label: d || '', color: 'default' as const, emoji: '' }
+  }
+
+  const getQuestoesDisponiveisPorDificuldade = () => {
+    let qf = questoesDisponiveis.filter(q => q.ano_serie === autoConfig.ano_serie)
+    if (autoConfig.habilidades_ids.length > 0) {
+      qf = qf.filter(q => q.habilidade_id && autoConfig.habilidades_ids.includes(q.habilidade_id))
+    }
+    return {
+      facil: qf.filter(q => q.dificuldade === 'facil').length,
+      medio: qf.filter(q => q.dificuldade === 'medio').length,
+      dificil: qf.filter(q => q.dificuldade === 'dificil').length,
+      total: qf.length
+    }
+  }
+
+  const disponiveisAuto = getQuestoesDisponiveisPorDificuldade()
+
+  const getEstatisticasLista = () => {
+    const questoes = questoesSelecionadas
+      .map(id => questoesDisponiveis.find(q => q.id === id))
+      .filter(Boolean) as Questao[]
+    return {
+      total: questoes.length,
+      facil: questoes.filter(q => q.dificuldade === 'facil').length,
+      medio: questoes.filter(q => q.dificuldade === 'medio').length,
+      dificil: questoes.filter(q => q.dificuldade === 'dificil').length,
+      habilidades: [...new Set(questoes.map(q => q.habilidade_id).filter(Boolean))].length
+    }
+  }
+
+  const stats = getEstatisticasLista()
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="p-6 lg:p-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Listas de Exercícios</h1>
-          <p className="text-gray-600">Crie listas para treino e tarefas dos alunos</p>
+          <h1 className="text-2xl font-bold text-gray-900">Lista de Exercícios</h1>
+          <p className="text-gray-600">Crie listas para impressão ou PDF</p>
         </div>
-        <Button onClick={() => handleOpenModal()}><Plus className="w-5 h-5 mr-2" />Nova Lista</Button>
+        <Button onClick={() => handleOpenModal()}>
+          <Plus className="w-5 h-5 mr-2" />Nova Lista
+        </Button>
       </div>
 
-      <Card><CardContent className="p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <Input placeholder="Buscar listas..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
-        </div>
-      </CardContent></Card>
+      {/* Busca */}
+      <Card variant="bordered" className="mb-6">
+        <CardContent className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Input
+              placeholder="Buscar listas..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Total de Listas</p><p className="text-2xl font-bold text-gray-900">{listas.length}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Total de Questões</p><p className="text-2xl font-bold text-indigo-600">{listas.reduce((acc, l) => acc + (l.questoes_count || 0), 0)}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Com Gabarito</p><p className="text-2xl font-bold text-green-600">{listas.filter(l => l.mostrar_gabarito).length}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Questões Disponíveis</p><p className="text-2xl font-bold text-purple-600">{questoesDisponiveis.length}</p></CardContent></Card>
-      </div>
-
+      {/* Lista */}
       {loading ? (
-        <div className="flex justify-center py-12"><div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" /></div>
+        <div className="flex justify-center py-12">
+          <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
+        </div>
       ) : filteredListas.length === 0 ? (
-        <Card><CardContent className="p-12 text-center">
-          <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{searchTerm ? 'Nenhuma lista encontrada' : 'Nenhuma lista criada'}</h3>
-          <p className="text-gray-500 mb-6">{searchTerm ? 'Tente outro termo de busca' : 'Comece criando sua primeira lista de exercícios'}</p>
-          {!searchTerm && <Button onClick={() => handleOpenModal()}><Plus className="w-5 h-5 mr-2" />Criar Lista</Button>}
-        </CardContent></Card>
+        <Card variant="bordered">
+          <CardContent className="p-12 text-center">
+            <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {searchTerm ? 'Nenhuma encontrada' : 'Nenhuma lista'}
+            </h3>
+            <p className="text-gray-500 mb-6">Crie sua primeira lista de exercícios</p>
+            <Button onClick={() => handleOpenModal()}>
+              <Plus className="w-5 h-5 mr-2" />Criar Lista
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredListas.map((lista) => (
-            <Card key={lista.id} className="hover:shadow-md transition-shadow">
+        <div className="space-y-4">
+          {filteredListas.map(lista => (
+            <Card key={lista.id} variant="bordered" className="hover:shadow-md transition-shadow">
               <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 line-clamp-1">{lista.titulo}</h3>
-                    <p className="text-sm text-gray-500 line-clamp-2 mt-1">{lista.descricao || 'Sem descrição'}</p>
+                    <h3 className="font-semibold text-gray-900 mb-1">{lista.titulo}</h3>
+                    {lista.descricao && (
+                      <p className="text-gray-600 text-sm mb-2">{lista.descricao}</p>
+                    )}
+                    <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+                      <span>{lista.questoes_ids?.length || 0} questões</span>
+                      <span>{new Date(lista.created_at).toLocaleDateString('pt-BR')}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <Badge variant="info">{lista.ano_serie}</Badge>
-                  <Badge>{lista.questoes_count || 0} questões</Badge>
-                  {lista.mostrar_gabarito && <Badge variant="success">Com gabarito</Badge>}
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t">
-                  <span className="text-xs text-gray-400">{new Date(lista.created_at).toLocaleDateString('pt-BR')}</span>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => { setViewingLista(lista); setViewModalOpen(true) }}><Eye className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => { setViewingLista(lista); setExportModalOpen(true) }}><Download className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleOpenModal(lista)}><Edit className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(lista.id)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
+                    <Button variant="ghost" size="sm" title="Visualizar">
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" title="Imprimir">
+                      <Printer className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" title="Download">
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleOpenModal(lista)} title="Editar">
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(lista.id)} title="Excluir">
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -349,225 +447,455 @@ export default function ListasExerciciosPage() {
         </div>
       )}
 
-      {/* Modal Criar/Editar */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingLista ? 'Editar Lista' : 'Nova Lista de Exercícios'} size="xl">
-        <div className="space-y-6">
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <div className={`flex items-center gap-2 ${step >= 1 ? 'text-indigo-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>1</div>
-              <span className="font-medium">Dados</span>
+      {/* MODAL PRINCIPAL */}
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={modalStep === 'preview' ? '📋 Revisar Lista' : (editingLista ? 'Editar Lista' : 'Nova Lista')}
+        size="xl"
+      >
+        {modalStep === 'form' ? (
+          <div className="space-y-4">
+            {/* BOTÃO CRIAR/REVISAR NO TOPO */}
+            <div className="flex gap-3 pb-4 border-b">
+              <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button className="flex-1" onClick={handleGoToPreview}>
+                <Eye className="w-4 h-4 mr-2" />
+                Revisar ({questoesSelecionadas.length})
+              </Button>
             </div>
-            <div className="w-16 h-0.5 bg-gray-200" />
-            <div className={`flex items-center gap-2 ${step >= 2 ? 'text-indigo-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>2</div>
-              <span className="font-medium">Questões</span>
-            </div>
-          </div>
 
-          {step === 1 ? (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
-                <Input placeholder="Ex: Lista de Frações - 6º Ano" value={formData.titulo} onChange={(e) => setFormData({ ...formData, titulo: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-                <textarea className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900" rows={2} placeholder="Descrição opcional..." value={formData.descricao} onChange={(e) => setFormData({ ...formData, descricao: e.target.value })} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+            {/* Título */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+              <Input
+                placeholder="Ex: Lista de Frações - 6º Ano"
+                value={formData.titulo}
+                onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+              />
+            </div>
+
+            {/* Descrição */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+              <textarea
+                className="w-full px-4 py-2 border rounded-lg text-gray-900"
+                rows={2}
+                placeholder="Descrição opcional..."
+                value={formData.descricao}
+                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+              />
+            </div>
+
+            {/* Opções */}
+            <div className="flex gap-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.incluir_gabarito}
+                  onChange={(e) => setFormData({ ...formData, incluir_gabarito: e.target.checked })}
+                  className="rounded text-indigo-600"
+                />
+                <span className="text-sm text-gray-700">Incluir gabarito</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.incluir_cabecalho}
+                  onChange={(e) => setFormData({ ...formData, incluir_cabecalho: e.target.checked })}
+                  className="rounded text-indigo-600"
+                />
+                <span className="text-sm text-gray-700">Incluir cabeçalho</span>
+              </label>
+            </div>
+
+            {/* Seleção de Questões */}
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900" value={formData.ano_serie} onChange={(e) => setFormData({ ...formData, ano_serie: e.target.value })}>
-                    {ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                  </select>
+                  <h4 className="font-medium text-gray-900">Questões: {questoesSelecionadas.length}/{totalQuestoes}</h4>
+                  {questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 && (
+                    <span className="text-green-500 text-sm">✓ Completo</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setGerarAutoModalOpen(true)}>
+                    <Wand2 className="w-4 h-4 mr-1" />Auto
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setQuestoesModalOpen(true)}>
+                    <Plus className="w-4 h-4 mr-1" />Manual
+                  </Button>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Instruções (aparece no documento)</label>
-                <textarea className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900" rows={3} placeholder="Ex: Resolva as questões abaixo mostrando os cálculos..." value={formData.instrucoes} onChange={(e) => setFormData({ ...formData, instrucoes: e.target.value })} />
+
+              {/* Barra de progresso */}
+              <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                <div
+                  className={`h-2 rounded-full transition-all ${questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 ? 'bg-green-500' : 'bg-indigo-500'}`}
+                  style={{ width: `${totalQuestoes > 0 ? Math.min((questoesSelecionadas.length / totalQuestoes) * 100, 100) : 0}%` }}
+                />
               </div>
-              <div className="flex gap-6">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={formData.mostrar_gabarito} onChange={(e) => setFormData({ ...formData, mostrar_gabarito: e.target.checked })} className="w-4 h-4 text-indigo-600 rounded" />
-                  <span className="text-sm text-gray-700">Incluir gabarito no documento</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={formData.mostrar_resolucao} onChange={(e) => setFormData({ ...formData, mostrar_resolucao: e.target.checked })} className="w-4 h-4 text-indigo-600 rounded" />
-                  <span className="text-sm text-gray-700">Incluir resolução</span>
-                </label>
+
+              {/* Preview das questões */}
+              {questoesSelecionadas.length > 0 && (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {questoesSelecionadas.map((id, idx) => {
+                    const q = questoesDisponiveis.find(x => x.id === id)
+                    if (!q) return null
+                    const dif = getDificuldadeInfo(q.dificuldade)
+                    return (
+                      <div key={id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="font-bold text-gray-700">{idx + 1}.</span>
+                          <Badge variant={dif.color} className="text-xs">{dif.emoji}</Badge>
+                          <span className="text-gray-900 truncate">{q.enunciado.substring(0, 40)}...</span>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => toggleQuestao(id)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Erro */}
+            {saveError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                <p className="text-sm text-red-600">{saveError}</p>
               </div>
-              <div className="flex gap-3 pt-4 border-t">
-                <Button variant="outline" className="flex-1" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                <Button className="flex-1" onClick={() => setStep(2)} disabled={!formData.titulo}>Próximo: Selecionar Questões</Button>
+            )}
+          </div>
+        ) : (
+          /* PREVIEW */
+          <div className="space-y-4">
+            {/* BOTÕES NO TOPO */}
+            <div className="flex gap-3 pb-4 border-b">
+              <Button variant="outline" onClick={handleBackToForm}>
+                <ArrowLeft className="w-4 h-4 mr-1" />Voltar
+              </Button>
+              <Button className="flex-1" onClick={handleSave} loading={saving}>
+                <CheckCircle className="w-4 h-4 mr-2" />
+                {editingLista ? 'Salvar Alterações' : 'Criar Lista'}
+              </Button>
+            </div>
+
+            {/* Resumo */}
+            <div className="bg-indigo-50 p-4 rounded-lg">
+              <h3 className="font-bold text-lg text-gray-900 mb-1">{formData.titulo}</h3>
+              {formData.descricao && (
+                <p className="text-gray-600 text-sm mb-2">{formData.descricao}</p>
+              )}
+              <div className="grid grid-cols-4 gap-2 text-sm">
+                <div className="bg-white p-2 rounded text-center">
+                  <p className="text-gray-500 text-xs">Questões</p>
+                  <p className="font-bold text-gray-900">{questoesSelecionadas.length}</p>
+                </div>
+                <div className="bg-white p-2 rounded text-center">
+                  <p className="text-gray-500 text-xs">Habilidades</p>
+                  <p className="font-bold text-gray-900">{stats.habilidades}</p>
+                </div>
+                <div className="bg-white p-2 rounded text-center">
+                  <p className="text-gray-500 text-xs">Gabarito</p>
+                  <p className="font-bold text-gray-900">{formData.incluir_gabarito ? 'Sim' : 'Não'}</p>
+                </div>
+                <div className="bg-white p-2 rounded text-center">
+                  <p className="text-gray-500 text-xs">Cabeçalho</p>
+                  <p className="font-bold text-gray-900">{formData.incluir_cabecalho ? 'Sim' : 'Não'}</p>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-2 text-xs">
+                <span>🟢 {stats.facil} fáceis</span>
+                <span>🟡 {stats.medio} médias</span>
+                <span>🔴 {stats.dificil} difíceis</span>
               </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-6" style={{ minHeight: '60vh' }}>
-                <div className="border rounded-lg p-4 flex flex-col">
-                  <h4 className="font-medium text-gray-900 mb-3">Questões Disponíveis ({questoesFiltradas.length})</h4>
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <select className="px-2 py-2 text-sm border rounded-lg text-gray-900" value={filtroQuestoes.ano_serie} onChange={(e) => setFiltroQuestoes({ ...filtroQuestoes, ano_serie: e.target.value })}>
-                      <option value="">Todos os anos</option>
-                      {ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                    </select>
-                    <select className="px-2 py-2 text-sm border rounded-lg text-gray-900" value={filtroQuestoes.habilidade_id} onChange={(e) => setFiltroQuestoes({ ...filtroQuestoes, habilidade_id: e.target.value })}>
-                      <option value="">Todas habilidades</option>
-                      {habilidades.map(h => <option key={h.id} value={h.id}>{h.codigo}</option>)}
-                    </select>
-                    <select className="px-2 py-2 text-sm border rounded-lg text-gray-900" value={filtroQuestoes.dificuldade} onChange={(e) => setFiltroQuestoes({ ...filtroQuestoes, dificuldade: e.target.value })}>
-                      <option value="">Todas dificuldades</option>
-                      <option value="facil">🟢 Fácil</option>
-                      <option value="medio">🟡 Médio</option>
-                      <option value="dificil">🔴 Difícil</option>
-                    </select>
-                  </div>
-                  <Input placeholder="Buscar questão..." value={searchQuestoes} onChange={(e) => setSearchQuestoes(e.target.value)} className="mb-3" />
-                  <div className="flex-1 overflow-y-auto space-y-2">
-                    {questoesFiltradas.map((q) => (
-                      <div key={q.id} className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer group" onClick={() => handleAddQuestao(q)}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant={getDificuldadeColor(q.dificuldade) as any} className="text-xs">{q.dificuldade}</Badge>
-                            <span className="text-xs text-gray-500">{q.ano_serie}</span>
-                            {getHabilidadeCodigo(q.habilidade_id) && <Badge variant="info" className="text-xs">{getHabilidadeCodigo(q.habilidade_id)}</Badge>}
-                          </div>
-                          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handlePreviewQuestao(q) }}>
-                            <Maximize2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        <p className="text-sm text-gray-900 line-clamp-3">{q.enunciado}</p>
-                        <p className="text-xs text-indigo-600 mt-2 opacity-0 group-hover:opacity-100">Clique para adicionar</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="border rounded-lg p-4 flex flex-col">
-                  <h4 className="font-medium text-gray-900 mb-3">Questões Selecionadas ({questoesSelecionadas.length})</h4>
-                  <div className="flex-1 overflow-y-auto space-y-2">
-                    {questoesSelecionadas.length === 0 ? (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        <p>Clique nas questões ao lado para adicionar</p>
-                      </div>
-                    ) : (
-                      questoesSelecionadas.map((q, idx) => (
-                        <div key={q.id} className="p-3 border rounded-lg bg-indigo-50">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-indigo-700">#{q.ordem}</span>
-                              <Badge variant={getDificuldadeColor(q.dificuldade) as any} className="text-xs">{q.dificuldade}</Badge>
-                              {getHabilidadeCodigo(q.habilidade_id) && <Badge variant="info" className="text-xs">{getHabilidadeCodigo(q.habilidade_id)}</Badge>}
-                            </div>
-                            <div className="flex gap-1">
-                              <button onClick={() => handlePreviewQuestao(q)} className="p-1 text-gray-500 hover:text-indigo-600"><Maximize2 className="w-4 h-4" /></button>
-                              <button onClick={() => handleMoveQuestao(idx, 'up')} disabled={idx === 0} className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30">↑</button>
-                              <button onClick={() => handleMoveQuestao(idx, 'down')} disabled={idx === questoesSelecionadas.length - 1} className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30">↓</button>
-                              <button onClick={() => handleRemoveQuestao(q.id)} className="p-1 text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
-                            </div>
-                          </div>
-                          <p className="text-sm text-gray-900 line-clamp-2">{q.enunciado}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={() => setStep(1)}>Voltar</Button>
-                <Button className="flex-1" onClick={handleSave} loading={saving} disabled={questoesSelecionadas.length === 0}>
-                  {editingLista ? 'Salvar Alterações' : `Criar Lista (${questoesSelecionadas.length} questões)`}
+
+            {/* Lista de Questões */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-gray-900">Questões</h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setModalStep('form'); setQuestoesModalOpen(true) }}
+                >
+                  <Plus className="w-4 h-4 mr-1" />Adicionar
                 </Button>
               </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {questoesSelecionadas.map((id, idx) => {
+                  const q = questoesDisponiveis.find(x => x.id === id)
+                  if (!q) return null
+                  const dif = getDificuldadeInfo(q.dificuldade)
+                  return (
+                    <div key={id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg border">
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          onClick={() => moverQuestao(idx, 'up')}
+                          disabled={idx === 0}
+                          className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => moverQuestao(idx, 'down')}
+                          disabled={idx === questoesSelecionadas.length - 1}
+                          className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1 mb-0.5 flex-wrap">
+                          <span className="font-bold text-gray-900 text-sm">Q{idx + 1}</span>
+                          <Badge variant={dif.color} className="text-xs">{dif.emoji}</Badge>
+                          {getHabilidadeCodigo(q.habilidade_id) && (
+                            <Badge className="text-xs">{getHabilidadeCodigo(q.habilidade_id)}</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700 line-clamp-1">{q.enunciado}</p>
+                      </div>
+                      <button
+                        onClick={() => removerQuestao(id)}
+                        className="p-1 hover:bg-red-100 rounded"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Erro */}
+            {saveError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                <p className="text-sm text-red-600">{saveError}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* MODAL - Seleção Manual */}
+      <Modal
+        isOpen={questoesModalOpen}
+        onClose={() => setQuestoesModalOpen(false)}
+        title="Selecionar Questões"
+        size="xl"
+      >
+        <div className="space-y-4">
+          <div className="bg-indigo-50 p-3 rounded-lg flex items-center justify-between">
+            <span className="text-sm text-indigo-700">
+              <strong>{questoesSelecionadas.length}</strong> selecionadas
+            </span>
+            {questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 && (
+              <Badge variant="success">✓ Completo</Badge>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <select
+              className="px-3 py-2 border rounded-lg text-gray-900"
+              value={questaoFilters.ano_serie}
+              onChange={(e) => setQuestaoFilters({ ...questaoFilters, ano_serie: e.target.value })}
+            >
+              <option value="">Todos os anos</option>
+              {ANO_SERIE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              className="px-3 py-2 border rounded-lg text-gray-900"
+              value={questaoFilters.dificuldade}
+              onChange={(e) => setQuestaoFilters({ ...questaoFilters, dificuldade: e.target.value })}
+            >
+              <option value="">Todas dificuldades</option>
+              {DIFICULDADE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <Button
+              variant={showHabilidadesFilter ? 'primary' : 'outline'}
+              onClick={() => setShowHabilidadesFilter(!showHabilidadesFilter)}
+            >
+              {questaoFilters.habilidades_ids.length > 0
+                ? `${questaoFilters.habilidades_ids.length} hab.`
+                : 'Habilidades'}
+            </Button>
+          </div>
+
+          {showHabilidadesFilter && (
+            <div className="border rounded-lg p-2 bg-gray-50 max-h-28 overflow-y-auto">
+              {habilidadesFiltradasManual.map(h => (
+                <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={questaoFilters.habilidades_ids.includes(h.id)}
+                    onChange={() => toggleHabilidadeManual(h.id)}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-gray-900"><strong>{h.codigo}</strong></span>
+                </label>
+              ))}
             </div>
           )}
+
+          <p className="text-sm text-gray-600">{filteredQuestoes.length} questões encontradas</p>
+
+          <div className="max-h-64 overflow-y-auto space-y-2">
+            {filteredQuestoes.map(q => {
+              const sel = questoesSelecionadas.includes(q.id)
+              return (
+                <div
+                  key={q.id}
+                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${sel ? 'bg-indigo-50 border-indigo-300' : 'hover:bg-gray-50'}`}
+                  onClick={() => toggleQuestao(q.id)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-5 h-5 rounded border flex items-center justify-center mt-0.5 flex-shrink-0 ${sel ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'}`}>
+                      {sel && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex gap-1 mb-1 flex-wrap">
+                        <Badge variant="info" className="text-xs">{q.ano_serie}</Badge>
+                        <Badge
+                          variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'}
+                          className="text-xs"
+                        >
+                          {q.dificuldade}
+                        </Badge>
+                        {getHabilidadeCodigo(q.habilidade_id) && (
+                          <Badge className="text-xs">{getHabilidadeCodigo(q.habilidade_id)}</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-900 line-clamp-2">{q.enunciado}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <Button variant="outline" className="w-full" onClick={() => setQuestoesModalOpen(false)}>
+            Fechar
+          </Button>
         </div>
       </Modal>
 
-      {/* Modal Preview Questão */}
-      <Modal isOpen={previewQuestaoOpen} onClose={() => setPreviewQuestaoOpen(false)} title="Visualizar Questão" size="lg">
-        {previewQuestao && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="info">{previewQuestao.ano_serie}</Badge>
-              <Badge variant={getDificuldadeColor(previewQuestao.dificuldade) as any}>{previewQuestao.dificuldade}</Badge>
-              {getHabilidadeCodigo(previewQuestao.habilidade_id) && <Badge>{getHabilidadeCodigo(previewQuestao.habilidade_id)}</Badge>}
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-gray-900 whitespace-pre-wrap">{previewQuestao.enunciado}</p>
-            </div>
-            <div className="space-y-2">
-              {['A', 'B', 'C', 'D', 'E'].map((letra) => {
-                const alt = previewQuestao[`alternativa_${letra.toLowerCase()}` as keyof Questao] as string
-                if (!alt) return null
-                const isCorrect = previewQuestao.resposta_correta === letra
-                return (
-                  <div key={letra} className={`p-3 rounded-lg border-2 ${isCorrect ? 'bg-green-50 border-green-400' : 'bg-white border-gray-200'}`}>
-                    <span className={`font-bold ${isCorrect ? 'text-green-700' : 'text-gray-700'}`}>{letra})</span>
-                    <span className={`ml-2 ${isCorrect ? 'text-green-700' : 'text-gray-600'}`}>{alt}</span>
-                    {isCorrect && <span className="ml-2 text-green-600 text-sm font-medium">✓ Correta</span>}
-                  </div>
-                )
-              })}
-            </div>
-            <div className="flex gap-3 pt-4 border-t">
-              <Button variant="outline" className="flex-1" onClick={() => setPreviewQuestaoOpen(false)}>Fechar</Button>
-              {!questoesSelecionadas.find(q => q.id === previewQuestao.id) && (
-                <Button className="flex-1" onClick={() => { handleAddQuestao(previewQuestao); setPreviewQuestaoOpen(false) }}>
-                  <Plus className="w-4 h-4 mr-2" />Adicionar à Lista
-                </Button>
-              )}
-            </div>
+      {/* MODAL - Gerar Automático */}
+      <Modal
+        isOpen={gerarAutoModalOpen}
+        onClose={() => { setGerarAutoModalOpen(false); setGeracaoSucesso(false) }}
+        title="Gerar Automaticamente"
+        size="lg"
+      >
+        {geracaoSucesso ? (
+          <div className="py-12 text-center">
+            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-gray-900">Pronto!</h3>
+            <p className="text-gray-600">{questoesSelecionadas.length} questões selecionadas</p>
           </div>
-        )}
-      </Modal>
-
-      {/* Modal Exportar */}
-      <Modal isOpen={exportModalOpen} onClose={() => setExportModalOpen(false)} title="Exportar Lista" size="md">
-        {viewingLista && (
+        ) : (
           <div className="space-y-4">
-            <p className="text-gray-600">Escolha o formato para exportar "{viewingLista.titulo}":</p>
-            <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => handleExport('docx')} disabled={exporting} className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center disabled:opacity-50">
-                {exporting ? <Loader2 className="w-12 h-12 mx-auto mb-3 text-indigo-600 animate-spin" /> : <FileDown className="w-12 h-12 mx-auto mb-3 text-blue-600" />}
-                <h4 className="font-medium text-gray-900">{exporting ? 'Gerando...' : 'Word (DOCX)'}</h4>
-                <p className="text-sm text-gray-500 mt-1">Editável</p>
-              </button>
-              <button onClick={() => handleExport('pdf')} disabled={exporting} className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center disabled:opacity-50">
-                <Printer className="w-12 h-12 mx-auto mb-3 text-red-600" />
-                <h4 className="font-medium text-gray-900">PDF</h4>
-                <p className="text-sm text-gray-500 mt-1">Em breve...</p>
-              </button>
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <p className="text-sm text-blue-800">Meta: <strong>{totalQuestoes} questões</strong></p>
             </div>
-            <div className="flex gap-3 pt-4 border-t">
-              <Button variant="outline" className="flex-1" onClick={() => setExportModalOpen(false)} disabled={exporting}>Cancelar</Button>
-            </div>
-          </div>
-        )}
-      </Modal>
 
-      {/* Modal Visualizar Lista */}
-      <Modal isOpen={viewModalOpen} onClose={() => setViewModalOpen(false)} title="Visualizar Lista" size="lg">
-        {viewingLista && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="info">{viewingLista.ano_serie}</Badge>
-              <Badge>{viewingLista.questoes_count || 0} questões</Badge>
-              {viewingLista.mostrar_gabarito && <Badge variant="success">Com gabarito</Badge>}
-            </div>
             <div>
-              <h3 className="font-semibold text-lg text-gray-900">{viewingLista.titulo}</h3>
-              {viewingLista.descricao && <p className="text-gray-600 mt-1">{viewingLista.descricao}</p>}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
+              <select
+                className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                value={autoConfig.ano_serie}
+                onChange={(e) => setAutoConfig({ ...autoConfig, ano_serie: e.target.value })}
+              >
+                {ANO_SERIE_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
-            {viewingLista.instrucoes && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium text-sm text-gray-700 mb-1">Instruções:</h4>
-                <p className="text-gray-600">{viewingLista.instrucoes}</p>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Habilidades (opcional)</label>
+              <div className="max-h-28 overflow-y-auto border rounded-lg p-2">
+                {habilidadesFiltradas.map(h => (
+                  <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoConfig.habilidades_ids.includes(h.id)}
+                      onChange={() => toggleHabilidadeAuto(h.id)}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-gray-900"><strong>{h.codigo}</strong></span>
+                  </label>
+                ))}
               </div>
-            )}
-            <div className="flex gap-3 pt-4 border-t">
-              <Button variant="outline" className="flex-1" onClick={() => setViewModalOpen(false)}>Fechar</Button>
-              <Button className="flex-1" onClick={() => { setViewModalOpen(false); setExportModalOpen(true) }}>
-                <Download className="w-4 h-4 mr-2" />Exportar
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-lg text-sm">
+              <p className="text-gray-600 mb-1">Disponíveis: <strong>{disponiveisAuto.total}</strong></p>
+              <div className="flex gap-3 text-xs">
+                <span>🟢 {disponiveisAuto.facil}</span>
+                <span>🟡 {disponiveisAuto.medio}</span>
+                <span>🔴 {disponiveisAuto.dificil}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">🟢 Fáceis</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={qtdFacilInput}
+                  onChange={(e) => setQtdFacilInput(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">🟡 Médias</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={qtdMedioInput}
+                  onChange={(e) => setQtdMedioInput(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">🔴 Difíceis</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={qtdDificilInput}
+                  onChange={(e) => setQtdDificilInput(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                />
+              </div>
+            </div>
+
+            <div className={`p-3 rounded-lg ${totalDistribuicao === totalQuestoes ? 'bg-green-50' : 'bg-orange-50'}`}>
+              <p className={`text-sm font-medium ${totalDistribuicao === totalQuestoes ? 'text-green-800' : 'text-orange-800'}`}>
+                Total: {totalDistribuicao} {totalDistribuicao === totalQuestoes && '✓'}
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setGerarAutoModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={gerarQuestoesAutomaticamente}
+                disabled={totalDistribuicao === 0 || disponiveisAuto.total === 0}
+              >
+                <Wand2 className="w-4 h-4 mr-2" />Gerar
               </Button>
             </div>
           </div>
