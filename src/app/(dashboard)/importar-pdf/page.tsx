@@ -1,14 +1,10 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Upload, FileText, Trash2, Edit, Save, Plus, CheckCircle, AlertCircle, Loader2, Eye, X, Wand2 } from 'lucide-react'
-import * as pdfjsLib from 'pdfjs-dist'
-
-// Configurar worker do PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+import { Upload, FileText, Trash2, Edit, Save, Plus, CheckCircle, AlertCircle, Loader2, Eye, X } from 'lucide-react'
 
 interface QuestaoExtraida {
   id: string
@@ -55,8 +51,8 @@ export default function ImportarPDFPage() {
   const [etapa, setEtapa] = useState<'upload' | 'revisao' | 'config' | 'concluido'>('upload')
   const [erro, setErro] = useState<string | null>(null)
   const [sucesso, setSucesso] = useState<string | null>(null)
+  const [pdfjsLib, setPdfjsLib] = useState<any>(null)
 
-  // Configurações para salvar
   const [configSalvar, setConfigSalvar] = useState({
     ano_serie: '6º ano EF',
     dificuldade: 'medio',
@@ -67,8 +63,18 @@ export default function ImportarPDFPage() {
   const [habilidades, setHabilidades] = useState<HabilidadeBncc[]>([])
   const [modalTextoOpen, setModalTextoOpen] = useState(false)
 
+  // Carregar PDF.js dinamicamente no cliente
+  useEffect(() => {
+    const loadPdfJs = async () => {
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf')
+      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
+      setPdfjsLib(pdfjs)
+    }
+    loadPdfJs()
+  }, [])
+
   // Carregar habilidades
-  useState(() => {
+  useEffect(() => {
     const loadHabilidades = async () => {
       const { data } = await supabase
         .from('habilidades_bncc')
@@ -77,10 +83,12 @@ export default function ImportarPDFPage() {
       if (data) setHabilidades(data)
     }
     loadHabilidades()
-  })
+  }, [supabase])
 
   // Extrair texto do PDF
   const extrairTextoPDF = async (file: File): Promise<string> => {
+    if (!pdfjsLib) throw new Error('PDF.js não carregado')
+    
     const arrayBuffer = await file.arrayBuffer()
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
     let textoCompleto = ''
@@ -101,46 +109,33 @@ export default function ImportarPDFPage() {
   const identificarQuestoes = (texto: string): QuestaoExtraida[] => {
     const questoesEncontradas: QuestaoExtraida[] = []
     
-    // Padrões comuns de questões
-    // Padrão 1: "1.", "2.", "3." ou "1)", "2)", "3)"
-    // Padrão 2: "Questão 1", "Questão 2"
-    // Padrão 3: "01.", "02."
-    
     const padraoQuestao = /(?:^|\n)\s*(?:Quest[aã]o\s*)?(\d{1,3})[.\)]\s*([\s\S]*?)(?=(?:\n\s*(?:Quest[aã]o\s*)?\d{1,3}[.\)])|$)/gi
-    const padraoAlternativas = /\n?\s*\(?([A-E])\)?[.\):\s]+([^\n]+)/gi
 
     let match
     while ((match = padraoQuestao.exec(texto)) !== null) {
       const numeroQuestao = match[1]
       let conteudoQuestao = match[2].trim()
       
-      if (conteudoQuestao.length < 10) continue // Muito curto para ser questão
+      if (conteudoQuestao.length < 10) continue
 
-      // Extrair alternativas
       const alternativas: Record<string, string> = { A: '', B: '', C: '', D: '', E: '' }
       let enunciado = conteudoQuestao
 
-      const matchAlternativas = conteudoQuestao.match(padraoAlternativas)
-      if (matchAlternativas && matchAlternativas.length >= 4) {
-        // Encontrar onde começam as alternativas
-        const primeiraAlt = conteudoQuestao.search(/\n?\s*\(?[Aa]\)?[.\):\s]+/)
-        if (primeiraAlt > 0) {
-          enunciado = conteudoQuestao.substring(0, primeiraAlt).trim()
-        }
+      const primeiraAlt = conteudoQuestao.search(/\n?\s*\(?[Aa]\)?[.\):\s]+/)
+      if (primeiraAlt > 0) {
+        enunciado = conteudoQuestao.substring(0, primeiraAlt).trim()
+      }
 
-        // Extrair cada alternativa
-        let altMatch
-        const altRegex = /\(?([A-Ea-e])\)?[.\):\s]+([^\n]+)/g
-        while ((altMatch = altRegex.exec(conteudoQuestao)) !== null) {
-          const letra = altMatch[1].toUpperCase()
-          const textoAlt = altMatch[2].trim()
-          if (alternativas.hasOwnProperty(letra)) {
-            alternativas[letra] = textoAlt
-          }
+      const altRegex = /\(?([A-Ea-e])\)?[.\):\s]+([^\n]+)/g
+      let altMatch
+      while ((altMatch = altRegex.exec(conteudoQuestao)) !== null) {
+        const letra = altMatch[1].toUpperCase()
+        const textoAlt = altMatch[2].trim()
+        if (alternativas.hasOwnProperty(letra)) {
+          alternativas[letra] = textoAlt
         }
       }
 
-      // Só adicionar se tiver enunciado e pelo menos 2 alternativas
       const numAlternativas = Object.values(alternativas).filter(a => a.length > 0).length
       if (enunciado.length > 15 && numAlternativas >= 2) {
         questoesEncontradas.push({
@@ -161,13 +156,17 @@ export default function ImportarPDFPage() {
     return questoesEncontradas
   }
 
-  // Processar arquivo
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
     if (file.type !== 'application/pdf') {
       setErro('Por favor, selecione um arquivo PDF')
+      return
+    }
+
+    if (!pdfjsLib) {
+      setErro('Aguarde o carregamento do processador de PDF')
       return
     }
 
@@ -199,33 +198,28 @@ export default function ImportarPDFPage() {
     }
   }
 
-  // Editar questão
   const toggleEditarQuestao = (id: string) => {
     setQuestoes(prev => prev.map(q => 
       q.id === id ? { ...q, editando: !q.editando } : q
     ))
   }
 
-  // Atualizar questão
   const atualizarQuestao = (id: string, campo: keyof QuestaoExtraida, valor: string) => {
     setQuestoes(prev => prev.map(q => 
       q.id === id ? { ...q, [campo]: valor } : q
     ))
   }
 
-  // Toggle seleção
   const toggleSelecao = (id: string) => {
     setQuestoes(prev => prev.map(q => 
       q.id === id ? { ...q, selecionada: !q.selecionada } : q
     ))
   }
 
-  // Remover questão
   const removerQuestao = (id: string) => {
     setQuestoes(prev => prev.filter(q => q.id !== id))
   }
 
-  // Adicionar questão manualmente
   const adicionarQuestaoManual = () => {
     const novaQuestao: QuestaoExtraida = {
       id: `q_manual_${Date.now()}`,
@@ -242,12 +236,10 @@ export default function ImportarPDFPage() {
     setQuestoes(prev => [...prev, novaQuestao])
   }
 
-  // Selecionar/deselecionar todas
   const toggleTodasSelecao = (selecionar: boolean) => {
     setQuestoes(prev => prev.map(q => ({ ...q, selecionada: selecionar })))
   }
 
-  // Ir para configuração
   const irParaConfig = () => {
     const selecionadas = questoes.filter(q => q.selecionada)
     if (selecionadas.length === 0) {
@@ -255,7 +247,6 @@ export default function ImportarPDFPage() {
       return
     }
     
-    // Verificar se todas têm resposta correta
     const semResposta = selecionadas.filter(q => !q.resposta_correta)
     if (semResposta.length > 0) {
       setErro(`${semResposta.length} questão(ões) sem resposta correta marcada`)
@@ -266,7 +257,6 @@ export default function ImportarPDFPage() {
     setEtapa('config')
   }
 
-  // Salvar questões no banco
   const salvarQuestoes = async () => {
     if (!usuario?.id) return
 
@@ -309,7 +299,6 @@ export default function ImportarPDFPage() {
     }
   }
 
-  // Reiniciar processo
   const reiniciar = () => {
     setArquivo(null)
     setTextoExtraido('')
@@ -326,7 +315,6 @@ export default function ImportarPDFPage() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
           <FileText className="w-7 h-7 text-indigo-600" />
@@ -335,44 +323,29 @@ export default function ImportarPDFPage() {
         <p className="text-gray-600 mt-1">Extraia questões de provas em PDF para seu banco de questões</p>
       </div>
 
-      {/* Etapas */}
       <div className="flex items-center gap-2">
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${etapa === 'upload' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
-          <span className="w-5 h-5 rounded-full bg-current text-white flex items-center justify-center text-xs">1</span>
-          Upload
-        </div>
-        <div className="w-8 h-0.5 bg-gray-300"></div>
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${etapa === 'revisao' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
-          <span className="w-5 h-5 rounded-full bg-current text-white flex items-center justify-center text-xs">2</span>
-          Revisão
-        </div>
-        <div className="w-8 h-0.5 bg-gray-300"></div>
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${etapa === 'config' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>
-          <span className="w-5 h-5 rounded-full bg-current text-white flex items-center justify-center text-xs">3</span>
-          Configurar
-        </div>
-        <div className="w-8 h-0.5 bg-gray-300"></div>
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${etapa === 'concluido' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-          <span className="w-5 h-5 rounded-full bg-current text-white flex items-center justify-center text-xs">4</span>
-          Concluído
-        </div>
+        {['upload', 'revisao', 'config', 'concluido'].map((step, idx) => (
+          <div key={step} className="flex items-center">
+            {idx > 0 && <div className="w-8 h-0.5 bg-gray-300 mr-2"></div>}
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${etapa === step ? (step === 'concluido' ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700') : 'bg-gray-100 text-gray-600'}`}>
+              <span className="w-5 h-5 rounded-full bg-current text-white flex items-center justify-center text-xs">{idx + 1}</span>
+              {step === 'upload' ? 'Upload' : step === 'revisao' ? 'Revisão' : step === 'config' ? 'Configurar' : 'Concluído'}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Mensagens */}
       {erro && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          {erro}
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />{erro}
         </div>
       )}
       {sucesso && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
-          <CheckCircle className="w-5 h-5 flex-shrink-0" />
-          {sucesso}
+          <CheckCircle className="w-5 h-5 flex-shrink-0" />{sucesso}
         </div>
       )}
 
-      {/* ETAPA 1: Upload */}
       {etapa === 'upload' && (
         <Card>
           <CardContent className="p-8">
@@ -394,15 +367,8 @@ export default function ImportarPDFPage() {
                   <p className="text-sm text-gray-400 mt-4">Formatos aceitos: PDF de provas com questões de múltipla escolha</p>
                 </>
               )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
+              <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileUpload} className="hidden" />
             </div>
-
             <div className="mt-6 p-4 bg-blue-50 rounded-lg">
               <h4 className="font-medium text-blue-900 mb-2">💡 Dicas para melhor resultado:</h4>
               <ul className="text-sm text-blue-800 space-y-1">
@@ -416,45 +382,32 @@ export default function ImportarPDFPage() {
         </Card>
       )}
 
-      {/* ETAPA 2: Revisão */}
       {etapa === 'revisao' && (
         <div className="space-y-4">
-          {/* Barra de ações */}
           <Card>
             <CardContent className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-600">
-                    <strong>{questoesSelecionadas.length}</strong> de {questoes.length} selecionada(s)
-                  </span>
+                  <span className="text-sm text-gray-600"><strong>{questoesSelecionadas.length}</strong> de {questoes.length} selecionada(s)</span>
                   <Button variant="ghost" size="sm" onClick={() => toggleTodasSelecao(true)}>Selecionar todas</Button>
                   <Button variant="ghost" size="sm" onClick={() => toggleTodasSelecao(false)}>Desmarcar todas</Button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setModalTextoOpen(true)}>
-                    <Eye className="w-4 h-4 mr-1" />Ver texto extraído
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={adicionarQuestaoManual}>
-                    <Plus className="w-4 h-4 mr-1" />Adicionar manual
-                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setModalTextoOpen(true)}><Eye className="w-4 h-4 mr-1" />Ver texto</Button>
+                  <Button variant="outline" size="sm" onClick={adicionarQuestaoManual}><Plus className="w-4 h-4 mr-1" />Adicionar manual</Button>
                   <Button variant="outline" onClick={reiniciar}>Cancelar</Button>
-                  <Button onClick={irParaConfig} disabled={questoesSelecionadas.length === 0}>
-                    Continuar ({questoesSelecionadas.length})
-                  </Button>
+                  <Button onClick={irParaConfig} disabled={questoesSelecionadas.length === 0}>Continuar ({questoesSelecionadas.length})</Button>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Lista de questões */}
           {questoes.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
                 <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
                 <p className="text-gray-600 mb-4">Nenhuma questão foi identificada automaticamente.</p>
-                <Button onClick={adicionarQuestaoManual}>
-                  <Plus className="w-4 h-4 mr-2" />Adicionar questão manualmente
-                </Button>
+                <Button onClick={adicionarQuestaoManual}><Plus className="w-4 h-4 mr-2" />Adicionar questão manualmente</Button>
               </CardContent>
             </Card>
           ) : (
@@ -463,63 +416,30 @@ export default function ImportarPDFPage() {
                 <Card key={questao.id} className={`${questao.selecionada ? 'ring-2 ring-indigo-500' : 'opacity-60'}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start gap-4">
-                      {/* Checkbox */}
-                      <input
-                        type="checkbox"
-                        checked={questao.selecionada}
-                        onChange={() => toggleSelecao(questao.id)}
-                        className="mt-1 w-5 h-5 rounded border-gray-300 text-indigo-600"
-                      />
-
+                      <input type="checkbox" checked={questao.selecionada} onChange={() => toggleSelecao(questao.id)} className="mt-1 w-5 h-5 rounded border-gray-300 text-indigo-600" />
                       <div className="flex-1">
-                        {/* Header */}
                         <div className="flex items-center justify-between mb-3">
                           <Badge>Questão {index + 1}</Badge>
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => toggleEditarQuestao(questao.id)}>
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => removerQuestao(questao.id)}>
-                              <Trash2 className="w-4 h-4 text-red-500" />
-                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => toggleEditarQuestao(questao.id)}><Edit className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="sm" onClick={() => removerQuestao(questao.id)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
                           </div>
                         </div>
-
                         {questao.editando ? (
-                          /* Modo edição */
                           <div className="space-y-3">
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Enunciado</label>
-                              <textarea
-                                className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                                rows={3}
-                                value={questao.enunciado}
-                                onChange={(e) => atualizarQuestao(questao.id, 'enunciado', e.target.value)}
-                              />
+                              <textarea className="w-full px-3 py-2 border rounded-lg text-gray-900" rows={3} value={questao.enunciado} onChange={(e) => atualizarQuestao(questao.id, 'enunciado', e.target.value)} />
                             </div>
                             {['A', 'B', 'C', 'D', 'E'].map((letra) => (
                               <div key={letra} className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => atualizarQuestao(questao.id, 'resposta_correta', letra as any)}
-                                  className={`w-8 h-8 rounded-full font-medium ${questao.resposta_correta === letra ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                >
-                                  {letra}
-                                </button>
-                                <Input
-                                  placeholder={`Alternativa ${letra}`}
-                                  value={questao[`alternativa_${letra.toLowerCase()}` as keyof QuestaoExtraida] as string}
-                                  onChange={(e) => atualizarQuestao(questao.id, `alternativa_${letra.toLowerCase()}` as keyof QuestaoExtraida, e.target.value)}
-                                  className="flex-1"
-                                />
+                                <button type="button" onClick={() => atualizarQuestao(questao.id, 'resposta_correta', letra as any)} className={`w-8 h-8 rounded-full font-medium ${questao.resposta_correta === letra ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}>{letra}</button>
+                                <Input placeholder={`Alternativa ${letra}`} value={questao[`alternativa_${letra.toLowerCase()}` as keyof QuestaoExtraida] as string} onChange={(e) => atualizarQuestao(questao.id, `alternativa_${letra.toLowerCase()}` as keyof QuestaoExtraida, e.target.value)} className="flex-1" />
                               </div>
                             ))}
-                            <Button size="sm" onClick={() => toggleEditarQuestao(questao.id)}>
-                              <CheckCircle className="w-4 h-4 mr-1" />Concluir edição
-                            </Button>
+                            <Button size="sm" onClick={() => toggleEditarQuestao(questao.id)}><CheckCircle className="w-4 h-4 mr-1" />Concluir edição</Button>
                           </div>
                         ) : (
-                          /* Modo visualização */
                           <div>
                             <p className="text-gray-900 mb-3">{questao.enunciado}</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -528,20 +448,14 @@ export default function ImportarPDFPage() {
                                 if (!texto) return null
                                 const isCorreta = questao.resposta_correta === letra
                                 return (
-                                  <div 
-                                    key={letra}
-                                    onClick={() => atualizarQuestao(questao.id, 'resposta_correta', letra as any)}
-                                    className={`p-2 rounded cursor-pointer ${isCorreta ? 'bg-green-100 border-2 border-green-500' : 'bg-gray-50 hover:bg-gray-100'}`}
-                                  >
+                                  <div key={letra} onClick={() => atualizarQuestao(questao.id, 'resposta_correta', letra as any)} className={`p-2 rounded cursor-pointer ${isCorreta ? 'bg-green-100 border-2 border-green-500' : 'bg-gray-50 hover:bg-gray-100'}`}>
                                     <span className={`font-bold ${isCorreta ? 'text-green-700' : 'text-gray-600'}`}>{letra})</span>
                                     <span className={`ml-2 ${isCorreta ? 'text-green-700' : 'text-gray-700'}`}>{texto}</span>
                                   </div>
                                 )
                               })}
                             </div>
-                            {!questao.resposta_correta && (
-                              <p className="text-sm text-orange-600 mt-2">⚠️ Clique na alternativa correta para marcá-la</p>
-                            )}
+                            {!questao.resposta_correta && <p className="text-sm text-orange-600 mt-2">⚠️ Clique na alternativa correta para marcá-la</p>}
                           </div>
                         )}
                       </div>
@@ -554,77 +468,45 @@ export default function ImportarPDFPage() {
         </div>
       )}
 
-      {/* ETAPA 3: Configuração */}
       {etapa === 'config' && (
         <Card>
           <CardContent className="p-6 space-y-6">
             <div>
               <h3 className="font-semibold text-gray-900 mb-4">Configurar {questoesSelecionadas.length} questão(ões) para importação</h3>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série *</label>
-                  <select
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                    value={configSalvar.ano_serie}
-                    onChange={(e) => setConfigSalvar({ ...configSalvar, ano_serie: e.target.value })}
-                  >
-                    {ANO_SERIE_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
+                  <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={configSalvar.ano_serie} onChange={(e) => setConfigSalvar({ ...configSalvar, ano_serie: e.target.value })}>
+                    {ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Dificuldade *</label>
-                  <select
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                    value={configSalvar.dificuldade}
-                    onChange={(e) => setConfigSalvar({ ...configSalvar, dificuldade: e.target.value })}
-                  >
-                    {DIFICULDADE_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
+                  <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={configSalvar.dificuldade} onChange={(e) => setConfigSalvar({ ...configSalvar, dificuldade: e.target.value })}>
+                    {DIFICULDADE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Habilidade BNCC (opcional)</label>
-                  <select
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                    value={configSalvar.habilidade_bncc_id}
-                    onChange={(e) => setConfigSalvar({ ...configSalvar, habilidade_bncc_id: e.target.value })}
-                  >
+                  <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={configSalvar.habilidade_bncc_id} onChange={(e) => setConfigSalvar({ ...configSalvar, habilidade_bncc_id: e.target.value })}>
                     <option value="">Selecione...</option>
-                    {habilidades.map(h => (
-                      <option key={h.id} value={h.id}>{h.codigo}</option>
-                    ))}
+                    {habilidades.map(h => <option key={h.id} value={h.id}>{h.codigo}</option>)}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fonte</label>
-                  <Input
-                    value={configSalvar.fonte}
-                    onChange={(e) => setConfigSalvar({ ...configSalvar, fonte: e.target.value })}
-                    placeholder="Ex: OBMEP 2023, Prova Bimestral..."
-                  />
+                  <Input value={configSalvar.fonte} onChange={(e) => setConfigSalvar({ ...configSalvar, fonte: e.target.value })} placeholder="Ex: OBMEP 2023, Prova Bimestral..." />
                 </div>
               </div>
             </div>
-
             <div className="flex gap-3 pt-4 border-t">
               <Button variant="outline" onClick={() => setEtapa('revisao')}>Voltar</Button>
-              <Button onClick={salvarQuestoes} loading={salvando} className="flex-1">
-                <Save className="w-4 h-4 mr-2" />
-                Importar {questoesSelecionadas.length} questão(ões)
-              </Button>
+              <Button onClick={salvarQuestoes} loading={salvando} className="flex-1"><Save className="w-4 h-4 mr-2" />Importar {questoesSelecionadas.length} questão(ões)</Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* ETAPA 4: Concluído */}
       {etapa === 'concluido' && (
         <Card>
           <CardContent className="p-12 text-center">
@@ -632,28 +514,19 @@ export default function ImportarPDFPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Importação Concluída!</h2>
             <p className="text-gray-600 mb-6">{questoesSelecionadas.length} questão(ões) foram adicionadas ao seu banco de questões.</p>
             <div className="flex justify-center gap-3">
-              <Button variant="outline" onClick={reiniciar}>
-                Importar outro PDF
-              </Button>
-              <Button onClick={() => window.location.href = '/dashboard/questoes'}>
-                Ver banco de questões
-              </Button>
+              <Button variant="outline" onClick={reiniciar}>Importar outro PDF</Button>
+              <Button onClick={() => window.location.href = '/dashboard/questoes'}>Ver banco de questões</Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Modal texto extraído */}
       <Modal isOpen={modalTextoOpen} onClose={() => setModalTextoOpen(false)} title="Texto Extraído do PDF" size="xl">
         <div className="max-h-[60vh] overflow-y-auto">
-          <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-50 p-4 rounded-lg">
-            {textoExtraido || 'Nenhum texto extraído'}
-          </pre>
+          <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-50 p-4 rounded-lg">{textoExtraido || 'Nenhum texto extraído'}</pre>
         </div>
-        <div className="flex justify-end mt-4">
-          <Button onClick={() => setModalTextoOpen(false)}>Fechar</Button>
-        </div>
+        <div className="flex justify-end mt-4"><Button onClick={() => setModalTextoOpen(false)}>Fechar</Button></div>
       </Modal>
     </div>
   )
-    }
+}
