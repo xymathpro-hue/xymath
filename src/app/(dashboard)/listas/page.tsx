@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, FileText, Edit, Trash2, Eye, Download, FileDown, Printer, QrCode, X, Maximize2, Loader2 } from 'lucide-react'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Download, FileDown, Printer, X, Maximize2, Loader2 } from 'lucide-react'
 
 interface Lista {
   id: string
@@ -286,7 +286,7 @@ export default function ListasExerciciosPage() {
   const getHabilidadeCodigo = (id?: string) => id ? habilidades.find(h => h.id === id)?.codigo : null
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Listas de Exercícios</h1>
@@ -352,7 +352,6 @@ export default function ListasExerciciosPage() {
       {/* Modal Criar/Editar */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingLista ? 'Editar Lista' : 'Nova Lista de Exercícios'} size="xl">
         <div className="space-y-6">
-          {/* Steps */}
           <div className="flex items-center justify-center gap-4 mb-6">
             <div className={`flex items-center gap-2 ${step >= 1 ? 'text-indigo-600' : 'text-gray-400'}`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>1</div>
@@ -405,11 +404,8 @@ export default function ListasExerciciosPage() {
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-6" style={{ minHeight: '60vh' }}>
-                {/* Questões Disponíveis */}
                 <div className="border rounded-lg p-4 flex flex-col">
                   <h4 className="font-medium text-gray-900 mb-3">Questões Disponíveis ({questoesFiltradas.length})</h4>
-
-                  {/* Filtros */}
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     <select className="px-2 py-2 text-sm border rounded-lg text-gray-900" value={filtroQuestoes.ano_serie} onChange={(e) => setFiltroQuestoes({ ...filtroQuestoes, ano_serie: e.target.value })}>
                       <option value="">Todos os anos</option>
@@ -426,9 +422,7 @@ export default function ListasExerciciosPage() {
                       <option value="dificil">🔴 Difícil</option>
                     </select>
                   </div>
-
                   <Input placeholder="Buscar questão..." value={searchQuestoes} onChange={(e) => setSearchQuestoes(e.target.value)} className="mb-3" />
-
                   <div className="flex-1 overflow-y-auto space-y-2">
                     {questoesFiltradas.map((q) => (
                       <div key={q.id} className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer group" onClick={() => handleAddQuestao(q)}>
@@ -448,11 +442,8 @@ export default function ListasExerciciosPage() {
                     ))}
                   </div>
                 </div>
-
-                {/* Questões Selecionadas */}
                 <div className="border rounded-lg p-4 flex flex-col">
                   <h4 className="font-medium text-gray-900 mb-3">Questões Selecionadas ({questoesSelecionadas.length})</h4>
-
                   <div className="flex-1 overflow-y-auto space-y-2">
                     {questoesSelecionadas.length === 0 ? (
                       <div className="flex items-center justify-center h-full text-gray-500">
@@ -481,7 +472,6 @@ export default function ListasExerciciosPage() {
                   </div>
                 </div>
               </div>
-
               <div className="flex gap-3 pt-4 border-t">
                 <Button variant="outline" onClick={() => setStep(1)}>Voltar</Button>
                 <Button className="flex-1" onClick={handleSave} loading={saving} disabled={questoesSelecionadas.length === 0}>
@@ -502,11 +492,9 @@ export default function ListasExerciciosPage() {
               <Badge variant={getDificuldadeColor(previewQuestao.dificuldade) as any}>{previewQuestao.dificuldade}</Badge>
               {getHabilidadeCodigo(previewQuestao.habilidade_id) && <Badge>{getHabilidadeCodigo(previewQuestao.habilidade_id)}</Badge>}
             </div>
-
             <div className="bg-gray-50 p-4 rounded-lg">
               <p className="text-gray-900 whitespace-pre-wrap">{previewQuestao.enunciado}</p>
             </div>
-
             <div className="space-y-2">
               {['A', 'B', 'C', 'D', 'E'].map((letra) => {
                 const alt = previewQuestao[`alternativa_${letra.toLowerCase()}` as keyof Questao] as string
@@ -521,7 +509,6 @@ export default function ListasExerciciosPage() {
                 )
               })}
             </div>
-
             <div className="flex gap-3 pt-4 border-t">
               <Button variant="outline" className="flex-1" onClick={() => setPreviewQuestaoOpen(false)}>Fechar</Button>
               {!questoesSelecionadas.find(q => q.id === previewQuestao.id) && (
@@ -540,37 +527,16 @@ export default function ListasExerciciosPage() {
           <div className="space-y-4">
             <p className="text-gray-600">Escolha o formato para exportar "{viewingLista.titulo}":</p>
             <div className="grid grid-cols-2 gap-4">
-              <button 
-                onClick={() => handleExport('docx')} 
-                disabled={exporting}
-                className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center disabled:opacity-50"
-              >
-                {exporting ? (
-                  <Loader2 className="w-12 h-12 mx-auto mb-3 text-indigo-600 animate-spin" />
-                ) : (
-                  <FileDown className="w-12 h-12 mx-auto mb-3 text-blue-600" />
-                )}
+              <button onClick={() => handleExport('docx')} disabled={exporting} className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center disabled:opacity-50">
+                {exporting ? <Loader2 className="w-12 h-12 mx-auto mb-3 text-indigo-600 animate-spin" /> : <FileDown className="w-12 h-12 mx-auto mb-3 text-blue-600" />}
                 <h4 className="font-medium text-gray-900">{exporting ? 'Gerando...' : 'Word (DOCX)'}</h4>
-                <p className="text-sm text-gray-500 mt-1">Editável - adicione logo e cabeçalho</p>
+                <p className="text-sm text-gray-500 mt-1">Editável</p>
               </button>
-              <button 
-                onClick={() => handleExport('pdf')} 
-                disabled={exporting}
-                className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center disabled:opacity-50"
-              >
+              <button onClick={() => handleExport('pdf')} disabled={exporting} className="p-6 border-2 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center disabled:opacity-50">
                 <Printer className="w-12 h-12 mx-auto mb-3 text-red-600" />
                 <h4 className="font-medium text-gray-900">PDF</h4>
                 <p className="text-sm text-gray-500 mt-1">Em breve...</p>
               </button>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg">
-              <div className="flex items-start gap-3">
-                <FileText className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-green-800">Documento Profissional</h4>
-                  <p className="text-sm text-green-700 mt-1">Inclui cabeçalho, campos para nome/turma/data, questões formatadas e gabarito.</p>
-                </div>
-              </div>
             </div>
             <div className="flex gap-3 pt-4 border-t">
               <Button variant="outline" className="flex-1" onClick={() => setExportModalOpen(false)} disabled={exporting}>Cancelar</Button>
@@ -607,6 +573,6 @@ export default function ListasExerciciosPage() {
           </div>
         )}
       </Modal>
-   </div>
+    </div>
   )
 }
