@@ -30,7 +30,7 @@ interface Questao {
   resposta_correta: string
   dificuldade: string
   ano_serie: string
-  habilidade_bncc_id?: string
+  habilidade_id?: string
 }
 
 interface HabilidadeBncc {
@@ -81,7 +81,7 @@ export default function ListasExerciciosPage() {
   const [filtroQuestoes, setFiltroQuestoes] = useState({
     ano_serie: '',
     dificuldade: '',
-    habilidade_bncc_id: '',
+    habilidade_id: '',
   })
 
   const supabase = createClient()
@@ -125,7 +125,7 @@ export default function ListasExerciciosPage() {
 
       if (filtroQuestoes.ano_serie) query = query.eq('ano_serie', filtroQuestoes.ano_serie)
       if (filtroQuestoes.dificuldade) query = query.eq('dificuldade', filtroQuestoes.dificuldade)
-      if (filtroQuestoes.habilidade_bncc_id) query = query.eq('habilidade_bncc_id', filtroQuestoes.habilidade_bncc_id)
+      if (filtroQuestoes.habilidade_id) query = query.eq('habilidade_id', filtroQuestoes.habilidade_id)
 
       const { data, error } = await query
       if (error) throw error
@@ -312,8 +312,8 @@ export default function ListasExerciciosPage() {
         </div>
       )}
 
-      {/* Modal Criar/Editar - TELA CHEIA para questões */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingLista ? 'Editar Lista' : 'Nova Lista de Exercícios'} size={step === 2 ? 'full' : 'xl'}>
+      {/* Modal Criar/Editar */}
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingLista ? 'Editar Lista' : 'Nova Lista de Exercícios'} size="xl">
         <div className="space-y-6">
           {/* Steps */}
           <div className="flex items-center justify-center gap-4 mb-6">
@@ -366,9 +366,8 @@ export default function ListasExerciciosPage() {
               </div>
             </div>
           ) : (
-            /* Step 2: Seleção de Questões - TELA MAIOR */
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-6" style={{ minHeight: '70vh' }}>
+              <div className="grid grid-cols-2 gap-6" style={{ minHeight: '60vh' }}>
                 {/* Questões Disponíveis */}
                 <div className="border rounded-lg p-4 flex flex-col">
                   <h4 className="font-medium text-gray-900 mb-3">Questões Disponíveis ({questoesFiltradas.length})</h4>
@@ -379,7 +378,7 @@ export default function ListasExerciciosPage() {
                       <option value="">Todos os anos</option>
                       {ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
-                    <select className="px-2 py-2 text-sm border rounded-lg text-gray-900" value={filtroQuestoes.habilidade_bncc_id} onChange={(e) => setFiltroQuestoes({ ...filtroQuestoes, habilidade_bncc_id: e.target.value })}>
+                    <select className="px-2 py-2 text-sm border rounded-lg text-gray-900" value={filtroQuestoes.habilidade_id} onChange={(e) => setFiltroQuestoes({ ...filtroQuestoes, habilidade_id: e.target.value })}>
                       <option value="">Todas habilidades</option>
                       {habilidades.map(h => <option key={h.id} value={h.id}>{h.codigo}</option>)}
                     </select>
@@ -400,7 +399,7 @@ export default function ListasExerciciosPage() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <Badge variant={getDificuldadeColor(q.dificuldade) as any} className="text-xs">{q.dificuldade}</Badge>
                             <span className="text-xs text-gray-500">{q.ano_serie}</span>
-                            {getHabilidadeCodigo(q.habilidade_bncc_id) && <Badge variant="info" className="text-xs">{getHabilidadeCodigo(q.habilidade_bncc_id)}</Badge>}
+                            {getHabilidadeCodigo(q.habilidade_id) && <Badge variant="info" className="text-xs">{getHabilidadeCodigo(q.habilidade_id)}</Badge>}
                           </div>
                           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handlePreviewQuestao(q) }}>
                             <Maximize2 className="w-4 h-4" />
@@ -429,7 +428,7 @@ export default function ListasExerciciosPage() {
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-indigo-700">#{q.ordem}</span>
                               <Badge variant={getDificuldadeColor(q.dificuldade) as any} className="text-xs">{q.dificuldade}</Badge>
-                              {getHabilidadeCodigo(q.habilidade_bncc_id) && <Badge variant="info" className="text-xs">{getHabilidadeCodigo(q.habilidade_bncc_id)}</Badge>}
+                              {getHabilidadeCodigo(q.habilidade_id) && <Badge variant="info" className="text-xs">{getHabilidadeCodigo(q.habilidade_id)}</Badge>}
                             </div>
                             <div className="flex gap-1">
                               <button onClick={() => handlePreviewQuestao(q)} className="p-1 text-gray-500 hover:text-indigo-600"><Maximize2 className="w-4 h-4" /></button>
@@ -457,14 +456,14 @@ export default function ListasExerciciosPage() {
         </div>
       </Modal>
 
-      {/* Modal Preview Questão - TELA CHEIA */}
+      {/* Modal Preview Questão */}
       <Modal isOpen={previewQuestaoOpen} onClose={() => setPreviewQuestaoOpen(false)} title="Visualizar Questão" size="lg">
         {previewQuestao && (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <Badge variant="info">{previewQuestao.ano_serie}</Badge>
               <Badge variant={getDificuldadeColor(previewQuestao.dificuldade) as any}>{previewQuestao.dificuldade}</Badge>
-              {getHabilidadeCodigo(previewQuestao.habilidade_bncc_id) && <Badge>{getHabilidadeCodigo(previewQuestao.habilidade_bncc_id)}</Badge>}
+              {getHabilidadeCodigo(previewQuestao.habilidade_id) && <Badge>{getHabilidadeCodigo(previewQuestao.habilidade_id)}</Badge>}
             </div>
 
             <div className="bg-gray-50 p-4 rounded-lg">
@@ -561,4 +560,4 @@ export default function ListasExerciciosPage() {
       </Modal>
     </div>
   )
-          }
+        }
