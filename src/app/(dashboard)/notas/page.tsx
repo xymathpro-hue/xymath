@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Settings, FileText, BarChart3, Plus, Edit, Trash2, Save, Users, Calculator, AlertCircle, CheckCircle, ChevronDown, Search } from 'lucide-react'
+import { Settings, FileText, BarChart3, Plus, Edit, Trash2, Save, Users, AlertCircle, CheckCircle, TrendingUp, Award, Target } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
 
 interface ConfiguracaoNotas {
   id: string
@@ -54,6 +55,8 @@ interface Nota {
 
 type TabType = 'configuracao' | 'lancamento' | 'relatorio'
 
+const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
+
 export default function NotasPage() {
   const { usuario } = useAuth()
   const supabase = createClient()
@@ -78,6 +81,11 @@ export default function NotasPage() {
   const [turmaSelecionada, setTurmaSelecionada] = useState<string>('')
   const [periodoSelecionado, setPeriodoSelecionado] = useState<number>(1)
   const [notasEditadas, setNotasEditadas] = useState<Record<string, Nota>>({})
+
+  // Relatório
+  const [todasNotas, setTodasNotas] = useState<Nota[]>([])
+  const [todosAlunos, setTodosAlunos] = useState<Aluno[]>([])
+  const [relatorioTurma, setRelatorioTurma] = useState<string>('')
 
   const anoLetivo = new Date().getFullYear()
 
@@ -127,12 +135,28 @@ export default function NotasPage() {
 
       setTurmas(turmasData || [])
 
+      // Buscar todos os alunos para relatório
+      const { data: alunosData } = await supabase
+        .from('alunos')
+        .select('id, nome, numero, turma_id')
+        .eq('ativo', true)
+
+      setTodosAlunos(alunosData || [])
+
+      // Buscar todas as notas para relatório
+      const { data: notasData } = await supabase
+        .from('notas')
+        .select('*')
+        .eq('ano_letivo', anoLetivo)
+
+      setTodasNotas(notasData || [])
+
     } catch (e) {
       console.error('Erro:', e)
     } finally {
       setLoading(false)
     }
-  }, [usuario?.id, supabase])
+  }, [usuario?.id, supabase, anoLetivo])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -344,7 +368,7 @@ export default function NotasPage() {
     for (const comp of componentes) {
       const nota = getNotaValue(alunoId, comp.id)
       const recuperacao = getRecuperacaoValue(alunoId, comp.id)
-      
+
       // Usa a maior nota entre normal e recuperação
       const notaFinal = recuperacao !== null && recuperacao > (nota || 0) ? recuperacao : nota
 
@@ -405,6 +429,9 @@ export default function NotasPage() {
       setNotasEditadas({})
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
+      
+      // Atualizar dados do relatório
+      fetchData()
     } catch (e: any) {
       setSaveError(e.message)
     } finally {
@@ -419,6 +446,113 @@ export default function NotasPage() {
     if (media >= mediaAprovacao - 1) return { status: 'Recuperação', color: 'text-yellow-600' }
     return { status: 'Abaixo', color: 'text-red-600' }
   }
+
+  // === RELATÓRIO ===
+
+  const getMediaTurma = (turmaId: string): number => {
+    const notasTurma = todasNotas.filter(n => n.turma_id === turmaId && n.nota !== null)
+    if (notasTurma.length === 0) return 0
+    const soma = notasTurma.reduce((acc, n) => acc + (n.nota || 0), 0)
+    return Math.round((soma / notasTurma.length) * 10) / 10
+  }
+
+  const getMediaPorPeriodo = (turmaId?: string) => {
+    const periodos = config?.tipo_periodo === 'trimestral'
+      ? ['1º Tri', '2º Tri', '3º Tri']
+      : ['1º Bim', '2º Bim', '3º Bim', '4º Bim']
+
+    return periodos.map((nome, idx) => {
+      const notasPeriodo = todasNotas.filter(n => 
+        n.periodo === idx + 1 && 
+        n.nota !== null &&
+        (!turmaId || n.turma_id === turmaId)
+      )
+      const media = notasPeriodo.length > 0
+        ? notasPeriodo.reduce((acc, n) => acc + (n.nota || 0), 0) / notasPeriodo.length
+        : 0
+      return {
+        nome,
+        media: Math.round(media * 10) / 10
+      }
+    })
+  }
+
+  const getDistribuicaoNotas = (turmaId?: string) => {
+    const faixas = [
+      { nome: '0-2', min: 0, max: 2, count: 0 },
+      { nome: '2-4', min: 2, max: 4, count: 0 },
+      { nome: '4-6', min: 4, max: 6, count: 0 },
+      { nome: '6-8', min: 6, max: 8, count: 0 },
+      { nome: '8-10', min: 8, max: 10, count: 0 },
+    ]
+
+    const notasFiltradas = todasNotas.filter(n => 
+      n.nota !== null && (!turmaId || n.turma_id === turmaId)
+    )
+
+    notasFiltradas.forEach(n => {
+      const nota = n.nota || 0
+      const faixa = faixas.find(f => nota >= f.min && nota <= f.max)
+      if (faixa) faixa.count++
+    })
+
+    return faixas
+  }
+
+  const getRankingAlunos = (turmaId?: string, limit = 10) => {
+    const alunosFiltrados = turmaId 
+      ? todosAlunos.filter(a => a.turma_id === turmaId)
+      : todosAlunos
+
+    const ranking = alunosFiltrados.map(aluno => {
+      const notasAluno = todasNotas.filter(n => n.aluno_id === aluno.id && n.nota !== null)
+      const media = notasAluno.length > 0
+        ? notasAluno.reduce((acc, n) => acc + (n.nota || 0), 0) / notasAluno.length
+        : 0
+      return {
+        ...aluno,
+        media: Math.round(media * 10) / 10,
+        turma: turmas.find(t => t.id === aluno.turma_id)?.nome || ''
+      }
+    })
+
+    return ranking
+      .filter(a => a.media > 0)
+      .sort((a, b) => b.media - a.media)
+      .slice(0, limit)
+  }
+
+  const getEstatisticasGerais = (turmaId?: string) => {
+    const notasFiltradas = todasNotas.filter(n => 
+      n.nota !== null && (!turmaId || n.turma_id === turmaId)
+    )
+
+    if (notasFiltradas.length === 0) {
+      return { media: 0, maior: 0, menor: 0, aprovados: 0, total: 0 }
+    }
+
+    const valores = notasFiltradas.map(n => n.nota || 0)
+    const media = valores.reduce((a, b) => a + b, 0) / valores.length
+    const mediaAprovacao = config?.media_aprovacao || 6.0
+
+    return {
+      media: Math.round(media * 10) / 10,
+      maior: Math.max(...valores),
+      menor: Math.min(...valores),
+      aprovados: valores.filter(v => v >= mediaAprovacao).length,
+      total: valores.length
+    }
+  }
+
+  const dadosMediasTurmas = turmas.map(t => ({
+    nome: t.nome,
+    media: getMediaTurma(t.id)
+  })).filter(t => t.media > 0)
+
+  const dadosEvolucao = getMediaPorPeriodo(relatorioTurma || undefined)
+  const dadosDistribuicao = getDistribuicaoNotas(relatorioTurma || undefined)
+  const rankingAlunos = getRankingAlunos(relatorioTurma || undefined)
+  const estatisticas = getEstatisticasGerais(relatorioTurma || undefined)
 
   const periodos = config?.tipo_periodo === 'trimestral'
     ? ['1º Tri', '2º Tri', '3º Tri']
@@ -811,13 +945,171 @@ export default function NotasPage() {
       {/* === ABA RELATÓRIO === */}
       {activeTab === 'relatorio' && (
         <div className="space-y-6">
+          {/* Filtro */}
           <Card variant="bordered">
-            <CardContent className="p-12 text-center">
-              <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Relatórios em breve</h3>
-              <p className="text-gray-500">Gráficos de desempenho, mapa de calor por habilidade, evolução temporal</p>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-gray-700">Filtrar por turma:</label>
+                <select
+                  value={relatorioTurma}
+                  onChange={(e) => setRelatorioTurma(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-gray-900"
+                >
+                  <option value="">Todas as turmas</option>
+                  {turmas.map(t => (
+                    <option key={t.id} value={t.id}>{t.nome}</option>
+                  ))}
+                </select>
+              </div>
             </CardContent>
           </Card>
+
+          {/* Cards de Estatísticas */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <Card variant="bordered">
+              <CardContent className="p-4 text-center">
+                <TrendingUp className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">Média Geral</p>
+                <p className="text-2xl font-bold text-gray-900">{estatisticas.media}</p>
+              </CardContent>
+            </Card>
+            <Card variant="bordered">
+              <CardContent className="p-4 text-center">
+                <Award className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">Maior Nota</p>
+                <p className="text-2xl font-bold text-green-600">{estatisticas.maior}</p>
+              </CardContent>
+            </Card>
+            <Card variant="bordered">
+              <CardContent className="p-4 text-center">
+                <Target className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">Menor Nota</p>
+                <p className="text-2xl font-bold text-red-600">{estatisticas.menor}</p>
+              </CardContent>
+            </Card>
+            <Card variant="bordered">
+              <CardContent className="p-4 text-center">
+                <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">Aprovados</p>
+                <p className="text-2xl font-bold text-green-600">{estatisticas.aprovados}</p>
+              </CardContent>
+            </Card>
+            <Card variant="bordered">
+              <CardContent className="p-4 text-center">
+                <Users className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">Total Notas</p>
+                <p className="text-2xl font-bold text-gray-900">{estatisticas.total}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Gráficos */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Média por Turma */}
+            {!relatorioTurma && dadosMediasTurmas.length > 0 && (
+              <Card variant="bordered">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">📊 Média por Turma</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={dadosMediasTurmas}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="nome" />
+                      <YAxis domain={[0, 10]} />
+                      <Tooltip />
+                      <Bar dataKey="media" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Evolução por Período */}
+            <Card variant="bordered">
+              <CardContent className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">📈 Evolução por Período</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={dadosEvolucao}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="nome" />
+                    <YAxis domain={[0, 10]} />
+                    <Tooltip />
+                    <Line 
+                      type="monotone" 
+                      dataKey="media" 
+                      stroke="#6366f1" 
+                      strokeWidth={3}
+                      dot={{ fill: '#6366f1', strokeWidth: 2, r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Distribuição de Notas */}
+            <Card variant="bordered">
+              <CardContent className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">📉 Distribuição de Notas</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={dadosDistribuicao}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="nome" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#22c55e" radius={[4, 4, 0, 0]}>
+                      {dadosDistribuicao.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={index < 2 ? '#ef4444' : index === 2 ? '#f59e0b' : '#22c55e'} 
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Ranking de Alunos */}
+            <Card variant="bordered">
+              <CardContent className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">🏆 Top 10 Alunos</h3>
+                {rankingAlunos.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">Nenhuma nota lançada ainda</p>
+                ) : (
+                  <div className="space-y-2 max-h-[280px] overflow-y-auto">
+                    {rankingAlunos.map((aluno, idx) => (
+                      <div key={aluno.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                            idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : idx === 2 ? 'bg-amber-600' : 'bg-gray-300'
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          <div>
+                            <p className="font-medium text-gray-900">{aluno.nome}</p>
+                            {!relatorioTurma && (
+                              <p className="text-xs text-gray-500">{aluno.turma}</p>
+                            )}
+                          </div>
+                        </div>
+                        <span className="font-bold text-lg text-indigo-600">{aluno.media}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Mensagem se não houver dados */}
+          {todasNotas.length === 0 && (
+            <Card variant="bordered">
+              <CardContent className="p-12 text-center">
+                <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum dado disponível</h3>
+                <p className="text-gray-500">Lance notas na aba Lançamento para ver os relatórios</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -861,4 +1153,4 @@ export default function NotasPage() {
       </Modal>
     </div>
   )
-      }
+}
