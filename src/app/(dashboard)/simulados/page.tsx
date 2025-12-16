@@ -47,7 +47,7 @@ export default function SimuladosPage() {
     embaralhar_questoes: true, embaralhar_alternativas: false,
   })
 
-  const [questaoFilters, setQuestaoFilters] = useState({ ano_serie: '', habilidade_bncc_id: '', dificuldade: '' })
+  const [questaoFilters, setQuestaoFilters] = useState({ ano_serie: '', habilidade_id: '', dificuldade: '' })
 
   const [autoConfig, setAutoConfig] = useState({
     ano_serie: '6º ano EF',
@@ -126,7 +126,7 @@ export default function SimuladosPage() {
 
     if (autoConfig.habilidades_ids.length > 0) {
       questoesFiltradas = questoesFiltradas.filter(q => 
-        q.habilidade_bncc_id && autoConfig.habilidades_ids.includes(q.habilidade_bncc_id)
+        q.habilidade_id && autoConfig.habilidades_ids.includes(q.habilidade_id)
       )
     }
 
@@ -149,7 +149,7 @@ export default function SimuladosPage() {
   const filteredQuestoes = questoesDisponiveis.filter(q => {
     if (questaoFilters.ano_serie && q.ano_serie !== questaoFilters.ano_serie) return false
     if (questaoFilters.dificuldade && q.dificuldade !== questaoFilters.dificuldade) return false
-    if (questaoFilters.habilidade_bncc_id && q.habilidade_bncc_id !== questaoFilters.habilidade_bncc_id) return false
+    if (questaoFilters.habilidade_id && q.habilidade_id !== questaoFilters.habilidade_id) return false
     return true
   })
 
@@ -247,8 +247,8 @@ export default function SimuladosPage() {
                     <div key={id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                       <span className="text-sm text-gray-900">
                         <strong>{idx + 1}.</strong> {q.enunciado.substring(0, 50)}...
-                        {getHabilidadeCodigo(q.habilidade_bncc_id) && (
-                          <Badge variant="info" className="ml-2 text-xs">{getHabilidadeCodigo(q.habilidade_bncc_id)}</Badge>
+                        {getHabilidadeCodigo(q.habilidade_id) && (
+                          <Badge variant="info" className="ml-2 text-xs">{getHabilidadeCodigo(q.habilidade_id)}</Badge>
                         )}
                       </span>
                       <Button variant="ghost" size="sm" onClick={() => toggleQuestao(id)}><X className="w-4 h-4" /></Button>
@@ -281,7 +281,7 @@ export default function SimuladosPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Habilidade BNCC</label>
-              <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={questaoFilters.habilidade_bncc_id} onChange={(e) => setQuestaoFilters({ ...questaoFilters, habilidade_bncc_id: e.target.value })}>
+              <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={questaoFilters.habilidade_id} onChange={(e) => setQuestaoFilters({ ...questaoFilters, habilidade_id: e.target.value })}>
                 <option value="">Todas</option>
                 {habilidades.map(h => <option key={h.id} value={h.id}>{h.codigo}</option>)}
               </select>
@@ -310,7 +310,7 @@ export default function SimuladosPage() {
                       <div className="flex gap-2 mb-1 flex-wrap">
                         <Badge variant="info">{q.ano_serie}</Badge>
                         <Badge variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'}>{q.dificuldade}</Badge>
-                        {getHabilidadeCodigo(q.habilidade_bncc_id) && <Badge>{getHabilidadeCodigo(q.habilidade_bncc_id)}</Badge>}
+                        {getHabilidadeCodigo(q.habilidade_id) && <Badge>{getHabilidadeCodigo(q.habilidade_id)}</Badge>}
                       </div>
                       <p className="text-sm text-gray-900 line-clamp-2">{q.enunciado}</p>
                     </div>
