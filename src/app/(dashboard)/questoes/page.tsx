@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, BookOpen, Edit, Trash2, Filter, Eye, Copy, X, CheckCircle, Image } from 'lucide-react'
+import { Plus, Search, BookOpen, Edit, Trash2, Filter, Eye, Copy, X, CheckCircle, Image, FileText, Printer } from 'lucide-react'
 
 interface Questao {
   id: string
@@ -72,6 +72,17 @@ export default function QuestoesPage() {
   const [formData, setFormData] = useState({ enunciado: '', alternativa_a: '', alternativa_b: '', alternativa_c: '', alternativa_d: '', alternativa_e: '', resposta_correta: 'A' as 'A' | 'B' | 'C' | 'D' | 'E', ano_serie: '6º ano EF', unidade_tematica_id: '', habilidade_bncc_id: '', descritor_saeb_id: '', nivel_cognitivo_id: '', contexto_id: '', fonte_id: '', dificuldade: 'medio' as 'facil' | 'medio' | 'dificil', comentario_resolucao: '' })
   const supabase = createClient()
   const [urlFilterApplied, setUrlFilterApplied] = useState(false)
+  
+  // Estados para exportação PDF
+  const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [exportConfig, setExportConfig] = useState({
+    showGabarito: false,
+    showResolucao: false,
+    showHabilidades: true,
+    titulo: 'Lista de Exercícios',
+    subtitulo: ''
+  })
+  const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const habilidadeId = searchParams.get('habilidade_bncc_id')
@@ -160,11 +171,66 @@ export default function QuestoesPage() {
   const getUnidadeNome = (id?: string) => id ? unidadesTematicas.find(u => u.id === id)?.nome : null
   const getContextoNome = (id?: string) => id ? contextos.find(c => c.id === id)?.nome : null
 
+  // Função para imprimir/exportar PDF
+  const handlePrint = () => {
+    const printContent = printRef.current
+    if (!printContent) return
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    const styles = `
+      <style>
+        @page { margin: 1.5cm; size: A4; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.5; color: #000; margin: 0; padding: 0; }
+        .header { text-align: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #333; }
+        .header h1 { font-size: 18pt; margin: 0 0 5px 0; font-weight: bold; }
+        .header p { font-size: 12pt; margin: 0; color: #555; }
+        .info-line { display: flex; justify-content: space-between; margin: 15px 0; padding: 10px; background: #f5f5f5; border-radius: 4px; }
+        .info-line span { font-size: 11pt; }
+        .questao { margin-bottom: 25px; page-break-inside: avoid; }
+        .questao-header { font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+        .questao-number { background: #333; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11pt; }
+        .questao-tags { font-size: 9pt; color: #666; font-weight: normal; }
+        .enunciado { margin-bottom: 10px; text-align: justify; }
+        .questao-img { max-width: 100%; max-height: 200px; margin: 10px 0; display: block; }
+        .alternativas { margin-left: 20px; }
+        .alternativa { margin: 5px 0; display: flex; align-items: flex-start; }
+        .alternativa-letra { font-weight: bold; min-width: 25px; }
+        .alternativa.correta { background: #d4edda; padding: 3px 8px; border-radius: 4px; margin-left: -8px; }
+        .resolucao { margin-top: 10px; padding: 10px; background: #e7f3ff; border-left: 3px solid #0066cc; font-size: 11pt; }
+        .resolucao-title { font-weight: bold; margin-bottom: 5px; }
+        .gabarito { margin-top: 30px; padding-top: 15px; border-top: 2px solid #333; page-break-before: always; }
+        .gabarito h2 { font-size: 14pt; margin-bottom: 15px; }
+        .gabarito-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; }
+        .gabarito-item { text-align: center; padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
+        .gabarito-item .num { font-size: 10pt; color: #666; }
+        .gabarito-item .resp { font-weight: bold; font-size: 12pt; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style>
+    `
+
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>${exportConfig.titulo}</title>${styles}</head><body>${printContent.innerHTML}</body></html>`)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => { printWindow.print() }, 500)
+  }
+
+  const openExportModal = () => {
+    if (filteredQuestoes.length === 0) { alert('Não há questões para exportar.'); return }
+    setExportConfig(prev => ({ ...prev, titulo: 'Lista de Exercícios', subtitulo: filters.ano_serie || '' }))
+    setExportModalOpen(true)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h1 className="text-2xl font-bold text-gray-900">Banco de Questões</h1><p className="text-gray-600">Gerencie suas questões com classificação BNCC e SAEB</p></div>
-        <Button onClick={() => handleOpenModal()}><Plus className="w-5 h-5 mr-2" />Nova Questão</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openExportModal} disabled={filteredQuestoes.length === 0}><FileText className="w-5 h-5 mr-2" />Exportar PDF</Button>
+          <Button onClick={() => handleOpenModal()}><Plus className="w-5 h-5 mr-2" />Nova Questão</Button>
+        </div>
       </div>
 
       <Card><CardContent className="p-4">
@@ -298,6 +364,51 @@ export default function QuestoesPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={exportModalOpen} onClose={() => setExportModalOpen(false)} title="Exportar Lista de Exercícios" size="xl">
+        <div className="space-y-6">
+          <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+            <h3 className="font-medium text-gray-900 flex items-center gap-2"><FileText className="w-5 h-5" /> Configurações do Documento</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Título</label><Input value={exportConfig.titulo} onChange={(e) => setExportConfig({...exportConfig, titulo: e.target.value})} placeholder="Lista de Exercícios" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Subtítulo (opcional)</label><Input value={exportConfig.subtitulo} onChange={(e) => setExportConfig({...exportConfig, subtitulo: e.target.value})} placeholder="Ex: 6º ano - Números" /></div>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={exportConfig.showHabilidades} onChange={(e) => setExportConfig({...exportConfig, showHabilidades: e.target.checked})} className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /><span className="text-sm text-gray-700">Mostrar habilidades BNCC</span></label>
+              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={exportConfig.showGabarito} onChange={(e) => setExportConfig({...exportConfig, showGabarito: e.target.checked})} className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /><span className="text-sm text-gray-700">Incluir gabarito ao final</span></label>
+              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={exportConfig.showResolucao} onChange={(e) => setExportConfig({...exportConfig, showResolucao: e.target.checked})} className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /><span className="text-sm text-gray-700">Incluir resolução das questões</span></label>
+            </div>
+          </div>
+          <div className="bg-blue-50 p-4 rounded-lg"><p className="text-sm text-blue-800"><strong>{filteredQuestoes.length}</strong> questões serão exportadas.{activeFiltersCount > 0 && ` (${activeFiltersCount} filtro(s) ativo(s))`}</p></div>
+          <div className="flex gap-3 pt-4 border-t">
+            <Button variant="outline" className="flex-1" onClick={() => setExportModalOpen(false)}>Cancelar</Button>
+            <Button className="flex-1" onClick={handlePrint}><Printer className="w-4 h-4 mr-2" />Imprimir / Salvar PDF</Button>
+          </div>
+        </div>
+        <div className="hidden">
+          <div ref={printRef}>
+            <div className="header"><h1>{exportConfig.titulo}</h1>{exportConfig.subtitulo && <p>{exportConfig.subtitulo}</p>}</div>
+            <div className="info-line"><span>Total de questões: {filteredQuestoes.length}</span><span>Data: {new Date().toLocaleDateString('pt-BR')}</span></div>
+            {filteredQuestoes.map((questao, index) => (
+              <div key={questao.id} className="questao">
+                <div className="questao-header"><span className="questao-number">Questão {index + 1}</span>{exportConfig.showHabilidades && <span className="questao-tags">{getHabilidadeCodigo(questao.habilidade_bncc_id)}{getDescritorCodigo(questao.descritor_saeb_id) && ` | ${getDescritorCodigo(questao.descritor_saeb_id)}`}</span>}</div>
+                <div className="enunciado">{questao.enunciado}</div>
+                {questao.imagem_url && <img src={questao.imagem_url} alt="" className="questao-img" />}
+                <div className="alternativas">
+                  {['A', 'B', 'C', 'D', 'E'].map((letra) => {
+                    const alt = questao[`alternativa_${letra.toLowerCase()}` as keyof Questao] as string
+                    if (!alt) return null
+                    const isCorrect = exportConfig.showGabarito && questao.resposta_correta === letra
+                    return <div key={letra} className={`alternativa ${isCorrect ? 'correta' : ''}`}><span className="alternativa-letra">{letra})</span><span>{alt}</span></div>
+                  })}
+                </div>
+                {exportConfig.showResolucao && questao.comentario_resolucao && <div className="resolucao"><div className="resolucao-title">Resolução:</div>{questao.comentario_resolucao}</div>}
+              </div>
+            ))}
+            {exportConfig.showGabarito && <div className="gabarito"><h2>Gabarito</h2><div className="gabarito-grid">{filteredQuestoes.map((questao, index) => <div key={questao.id} className="gabarito-item"><div className="num">{index + 1}</div><div className="resp">{questao.resposta_correta}</div></div>)}</div></div>}
+          </div>
+        </div>
       </Modal>
     </div>
   )
