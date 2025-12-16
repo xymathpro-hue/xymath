@@ -6,7 +6,7 @@ import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
 import { Simulado, Turma, Questao } from '@/types'
-import { Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, Wand2, Filter, Users } from 'lucide-react'
+import { Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, Wand2, Filter, Users, CheckCircle } from 'lucide-react'
 
 const ANO_SERIE_OPTIONS = [
   { value: '6º ano EF', label: '6º ano EF' },
@@ -43,13 +43,19 @@ export default function SimuladosPage() {
   const [questoesSelecionadas, setQuestoesSelecionadas] = useState<string[]>([])
   const [showHabilidadesFilter, setShowHabilidadesFilter] = useState(false)
   const [showTurmasSelector, setShowTurmasSelector] = useState(false)
+  const [geracaoSucesso, setGeracaoSucesso] = useState(false)
+
+  // Inputs como string para permitir campo vazio
+  const [totalQuestoesInput, setTotalQuestoesInput] = useState('10')
+  const [tempoInput, setTempoInput] = useState('60')
+  const [qtdFacilInput, setQtdFacilInput] = useState('3')
+  const [qtdMedioInput, setQtdMedioInput] = useState('4')
+  const [qtdDificilInput, setQtdDificilInput] = useState('3')
 
   const [formData, setFormData] = useState({
     titulo: '',
     descricao: '',
     turmas_ids: [] as string[],
-    tempo_minutos: 60,
-    total_questoes: 10,
     embaralhar_questoes: true,
     embaralhar_alternativas: false,
   })
@@ -63,12 +69,17 @@ export default function SimuladosPage() {
   const [autoConfig, setAutoConfig] = useState({
     ano_serie: '6º ano EF',
     habilidades_ids: [] as string[],
-    qtd_facil: 3,
-    qtd_medio: 4,
-    qtd_dificil: 3,
   })
 
   const supabase = createClient()
+
+  // Valores numéricos derivados
+  const totalQuestoes = parseInt(totalQuestoesInput) || 0
+  const tempoMinutos = parseInt(tempoInput) || 60
+  const qtdFacil = parseInt(qtdFacilInput) || 0
+  const qtdMedio = parseInt(qtdMedioInput) || 0
+  const qtdDificil = parseInt(qtdDificilInput) || 0
+  const totalDistribuicao = qtdFacil + qtdMedio + qtdDificil
 
   const fetchData = useCallback(async () => {
     if (!usuario?.id) { setLoading(false); return }
@@ -88,30 +99,55 @@ export default function SimuladosPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Recalcula distribuição quando total muda
+  const handleTotalQuestoesChange = (value: string) => {
+    setTotalQuestoesInput(value)
+    const num = parseInt(value) || 0
+    if (num > 0) {
+      const facil = Math.round(num * 0.3)
+      const dificil = Math.round(num * 0.3)
+      const medio = num - facil - dificil
+      setQtdFacilInput(facil.toString())
+      setQtdMedioInput(medio.toString())
+      setQtdDificilInput(dificil.toString())
+    }
+  }
+
   const handleOpenModal = (s?: Simulado) => {
+    setGeracaoSucesso(false)
     if (s) {
       setEditingSimulado(s)
+      const totalQ = s.questoes_ids?.length || 10
       setFormData({
         titulo: s.titulo,
         descricao: s.descricao || '',
         turmas_ids: s.turma_id ? [s.turma_id] : ((s as any).turmas_ids || []),
-        tempo_minutos: s.tempo_minutos || 60,
-        total_questoes: s.questoes_ids?.length || 10,
         embaralhar_questoes: s.configuracoes?.embaralhar_questoes ?? true,
         embaralhar_alternativas: s.configuracoes?.embaralhar_alternativas ?? false
       })
+      setTotalQuestoesInput(totalQ.toString())
+      setTempoInput((s.tempo_minutos || 60).toString())
       setQuestoesSelecionadas(s.questoes_ids || [])
+      const facil = Math.round(totalQ * 0.3)
+      const dificil = Math.round(totalQ * 0.3)
+      const medio = totalQ - facil - dificil
+      setQtdFacilInput(facil.toString())
+      setQtdMedioInput(medio.toString())
+      setQtdDificilInput(dificil.toString())
     } else {
       setEditingSimulado(null)
       setFormData({
         titulo: '',
         descricao: '',
         turmas_ids: [],
-        tempo_minutos: 60,
-        total_questoes: 10,
         embaralhar_questoes: true,
         embaralhar_alternativas: false
       })
+      setTotalQuestoesInput('10')
+      setTempoInput('60')
+      setQtdFacilInput('3')
+      setQtdMedioInput('4')
+      setQtdDificilInput('3')
       setQuestoesSelecionadas([])
     }
     setShowTurmasSelector(false)
@@ -128,7 +164,7 @@ export default function SimuladosPage() {
         descricao: formData.descricao || null,
         turma_id: formData.turmas_ids[0] || null,
         turmas_ids: formData.turmas_ids,
-        tempo_minutos: formData.tempo_minutos,
+        tempo_minutos: tempoMinutos,
         questoes_ids: questoesSelecionadas,
         configuracoes: {
           embaralhar_questoes: formData.embaralhar_questoes,
@@ -207,14 +243,20 @@ export default function SimuladosPage() {
     const faceis = questoesFiltradas.filter(q => q.dificuldade === 'facil')
     const medias = questoesFiltradas.filter(q => q.dificuldade === 'medio')
     const dificeis = questoesFiltradas.filter(q => q.dificuldade === 'dificil')
-    const shuffle = (arr: Questao[]) => arr.sort(() => Math.random() - 0.5)
+    const shuffle = (arr: Questao[]) => [...arr].sort(() => Math.random() - 0.5)
     const selecionadas: string[] = [
-      ...shuffle(faceis).slice(0, autoConfig.qtd_facil).map(q => q.id),
-      ...shuffle(medias).slice(0, autoConfig.qtd_medio).map(q => q.id),
-      ...shuffle(dificeis).slice(0, autoConfig.qtd_dificil).map(q => q.id),
+      ...shuffle(faceis).slice(0, qtdFacil).map(q => q.id),
+      ...shuffle(medias).slice(0, qtdMedio).map(q => q.id),
+      ...shuffle(dificeis).slice(0, qtdDificil).map(q => q.id),
     ]
     setQuestoesSelecionadas(selecionadas)
-    setGerarAutoModalOpen(false)
+    setGeracaoSucesso(true)
+    
+    // Fecha o modal automático após 1.5s
+    setTimeout(() => {
+      setGerarAutoModalOpen(false)
+      setGeracaoSucesso(false)
+    }, 1500)
   }
 
   const filteredQuestoes = questoesDisponiveis.filter(q => {
@@ -235,6 +277,22 @@ export default function SimuladosPage() {
     const ids = (s as any).turmas_ids || (s.turma_id ? [s.turma_id] : [])
     return ids.map((id: string) => turmas.find(t => t.id === id)?.nome).filter(Boolean).join(', ')
   }
+
+  // Conta questões disponíveis para o gerar automático
+  const getQuestoesDisponiveisPorDificuldade = () => {
+    let questoesFiltradas = questoesDisponiveis.filter(q => q.ano_serie === autoConfig.ano_serie)
+    if (autoConfig.habilidades_ids.length > 0) {
+      questoesFiltradas = questoesFiltradas.filter(q => q.habilidade_id && autoConfig.habilidades_ids.includes(q.habilidade_id))
+    }
+    return {
+      facil: questoesFiltradas.filter(q => q.dificuldade === 'facil').length,
+      medio: questoesFiltradas.filter(q => q.dificuldade === 'medio').length,
+      dificil: questoesFiltradas.filter(q => q.dificuldade === 'dificil').length,
+      total: questoesFiltradas.length
+    }
+  }
+
+  const disponiveisAuto = getQuestoesDisponiveisPorDificuldade()
 
   return (
     <div className="p-6 lg:p-8">
@@ -352,14 +410,27 @@ export default function SimuladosPage() {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nº de Questões</label>
-              <Input type="number" min={1} max={50} value={formData.total_questoes} onChange={(e) => setFormData({ ...formData, total_questoes: parseInt(e.target.value) || 10 })} />
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={totalQuestoesInput}
+                onChange={(e) => handleTotalQuestoesChange(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tempo (minutos)</label>
-              <Input type="number" min={10} value={formData.tempo_minutos} onChange={(e) => setFormData({ ...formData, tempo_minutos: parseInt(e.target.value) || 60 })} />
+              <input
+                type="number"
+                min={10}
+                value={tempoInput}
+                onChange={(e) => setTempoInput(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
             </div>
             <div className="flex flex-col justify-end">
-              <p className="text-sm text-gray-500">~{Math.round(formData.tempo_minutos / formData.total_questoes)} min/questão</p>
+              <p className="text-sm text-gray-500">~{totalQuestoes > 0 ? Math.round(tempoMinutos / totalQuestoes) : 0} min/questão</p>
             </div>
           </div>
 
@@ -378,8 +449,9 @@ export default function SimuladosPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h4 className="font-medium text-gray-900">Questões Selecionadas</h4>
-                <p className="text-sm text-gray-500">{questoesSelecionadas.length} de {formData.total_questoes} questões
-                  {questoesSelecionadas.length < formData.total_questoes && <span className="text-orange-500 ml-2">(faltam {formData.total_questoes - questoesSelecionadas.length})</span>}
+                <p className="text-sm text-gray-500">{questoesSelecionadas.length} de {totalQuestoes} questões
+                  {questoesSelecionadas.length < totalQuestoes && totalQuestoes > 0 && <span className="text-orange-500 ml-2">(faltam {totalQuestoes - questoesSelecionadas.length})</span>}
+                  {questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 && <span className="text-green-500 ml-2">✓ Completo</span>}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -388,7 +460,7 @@ export default function SimuladosPage() {
               </div>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
-              <div className={`h-2 rounded-full transition-all ${questoesSelecionadas.length >= formData.total_questoes ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((questoesSelecionadas.length / formData.total_questoes) * 100, 100)}%` }} />
+              <div className={`h-2 rounded-full transition-all ${questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${totalQuestoes > 0 ? Math.min((questoesSelecionadas.length / totalQuestoes) * 100, 100) : 0}%` }} />
             </div>
             {questoesSelecionadas.length > 0 && (
               <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -418,8 +490,8 @@ export default function SimuladosPage() {
       <Modal isOpen={questoesModalOpen} onClose={() => setQuestoesModalOpen(false)} title="Selecionar Questões" size="xl">
         <div className="space-y-4">
           <div className="bg-indigo-50 p-3 rounded-lg flex items-center justify-between">
-            <span className="text-sm text-indigo-700"><strong>{questoesSelecionadas.length}</strong> de <strong>{formData.total_questoes}</strong> questões selecionadas</span>
-            {questoesSelecionadas.length >= formData.total_questoes && <Badge variant="success">✓ Completo</Badge>}
+            <span className="text-sm text-indigo-700"><strong>{questoesSelecionadas.length}</strong> de <strong>{totalQuestoes}</strong> questões selecionadas</span>
+            {questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 && <Badge variant="success">✓ Completo</Badge>}
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
@@ -493,55 +565,114 @@ export default function SimuladosPage() {
           </div>
           <div className="flex gap-3 pt-4 border-t">
             <Button variant="outline" className="flex-1" onClick={() => setQuestoesModalOpen(false)}>Fechar</Button>
-            <div className="flex-1 text-center py-2"><span className="font-medium text-gray-900">{questoesSelecionadas.length}/{formData.total_questoes}</span><span className="text-gray-500 ml-1">selecionadas</span></div>
+            <div className="flex-1 text-center py-2"><span className="font-medium text-gray-900">{questoesSelecionadas.length}/{totalQuestoes}</span><span className="text-gray-500 ml-1">selecionadas</span></div>
           </div>
         </div>
       </Modal>
 
       {/* Modal Gerar Automático */}
-      <Modal isOpen={gerarAutoModalOpen} onClose={() => setGerarAutoModalOpen(false)} title="Gerar Simulado Automático" size="lg">
-        <div className="space-y-4">
-          <div className="bg-blue-50 p-3 rounded-lg">
-            <p className="text-sm text-blue-800">Meta: <strong>{formData.total_questoes} questões</strong></p>
+      <Modal isOpen={gerarAutoModalOpen} onClose={() => { setGerarAutoModalOpen(false); setGeracaoSucesso(false) }} title="Gerar Simulado Automático" size="lg">
+        {geracaoSucesso ? (
+          <div className="py-12 text-center">
+            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Questões Geradas!</h3>
+            <p className="text-gray-600">{questoesSelecionadas.length} questões foram selecionadas automaticamente</p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
-            <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={autoConfig.ano_serie} onChange={(e) => setAutoConfig({ ...autoConfig, ano_serie: e.target.value })}>
-              {ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Habilidades BNCC (opcional)</label>
-            <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1">
-              {habilidadesFiltradas.map(h => (
-                <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
-                  <input type="checkbox" checked={autoConfig.habilidades_ids.includes(h.id)} onChange={() => toggleHabilidadeAuto(h.id)} className="rounded" />
-                  <span className="text-sm text-gray-900"><strong>{h.codigo}</strong> - {h.descricao.substring(0, 50)}...</span>
-                </label>
-              ))}
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <p className="text-sm text-blue-800">Meta definida: <strong>{totalQuestoes} questões</strong></p>
             </div>
-            {autoConfig.habilidades_ids.length > 0 && <p className="text-sm text-indigo-600 mt-1">{autoConfig.habilidades_ids.length} habilidade(s) selecionada(s)</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Distribuição por Dificuldade</label>
-            <div className="grid grid-cols-3 gap-4">
-              <div><label className="block text-xs text-gray-500 mb-1">🟢 Fáceis</label><Input type="number" min={0} value={autoConfig.qtd_facil} onChange={(e) => setAutoConfig({ ...autoConfig, qtd_facil: parseInt(e.target.value) || 0 })} /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">🟡 Médias</label><Input type="number" min={0} value={autoConfig.qtd_medio} onChange={(e) => setAutoConfig({ ...autoConfig, qtd_medio: parseInt(e.target.value) || 0 })} /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">🔴 Difíceis</label><Input type="number" min={0} value={autoConfig.qtd_dificil} onChange={(e) => setAutoConfig({ ...autoConfig, qtd_dificil: parseInt(e.target.value) || 0 })} /></div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
+              <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={autoConfig.ano_serie} onChange={(e) => setAutoConfig({ ...autoConfig, ano_serie: e.target.value })}>
+                {ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Habilidades BNCC (opcional)</label>
+              <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1">
+                {habilidadesFiltradas.map(h => (
+                  <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                    <input type="checkbox" checked={autoConfig.habilidades_ids.includes(h.id)} onChange={() => toggleHabilidadeAuto(h.id)} className="rounded" />
+                    <span className="text-sm text-gray-900"><strong>{h.codigo}</strong> - {h.descricao.substring(0, 50)}...</span>
+                  </label>
+                ))}
+              </div>
+              {autoConfig.habilidades_ids.length > 0 && <p className="text-sm text-indigo-600 mt-1">{autoConfig.habilidades_ids.length} habilidade(s) selecionada(s)</p>}
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-sm text-gray-600 mb-2">Questões disponíveis: <strong>{disponiveisAuto.total}</strong></p>
+              <div className="flex gap-4 text-xs text-gray-500">
+                <span>🟢 Fáceis: {disponiveisAuto.facil}</span>
+                <span>🟡 Médias: {disponiveisAuto.medio}</span>
+                <span>🔴 Difíceis: {disponiveisAuto.dificil}</span>
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Distribuição por Dificuldade</label>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">🟢 Fáceis (máx: {disponiveisAuto.facil})</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={disponiveisAuto.facil}
+                    value={qtdFacilInput}
+                    onChange={(e) => setQtdFacilInput(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">🟡 Médias (máx: {disponiveisAuto.medio})</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={disponiveisAuto.medio}
+                    value={qtdMedioInput}
+                    onChange={(e) => setQtdMedioInput(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">🔴 Difíceis (máx: {disponiveisAuto.dificil})</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={disponiveisAuto.dificil}
+                    value={qtdDificilInput}
+                    onChange={(e) => setQtdDificilInput(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className={`p-3 rounded-lg ${totalDistribuicao === totalQuestoes ? 'bg-green-50' : 'bg-orange-50'}`}>
+              <p className={`text-sm font-medium ${totalDistribuicao === totalQuestoes ? 'text-green-800' : 'text-orange-800'}`}>
+                Total da distribuição: {totalDistribuicao} questões
+                {totalDistribuicao !== totalQuestoes && <span className="ml-2 font-normal">(meta: {totalQuestoes})</span>}
+                {totalDistribuicao === totalQuestoes && <span className="ml-2">✓</span>}
+              </p>
+            </div>
+            
+            <div className="flex gap-3 pt-4 border-t">
+              <Button variant="outline" className="flex-1" onClick={() => setGerarAutoModalOpen(false)}>Cancelar</Button>
+              <Button 
+                className="flex-1" 
+                onClick={gerarQuestoesAutomaticamente}
+                disabled={totalDistribuicao === 0 || disponiveisAuto.total === 0}
+              >
+                <Wand2 className="w-4 h-4 mr-2" />Gerar {totalDistribuicao} Questões
+              </Button>
             </div>
           </div>
-          <div className={`p-3 rounded-lg ${autoConfig.qtd_facil + autoConfig.qtd_medio + autoConfig.qtd_dificil === formData.total_questoes ? 'bg-green-50' : 'bg-orange-50'}`}>
-            <p className={`text-sm ${autoConfig.qtd_facil + autoConfig.qtd_medio + autoConfig.qtd_dificil === formData.total_questoes ? 'text-green-800' : 'text-orange-800'}`}>
-              <strong>Total:</strong> {autoConfig.qtd_facil + autoConfig.qtd_medio + autoConfig.qtd_dificil} questões
-              {autoConfig.qtd_facil + autoConfig.qtd_medio + autoConfig.qtd_dificil !== formData.total_questoes && <span className="ml-2">(meta: {formData.total_questoes})</span>}
-            </p>
-          </div>
-          <div className="flex gap-3 pt-4 border-t">
-            <Button variant="outline" className="flex-1" onClick={() => setGerarAutoModalOpen(false)}>Cancelar</Button>
-            <Button className="flex-1" onClick={gerarQuestoesAutomaticamente}><Wand2 className="w-4 h-4 mr-2" />Gerar Questões</Button>
-          </div>
-        </div>
+        )}
       </Modal>
     </div>
   )
-        }
+}
