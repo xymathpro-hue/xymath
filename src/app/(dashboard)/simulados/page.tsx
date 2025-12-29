@@ -42,9 +42,17 @@ interface Questao {
   alternativa_d?: string
   alternativa_e?: string
   resposta_correta?: string
+  fonte?: string           // NOVO
+  descritor_codigo?: string // NOVO
 }
 
 interface HabilidadeBncc {
+  id: string
+  codigo: string
+  descricao: string
+}
+
+interface DescritorSaeb {
   id: string
   codigo: string
   descricao: string
@@ -63,6 +71,14 @@ const DIFICULDADE_OPTIONS = [
   { value: 'dificil', label: '🔴 Difícil' },
 ]
 
+// NOVO: Opções de fonte
+const FONTE_OPTIONS = [
+  { value: '', label: 'Todas fontes' },
+  { value: 'BNCC', label: 'BNCC' },
+  { value: 'SAEB', label: 'SAEB' },
+  { value: 'TEMA', label: 'Por Tema' },
+]
+
 type ModalStep = 'form' | 'preview'
 
 export default function SimuladosPage() {
@@ -73,6 +89,7 @@ export default function SimuladosPage() {
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [questoesDisponiveis, setQuestoesDisponiveis] = useState<Questao[]>([])
   const [habilidades, setHabilidades] = useState<HabilidadeBncc[]>([])
+  const [descritoresSaeb, setDescritoresSaeb] = useState<DescritorSaeb[]>([]) // NOVO
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -106,12 +123,14 @@ export default function SimuladosPage() {
   const [questaoFilters, setQuestaoFilters] = useState({
     ano_serie: '',
     habilidades_ids: [] as string[],
-    dificuldade: ''
+    dificuldade: '',
+    fonte: ''  // NOVO
   })
 
   const [autoConfig, setAutoConfig] = useState({
     ano_serie: '6º ano EF',
     habilidades_ids: [] as string[],
+    fonte: '' // NOVO
   })
 
   const totalQuestoes = parseInt(totalQuestoesInput) || 0
@@ -134,16 +153,18 @@ export default function SimuladosPage() {
   const fetchData = useCallback(async () => {
     if (!usuario?.id) { setLoading(false); return }
     try {
-      const [sRes, tRes, qRes, hRes] = await Promise.all([
+      const [sRes, tRes, qRes, hRes, dRes] = await Promise.all([
         supabase.from('simulados').select('*').eq('usuario_id', usuario.id).order('created_at', { ascending: false }),
         supabase.from('turmas').select('*').eq('usuario_id', usuario.id).eq('ativa', true),
-        supabase.from('questoes').select('id, enunciado, ano_serie, dificuldade, habilidade_bncc_id, is_publica, ativa, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta').eq('ativa', true),
+        supabase.from('questoes').select('id, enunciado, ano_serie, dificuldade, habilidade_bncc_id, is_publica, ativa, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, fonte, descritor_codigo').eq('ativa', true),
         supabase.from('habilidades_bncc').select('id, codigo, descricao').order('codigo'),
+        supabase.from('descritores_saeb').select('id, codigo, descricao').order('codigo'), // NOVO
       ])
       setSimulados(sRes.data || [])
       setTurmas(tRes.data || [])
       setQuestoesDisponiveis(qRes.data || [])
       setHabilidades(hRes.data || [])
+      setDescritoresSaeb(dRes.data || []) // NOVO
     } catch (e) {
       console.error('Erro:', e)
     } finally {
@@ -325,8 +346,18 @@ export default function SimuladosPage() {
 
   const gerarQuestoesAutomaticamente = () => {
     let qFiltradas = questoesDisponiveis.filter(q => q.ano_serie === autoConfig.ano_serie)
+    
+    // Filtrar por fonte se selecionado
+    if (autoConfig.fonte) {
+      qFiltradas = qFiltradas.filter(q => (q.fonte || 'BNCC') === autoConfig.fonte)
+    }
+    
     if (autoConfig.habilidades_ids.length > 0) {
-      qFiltradas = qFiltradas.filter(q => q.habilidade_bncc_id && autoConfig.habilidades_ids.includes(q.habilidade_bncc_id))
+      if (autoConfig.fonte === 'SAEB') {
+        qFiltradas = qFiltradas.filter(q => q.descritor_codigo && autoConfig.habilidades_ids.includes(q.descritor_codigo))
+      } else {
+        qFiltradas = qFiltradas.filter(q => q.habilidade_bncc_id && autoConfig.habilidades_ids.includes(q.habilidade_bncc_id))
+      }
     }
 
     const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.5)
@@ -362,7 +393,7 @@ export default function SimuladosPage() {
     try {
       const { data: questoesData } = await supabase
         .from('questoes')
-        .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, dificuldade, habilidade_bncc_id')
+        .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, dificuldade, habilidade_bncc_id, descritor_codigo')
         .in('id', simulado.questoes_ids)
 
       if (!questoesData) return
@@ -372,7 +403,7 @@ export default function SimuladosPage() {
         .filter(Boolean)
         .map(q => ({
           ...q!,
-          habilidade_codigo: habilidades.find(h => h.id === q!.habilidade_bncc_id)?.codigo
+          habilidade_codigo: habilidades.find(h => h.id === q!.habilidade_bncc_id)?.codigo || q!.descritor_codigo
         }))
 
       const turmaNome = getTurmasNomes(simulado)
@@ -398,11 +429,26 @@ export default function SimuladosPage() {
     }
   }
 
+  // ALTERADO: filteredQuestoes com suporte a fonte e descritores
   const filteredQuestoes = questoesDisponiveis.filter(q => {
     if (questaoFilters.ano_serie && q.ano_serie !== questaoFilters.ano_serie) return false
     if (questaoFilters.dificuldade && q.dificuldade !== questaoFilters.dificuldade) return false
+    
+    // Filtro por fonte
+    if (questaoFilters.fonte) {
+      const qFonte = q.fonte || 'BNCC'
+      if (qFonte !== questaoFilters.fonte) return false
+    }
+    
+    // Filtro por habilidades/descritores
     if (questaoFilters.habilidades_ids.length > 0) {
-      if (!q.habilidade_bncc_id || !questaoFilters.habilidades_ids.includes(q.habilidade_bncc_id)) return false
+      if (questaoFilters.fonte === 'SAEB') {
+        // Filtrar por descritor_codigo para SAEB
+        if (!q.descritor_codigo || !questaoFilters.habilidades_ids.includes(q.descritor_codigo)) return false
+      } else {
+        // Filtrar por habilidade_bncc_id para BNCC
+        if (!q.habilidade_bncc_id || !questaoFilters.habilidades_ids.includes(q.habilidade_bncc_id)) return false
+      }
     }
     return true
   })
@@ -425,9 +471,10 @@ export default function SimuladosPage() {
     return 'default'
   }
 
-  const getHabilidadeCodigo = (id?: string) => {
-    if (!id) return null
-    return habilidades.find(h => h.id === id)?.codigo || null
+  const getHabilidadeCodigo = (q: Questao) => {
+    if (q.descritor_codigo) return q.descritor_codigo
+    if (!q.habilidade_bncc_id) return null
+    return habilidades.find(h => h.id === q.habilidade_bncc_id)?.codigo || null
   }
 
   const getDificuldadeInfo = (d?: string) => {
@@ -445,8 +492,17 @@ export default function SimuladosPage() {
 
   const getQuestoesDisponiveisPorDificuldade = () => {
     let qf = questoesDisponiveis.filter(q => q.ano_serie === autoConfig.ano_serie)
+    
+    if (autoConfig.fonte) {
+      qf = qf.filter(q => (q.fonte || 'BNCC') === autoConfig.fonte)
+    }
+    
     if (autoConfig.habilidades_ids.length > 0) {
-      qf = qf.filter(q => q.habilidade_bncc_id && autoConfig.habilidades_ids.includes(q.habilidade_bncc_id))
+      if (autoConfig.fonte === 'SAEB') {
+        qf = qf.filter(q => q.descritor_codigo && autoConfig.habilidades_ids.includes(q.descritor_codigo))
+      } else {
+        qf = qf.filter(q => q.habilidade_bncc_id && autoConfig.habilidades_ids.includes(q.habilidade_bncc_id))
+      }
     }
     return {
       facil: qf.filter(q => q.dificuldade === 'facil').length,
@@ -467,7 +523,7 @@ export default function SimuladosPage() {
       facil: questoes.filter(q => q.dificuldade === 'facil').length,
       medio: questoes.filter(q => q.dificuldade === 'medio').length,
       dificil: questoes.filter(q => q.dificuldade === 'dificil').length,
-      habilidades: [...new Set(questoes.map(q => q.habilidade_bncc_id).filter(Boolean))].length
+      habilidades: [...new Set(questoes.map(q => q.habilidade_bncc_id || q.descritor_codigo).filter(Boolean))].length
     }
   }
 
@@ -604,10 +660,10 @@ export default function SimuladosPage() {
             <div>
               <div className="flex items-center justify-between mb-2"><h4 className="font-medium text-gray-900">Questões</h4><Button variant="outline" size="sm" onClick={() => { setModalStep('form'); setQuestoesModalOpen(true) }}><Plus className="w-4 h-4 mr-1" />Adicionar</Button></div>
               <div className="space-y-2 max-h-56 overflow-y-auto">
-                {questoesSelecionadas.map((id, idx) => { const q = questoesDisponiveis.find(x => x.id === id); if (!q) return null; const dif = getDificuldadeInfo(q.dificuldade); return (
+                {questoesSelecionadas.map((id, idx) => { const q = questoesDisponiveis.find(x => x.id === id); if (!q) return null; const dif = getDificuldadeInfo(q.dificuldade); const hab = getHabilidadeCodigo(q); return (
                   <div key={id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg border">
                     <div className="flex flex-col gap-0.5"><button onClick={() => moverQuestao(idx, 'up')} disabled={idx === 0} className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"><ArrowUp className="w-3 h-3" /></button><button onClick={() => moverQuestao(idx, 'down')} disabled={idx === questoesSelecionadas.length - 1} className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"><ArrowDown className="w-3 h-3" /></button></div>
-                    <div className="flex-1 min-w-0"><div className="flex items-center gap-1 mb-0.5 flex-wrap"><span className="font-bold text-gray-900 text-sm">Q{idx + 1}</span><Badge variant={dif.color} className="text-xs">{dif.emoji}</Badge>{getHabilidadeCodigo(q.habilidade_bncc_id) && <Badge className="text-xs">{getHabilidadeCodigo(q.habilidade_bncc_id)}</Badge>}</div><p className="text-sm text-gray-700 line-clamp-1">{q.enunciado}</p></div>
+                    <div className="flex-1 min-w-0"><div className="flex items-center gap-1 mb-0.5 flex-wrap"><span className="font-bold text-gray-900 text-sm">Q{idx + 1}</span><Badge variant={dif.color} className="text-xs">{dif.emoji}</Badge>{hab && <Badge className="text-xs">{hab}</Badge>}{q.fonte && q.fonte !== 'BNCC' && <Badge variant="info" className="text-xs">{q.fonte}</Badge>}</div><p className="text-sm text-gray-700 line-clamp-1">{q.enunciado}</p></div>
                     <button onClick={() => removerQuestao(id)} className="p-1 hover:bg-red-100 rounded"><Trash2 className="w-4 h-4 text-red-500" /></button>
                   </div>
                 ) })}
@@ -619,39 +675,140 @@ export default function SimuladosPage() {
         )}
       </Modal>
 
+      {/* MODAL SELECIONAR QUESTÕES - ALTERADO */}
       <Modal isOpen={questoesModalOpen} onClose={() => setQuestoesModalOpen(false)} title="Selecionar Questões" size="xl">
         <div className="space-y-4">
           <div className="bg-indigo-50 p-3 rounded-lg flex items-center justify-between"><span className="text-sm text-indigo-700"><strong>{questoesSelecionadas.length}</strong> / {totalQuestoes} selecionadas</span>{questoesSelecionadas.length >= totalQuestoes && totalQuestoes > 0 && <Badge variant="success">✓ Completo</Badge>}</div>
-          <div className="grid grid-cols-3 gap-3">
-            <select className="px-3 py-2 border rounded-lg text-gray-900" value={questaoFilters.ano_serie} onChange={(e) => setQuestaoFilters({ ...questaoFilters, ano_serie: e.target.value })}><option value="">Todos os anos</option>{ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
-            <select className="px-3 py-2 border rounded-lg text-gray-900" value={questaoFilters.dificuldade} onChange={(e) => setQuestaoFilters({ ...questaoFilters, dificuldade: e.target.value })}><option value="">Todas dificuldades</option>{DIFICULDADE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select>
-            <Button variant={showHabilidadesFilter ? 'primary' : 'outline'} onClick={() => setShowHabilidadesFilter(!showHabilidadesFilter)}>{questaoFilters.habilidades_ids.length > 0 ? `${questaoFilters.habilidades_ids.length} hab.` : 'Habilidades'}</Button>
+          
+          {/* FILTROS - ALTERADO COM FONTE */}
+          <div className="grid grid-cols-4 gap-3">
+            <select className="px-3 py-2 border rounded-lg text-gray-900" value={questaoFilters.ano_serie} onChange={(e) => setQuestaoFilters({ ...questaoFilters, ano_serie: e.target.value })}>
+              <option value="">Todos os anos</option>
+              {ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            <select className="px-3 py-2 border rounded-lg text-gray-900" value={questaoFilters.dificuldade} onChange={(e) => setQuestaoFilters({ ...questaoFilters, dificuldade: e.target.value })}>
+              <option value="">Todas dificuldades</option>
+              {DIFICULDADE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            {/* NOVO: Dropdown de Fonte */}
+            <select className="px-3 py-2 border rounded-lg text-gray-900" value={questaoFilters.fonte} onChange={(e) => setQuestaoFilters({ ...questaoFilters, fonte: e.target.value, habilidades_ids: [] })}>
+              {FONTE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            <Button variant={showHabilidadesFilter ? 'primary' : 'outline'} onClick={() => setShowHabilidadesFilter(!showHabilidadesFilter)}>
+              {questaoFilters.fonte === 'SAEB' ? 'Descritores' : 'Habilidades'}
+              {questaoFilters.habilidades_ids.length > 0 && ` (${questaoFilters.habilidades_ids.length})`}
+            </Button>
           </div>
-          {showHabilidadesFilter && <div className="border rounded-lg p-2 bg-gray-50 max-h-28 overflow-y-auto">{habilidadesFiltradasManual.map(h => <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer"><input type="checkbox" checked={questaoFilters.habilidades_ids.includes(h.id)} onChange={() => toggleHabilidadeManual(h.id)} className="rounded" /><span className="text-sm text-gray-900"><strong>{h.codigo}</strong></span></label>)}</div>}
+          
+          {/* PAINEL HABILIDADES/DESCRITORES - ALTERADO */}
+          {showHabilidadesFilter && (
+            <div className="border rounded-lg p-2 bg-gray-50 max-h-32 overflow-y-auto">
+              {questaoFilters.fonte === 'SAEB' ? (
+                // Mostrar descritores SAEB
+                descritoresSaeb.map(d => (
+                  <label key={d.codigo} className="flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={questaoFilters.habilidades_ids.includes(d.codigo)} 
+                      onChange={() => toggleHabilidadeManual(d.codigo)} 
+                      className="rounded" 
+                    />
+                    <span className="text-sm text-gray-900">
+                      <strong>{d.codigo}</strong> - {d.descricao.substring(0, 45)}...
+                    </span>
+                  </label>
+                ))
+              ) : (
+                // Mostrar habilidades BNCC
+                habilidadesFiltradasManual.map(h => (
+                  <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer">
+                    <input type="checkbox" checked={questaoFilters.habilidades_ids.includes(h.id)} onChange={() => toggleHabilidadeManual(h.id)} className="rounded" />
+                    <span className="text-sm text-gray-900"><strong>{h.codigo}</strong></span>
+                  </label>
+                ))
+              )}
+            </div>
+          )}
+          
           <p className="text-sm text-gray-600">{filteredQuestoes.length} questões encontradas</p>
           <div className="max-h-64 overflow-y-auto space-y-2">
-            {filteredQuestoes.map(q => { const sel = questoesSelecionadas.includes(q.id); return (
-              <div key={q.id} className={`p-3 border rounded-lg cursor-pointer transition-colors ${sel ? 'bg-indigo-50 border-indigo-300' : 'hover:bg-gray-50'}`} onClick={() => toggleQuestao(q.id)}>
-                <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded border flex items-center justify-center mt-0.5 flex-shrink-0 ${sel ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'}`}>{sel && <Check className="w-3 h-3 text-white" />}</div>
-                  <div className="flex-1 min-w-0"><div className="flex gap-1 mb-1 flex-wrap"><Badge variant="info" className="text-xs">{q.ano_serie}</Badge><Badge variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'} className="text-xs">{q.dificuldade}</Badge>{getHabilidadeCodigo(q.habilidade_bncc_id) && <Badge className="text-xs">{getHabilidadeCodigo(q.habilidade_bncc_id)}</Badge>}</div><p className="text-sm text-gray-900 line-clamp-2">{q.enunciado}</p></div>
+            {filteredQuestoes.map(q => { 
+              const sel = questoesSelecionadas.includes(q.id)
+              const hab = getHabilidadeCodigo(q)
+              return (
+                <div key={q.id} className={`p-3 border rounded-lg cursor-pointer transition-colors ${sel ? 'bg-indigo-50 border-indigo-300' : 'hover:bg-gray-50'}`} onClick={() => toggleQuestao(q.id)}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-5 h-5 rounded border flex items-center justify-center mt-0.5 flex-shrink-0 ${sel ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'}`}>{sel && <Check className="w-3 h-3 text-white" />}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex gap-1 mb-1 flex-wrap">
+                        <Badge variant="info" className="text-xs">{q.ano_serie}</Badge>
+                        <Badge variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'} className="text-xs">{q.dificuldade}</Badge>
+                        {hab && <Badge className="text-xs">{hab}</Badge>}
+                        {q.fonte && q.fonte !== 'BNCC' && <Badge variant="default" className="text-xs bg-purple-100 text-purple-700">{q.fonte}</Badge>}
+                      </div>
+                      <p className="text-sm text-gray-900 line-clamp-2">{q.enunciado}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ) })}
+              ) 
+            })}
           </div>
           <Button variant="outline" className="w-full" onClick={() => setQuestoesModalOpen(false)}>Fechar</Button>
         </div>
       </Modal>
 
+      {/* MODAL GERAR AUTOMÁTICO - ALTERADO COM FONTE */}
       <Modal isOpen={gerarAutoModalOpen} onClose={() => { setGerarAutoModalOpen(false); setGeracaoSucesso(false) }} title="Gerar Automaticamente" size="lg">
         {geracaoSucesso ? (
           <div className="py-12 text-center"><CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" /><h3 className="text-xl font-bold text-gray-900">Pronto!</h3><p className="text-gray-600">{questoesSelecionadas.length} questões selecionadas</p></div>
         ) : (
           <div className="space-y-4">
             <div className="bg-blue-50 p-3 rounded-lg"><p className="text-sm text-blue-800">Meta: <strong>{totalQuestoes} questões</strong></p></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label><select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={autoConfig.ano_serie} onChange={(e) => setAutoConfig({ ...autoConfig, ano_serie: e.target.value })}>{ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1">Habilidades (opcional)</label><div className="max-h-28 overflow-y-auto border rounded-lg p-2">{habilidadesFiltradas.map(h => <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer"><input type="checkbox" checked={autoConfig.habilidades_ids.includes(h.id)} onChange={() => toggleHabilidadeAuto(h.id)} className="rounded" /><span className="text-sm text-gray-900"><strong>{h.codigo}</strong></span></label>)}</div></div>
-            <div className="bg-gray-50 p-3 rounded-lg text-sm"><p className="text-gray-600 mb-1">Disponíveis: <strong>{disponiveisAuto.total}</strong></p><div className="flex gap-3 text-xs"><span>🟢 {disponiveisAuto.facil}</span><span>🟡 {disponiveisAuto.medio}</span><span>🔴 {disponiveisAuto.dificil}</span></div></div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
+                <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={autoConfig.ano_serie} onChange={(e) => setAutoConfig({ ...autoConfig, ano_serie: e.target.value, habilidades_ids: [] })}>
+                  {ANO_SERIE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </div>
+              {/* NOVO: Fonte no Auto */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fonte</label>
+                <select className="w-full px-3 py-2 border rounded-lg text-gray-900" value={autoConfig.fonte} onChange={(e) => setAutoConfig({ ...autoConfig, fonte: e.target.value, habilidades_ids: [] })}>
+                  {FONTE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {autoConfig.fonte === 'SAEB' ? 'Descritores (opcional)' : 'Habilidades (opcional)'}
+              </label>
+              <div className="max-h-28 overflow-y-auto border rounded-lg p-2">
+                {autoConfig.fonte === 'SAEB' ? (
+                  descritoresSaeb.map(d => (
+                    <label key={d.codigo} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                      <input type="checkbox" checked={autoConfig.habilidades_ids.includes(d.codigo)} onChange={() => toggleHabilidadeAuto(d.codigo)} className="rounded" />
+                      <span className="text-sm text-gray-900"><strong>{d.codigo}</strong></span>
+                    </label>
+                  ))
+                ) : (
+                  habilidadesFiltradas.map(h => (
+                    <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                      <input type="checkbox" checked={autoConfig.habilidades_ids.includes(h.id)} onChange={() => toggleHabilidadeAuto(h.id)} className="rounded" />
+                      <span className="text-sm text-gray-900"><strong>{h.codigo}</strong></span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 p-3 rounded-lg text-sm">
+              <p className="text-gray-600 mb-1">Disponíveis: <strong>{disponiveisAuto.total}</strong></p>
+              <div className="flex gap-3 text-xs"><span>🟢 {disponiveisAuto.facil}</span><span>🟡 {disponiveisAuto.medio}</span><span>🔴 {disponiveisAuto.dificil}</span></div>
+            </div>
+            
             <div className="grid grid-cols-3 gap-3">
               <div><label className="block text-xs text-gray-500 mb-1">🟢 Fáceis</label><input type="number" min={0} value={qtdFacilInput} onChange={(e) => setQtdFacilInput(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" /></div>
               <div><label className="block text-xs text-gray-500 mb-1">🟡 Médias</label><input type="number" min={0} value={qtdMedioInput} onChange={(e) => setQtdMedioInput(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-gray-900" /></div>
