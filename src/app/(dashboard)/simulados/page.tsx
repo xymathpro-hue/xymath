@@ -44,7 +44,7 @@ interface Questao {
   resposta_correta?: string
   fonte?: string
   descritor_codigo?: string
-  unidade_tematica?: string  // NOVO
+  unidade_tematica?: string
 }
 
 interface HabilidadeBncc {
@@ -140,10 +140,10 @@ export default function SimuladosPage() {
   const qtdDificil = parseInt(qtdDificilInput) || 0
   const totalDistribuicao = qtdFacil + qtdMedio + qtdDificil
 
-  // Lista de temas únicos das questões
+  // CORRIGIDO: Lista de temas únicos de TODAS as questões que têm unidade_tematica
   const temasDisponiveis = [...new Set(
     questoesDisponiveis
-      .filter(q => q.fonte === 'TEMA' && q.unidade_tematica)
+      .filter(q => q.unidade_tematica)
       .map(q => q.unidade_tematica!)
   )].sort()
 
@@ -323,8 +323,14 @@ export default function SimuladosPage() {
       qFiltradas = qFiltradas.filter(q => q.ano_serie === autoConfig.ano_serie)
     }
     
+    // CORRIGIDO: Filtro por fonte
     if (autoConfig.fonte) {
-      qFiltradas = qFiltradas.filter(q => (q.fonte || 'BNCC') === autoConfig.fonte)
+      if (autoConfig.fonte === 'TEMA') {
+        // Para TEMA, mostrar qualquer questão que tenha unidade_tematica
+        qFiltradas = qFiltradas.filter(q => q.unidade_tematica)
+      } else {
+        qFiltradas = qFiltradas.filter(q => (q.fonte || 'BNCC') === autoConfig.fonte)
+      }
     }
     
     if (autoConfig.habilidades_ids.length > 0) {
@@ -372,7 +378,7 @@ export default function SimuladosPage() {
     } catch (e) { console.error('Erro ao exportar:', e); alert('Erro ao exportar documento') }
   }
 
-  // FILTRO ATUALIZADO - Por Tema não filtra por ano
+  // CORRIGIDO: filteredQuestoes - Por Tema mostra todas com unidade_tematica
   const filteredQuestoes = questoesDisponiveis.filter(q => {
     // Se fonte é TEMA, NÃO filtrar por ano (mostrar todos os anos)
     if (questaoFilters.fonte !== 'TEMA') {
@@ -381,11 +387,19 @@ export default function SimuladosPage() {
     
     if (questaoFilters.dificuldade && q.dificuldade !== questaoFilters.dificuldade) return false
     
+    // CORRIGIDO: Filtro por fonte
     if (questaoFilters.fonte) {
-      const qFonte = q.fonte || 'BNCC'
-      if (qFonte !== questaoFilters.fonte) return false
+      if (questaoFilters.fonte === 'TEMA') {
+        // Para TEMA, mostrar qualquer questão que tenha unidade_tematica
+        if (!q.unidade_tematica) return false
+      } else {
+        // Para outras fontes (BNCC, SAEB), filtrar normalmente
+        const qFonte = q.fonte || 'BNCC'
+        if (qFonte !== questaoFilters.fonte) return false
+      }
     }
     
+    // Filtro por habilidades/descritores/temas
     if (questaoFilters.habilidades_ids.length > 0) {
       if (questaoFilters.fonte === 'SAEB') {
         if (!q.descritor_codigo || !questaoFilters.habilidades_ids.includes(q.descritor_codigo)) return false
@@ -410,7 +424,7 @@ export default function SimuladosPage() {
 
   const getHabilidadeCodigo = (q: Questao) => {
     if (q.descritor_codigo) return q.descritor_codigo
-    if (q.unidade_tematica) return q.unidade_tematica.substring(0, 15) + '...'
+    if (q.unidade_tematica) return q.unidade_tematica.length > 15 ? q.unidade_tematica.substring(0, 15) + '...' : q.unidade_tematica
     if (!q.habilidade_bncc_id) return null
     return habilidades.find(h => h.id === q.habilidade_bncc_id)?.codigo || null
   }
@@ -428,6 +442,7 @@ export default function SimuladosPage() {
     return ids.map((id: string) => turmas.find(t => t.id === id)?.nome).filter(Boolean).join(', ')
   }
 
+  // CORRIGIDO: getQuestoesDisponiveisPorDificuldade
   const getQuestoesDisponiveisPorDificuldade = () => {
     let qf = [...questoesDisponiveis]
     
@@ -436,7 +451,11 @@ export default function SimuladosPage() {
     }
     
     if (autoConfig.fonte) {
-      qf = qf.filter(q => (q.fonte || 'BNCC') === autoConfig.fonte)
+      if (autoConfig.fonte === 'TEMA') {
+        qf = qf.filter(q => q.unidade_tematica)
+      } else {
+        qf = qf.filter(q => (q.fonte || 'BNCC') === autoConfig.fonte)
+      }
     }
     
     if (autoConfig.habilidades_ids.length > 0) {
@@ -471,7 +490,6 @@ export default function SimuladosPage() {
 
   const stats = getEstatisticasSimulado()
 
-  // Função para obter o label do botão de filtro
   const getFilterButtonLabel = () => {
     if (questaoFilters.fonte === 'SAEB') return 'Descritores'
     if (questaoFilters.fonte === 'TEMA') return 'Temas'
@@ -608,7 +626,7 @@ export default function SimuladosPage() {
                 {questoesSelecionadas.map((id, idx) => { const q = questoesDisponiveis.find(x => x.id === id); if (!q) return null; const dif = getDificuldadeInfo(q.dificuldade); const hab = getHabilidadeCodigo(q); return (
                   <div key={id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg border">
                     <div className="flex flex-col gap-0.5"><button onClick={() => moverQuestao(idx, 'up')} disabled={idx === 0} className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"><ArrowUp className="w-3 h-3" /></button><button onClick={() => moverQuestao(idx, 'down')} disabled={idx === questoesSelecionadas.length - 1} className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"><ArrowDown className="w-3 h-3" /></button></div>
-                    <div className="flex-1 min-w-0"><div className="flex items-center gap-1 mb-0.5 flex-wrap"><span className="font-bold text-gray-900 text-sm">Q{idx + 1}</span><Badge variant={dif.color} className="text-xs">{dif.emoji}</Badge>{hab && <Badge className="text-xs">{hab}</Badge>}{q.fonte && q.fonte !== 'BNCC' && <Badge variant="info" className="text-xs">{q.fonte}</Badge>}</div><p className="text-sm text-gray-700 line-clamp-1">{q.enunciado}</p></div>
+                    <div className="flex-1 min-w-0"><div className="flex items-center gap-1 mb-0.5 flex-wrap"><span className="font-bold text-gray-900 text-sm">Q{idx + 1}</span><Badge variant={dif.color} className="text-xs">{dif.emoji}</Badge>{hab && <Badge className="text-xs">{hab}</Badge>}</div><p className="text-sm text-gray-700 line-clamp-1">{q.enunciado}</p></div>
                     <button onClick={() => removerQuestao(id)} className="p-1 hover:bg-red-100 rounded"><Trash2 className="w-4 h-4 text-red-500" /></button>
                   </div>
                 ) })}
@@ -644,7 +662,7 @@ export default function SimuladosPage() {
             </Button>
           </div>
           
-          {/* PAINEL DE FILTROS - HABILIDADES/DESCRITORES/TEMAS */}
+          {/* PAINEL DE FILTROS */}
           {showHabilidadesFilter && (
             <div className="border rounded-lg p-2 bg-gray-50 max-h-32 overflow-y-auto">
               {questaoFilters.fonte === 'SAEB' ? (
@@ -660,7 +678,7 @@ export default function SimuladosPage() {
                     <input type="checkbox" checked={questaoFilters.habilidades_ids.includes(tema)} onChange={() => toggleHabilidadeManual(tema)} className="rounded" />
                     <span className="text-sm text-gray-900">{tema}</span>
                   </label>
-                )) : <p className="text-sm text-gray-500 text-center py-2">Nenhum tema encontrado. Insira questões com fonte='TEMA'.</p>
+                )) : <p className="text-sm text-gray-500 text-center py-2">Nenhum tema encontrado.</p>
               ) : (
                 habilidadesFiltradasManual.map(h => (
                   <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer">
@@ -686,7 +704,6 @@ export default function SimuladosPage() {
                         <Badge variant="info" className="text-xs">{q.ano_serie}</Badge>
                         <Badge variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'} className="text-xs">{q.dificuldade}</Badge>
                         {hab && <Badge className="text-xs">{hab}</Badge>}
-                        {q.fonte && q.fonte !== 'BNCC' && <Badge variant="default" className="text-xs bg-purple-100 text-purple-700">{q.fonte}</Badge>}
                       </div>
                       <p className="text-sm text-gray-900 line-clamp-2">{q.enunciado}</p>
                     </div>
@@ -740,7 +757,7 @@ export default function SimuladosPage() {
                       <input type="checkbox" checked={autoConfig.habilidades_ids.includes(tema)} onChange={() => toggleHabilidadeAuto(tema)} className="rounded" />
                       <span className="text-sm text-gray-900">{tema}</span>
                     </label>
-                  )) : <p className="text-sm text-gray-500 text-center py-2">Nenhum tema. Insira questões TEMA.</p>
+                  )) : <p className="text-sm text-gray-500 text-center py-2">Nenhum tema.</p>
                 ) : (
                   habilidadesFiltradas.map(h => (
                     <label key={h.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
