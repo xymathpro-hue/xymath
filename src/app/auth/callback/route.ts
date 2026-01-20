@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   const type = searchParams.get('type')
   const next = searchParams.get('next') ?? '/dashboard'
 
+  // Se tem code, troca por sessão
   if (code) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
