@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import { Button, Input, Card } from '@/components/ui'
 import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
 
-export default function NovaSenhaPage() {
+function NovaSenhaForm() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -16,7 +16,6 @@ export default function NovaSenhaPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [checking, setChecking] = useState(true)
-  const [sessionReady, setSessionReady] = useState(false)
   
   const supabase = createClient()
   const router = useRouter()
@@ -34,7 +33,6 @@ export default function NovaSenhaPage() {
         })
 
         if (!error) {
-          setSessionReady(true)
           setChecking(false)
           return
         }
@@ -45,7 +43,6 @@ export default function NovaSenhaPage() {
       // Também escuta eventos de auth
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
-          setSessionReady(true)
           setChecking(false)
         }
       })
@@ -219,5 +216,17 @@ export default function NovaSenhaPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function NovaSenhaPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+        <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
+      </div>
+    }>
+      <NovaSenhaForm />
+    </Suspense>
   )
 }
