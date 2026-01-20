@@ -20,37 +20,27 @@ export default function NovaSenhaPage() {
   const supabase = createClient()
   const router = useRouter()
 
-  // Verifica se o usuário chegou pelo link de recuperação
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      // Se não tem sessão, o link pode ser inválido ou expirado
-      if (!session) {
-        // Aguarda um pouco pois o Supabase pode estar processando o token da URL
-        setTimeout(async () => {
-          const { data: { session: retrySession } } = await supabase.auth.getSession()
-          if (!retrySession) {
-            setError('Link inválido ou expirado. Solicite um novo link de recuperação.')
-          }
-          setChecking(false)
-        }, 1000)
-      } else {
-        setChecking(false)
-      }
-    }
-
-    checkSession()
-
-    // Escuta eventos de autenticação (quando o token da URL é processado)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    // Escuta o evento de recuperação de senha
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
+        setChecking(false)
+        setError('')
+      } else if (event === 'SIGNED_IN' && session) {
         setChecking(false)
         setError('')
       }
     })
 
-    return () => subscription.unsubscribe()
+    // Timeout para caso não receba o evento
+    const timeout = setTimeout(() => {
+      setChecking(false)
+    }, 3000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [supabase])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -207,7 +197,7 @@ export default function NovaSenhaPage() {
               A senha deve ter pelo menos 6 caracteres
             </p>
 
-            <Button type="submit" className="w-full" loading={loading} disabled={!!error && error.includes('inválido')}>
+            <Button type="submit" className="w-full" loading={loading}>
               Atualizar senha
             </Button>
           </form>
