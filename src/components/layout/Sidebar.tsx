@@ -14,7 +14,7 @@ import {
   Menu,
   X,
   Library,
-  Calendar,
+  Clock,
   Flame,
   FileUp,
   PieChart,
@@ -34,10 +34,10 @@ const menuItems = [
   { href: '/listas', label: 'Listas de Exercícios', icon: ClipboardList },
   { href: '/simulados', label: 'Simulados', icon: FileText },
   { href: '/resultados', label: 'Resultados', icon: BarChart3 },
-  { href: '/calendario', label: 'Calendário', icon: Calendar },
+  { href: '/gestao-horarios', label: 'Gestão de Horários', icon: Clock },
   { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
   { href: '/relatorios', label: 'Relatórios', icon: PieChart },
-  { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
+  { href: '/importar-plano', label: 'Importar Plano', icon: FileUp },
 ]
 
 export function Sidebar() {
