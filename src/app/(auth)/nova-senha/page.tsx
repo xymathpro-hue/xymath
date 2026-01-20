@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import { Button, Input, Card } from '@/components/ui'
 import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
@@ -16,38 +16,55 @@ export default function NovaSenhaPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [checking, setChecking] = useState(true)
+  const [sessionReady, setSessionReady] = useState(false)
   
   const supabase = createClient()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Escuta o evento de recuperação de senha
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setChecking(false)
-        setError('')
-      } else if (event === 'SIGNED_IN' && session) {
-        setChecking(false)
-        setError('')
+    const verifyToken = async () => {
+      const token_hash = searchParams.get('token_hash')
+      const type = searchParams.get('type')
+
+      if (token_hash && type === 'recovery') {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash,
+          type: 'recovery',
+        })
+
+        if (!error) {
+          setSessionReady(true)
+          setChecking(false)
+          return
+        }
+        
+        console.log('Erro ao verificar token:', error)
       }
-    })
 
-    // Timeout para caso não receba o evento
-    const timeout = setTimeout(() => {
-      setChecking(false)
-    }, 3000)
+      // Também escuta eventos de auth
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
+          setSessionReady(true)
+          setChecking(false)
+        }
+      })
 
-    return () => {
-      subscription.unsubscribe()
-      clearTimeout(timeout)
+      // Timeout
+      setTimeout(() => {
+        setChecking(false)
+      }, 3000)
+
+      return () => subscription.unsubscribe()
     }
-  }, [supabase])
+
+    verifyToken()
+  }, [supabase, searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
-    // Validações
     if (password.length < 6) {
       setError('A senha deve ter pelo menos 6 caracteres')
       return
@@ -63,19 +80,17 @@ export default function NovaSenhaPage() {
     const { error } = await supabase.auth.updateUser({ password })
     
     if (error) {
-      setError('Erro ao atualizar senha. Tente novamente.')
+      setError('Erro ao atualizar senha. O link pode ter expirado.')
       setLoading(false)
     } else {
       setSuccess(true)
       setLoading(false)
-      // Redireciona para login após 3 segundos
       setTimeout(() => {
         router.push('/login')
       }, 3000)
     }
   }
 
-  // Loading inicial
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">
@@ -84,12 +99,10 @@ export default function NovaSenhaPage() {
     )
   }
 
-  // Tela de sucesso
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-gradient-to-br from-indigo-50 via-white to-purple-50">
         <div className="w-full max-w-md">
-          {/* Logo */}
           <div className="text-center mb-8">
             <Link href="/" className="inline-flex items-center gap-2">
               <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center">
@@ -123,7 +136,6 @@ export default function NovaSenhaPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2">
             <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center">
@@ -139,17 +151,14 @@ export default function NovaSenhaPage() {
           </p>
         </div>
 
-        {/* Form */}
         <Card variant="elevated" className="p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
                 {error}
-                {error.includes('inválido') && (
-                  <Link href="/recuperar-senha" className="block mt-2 text-indigo-600 hover:text-indigo-700 font-medium">
-                    Solicitar novo link
-                  </Link>
-                )}
+                <Link href="/recuperar-senha" className="block mt-2 text-indigo-600 hover:text-indigo-700 font-medium">
+                  Solicitar novo link
+                </Link>
               </div>
             )}
 
@@ -203,7 +212,6 @@ export default function NovaSenhaPage() {
           </form>
         </Card>
 
-        {/* Back to login */}
         <p className="mt-6 text-center">
           <Link href="/login" className="text-indigo-600 hover:text-indigo-700 font-medium">
             Voltar ao login
