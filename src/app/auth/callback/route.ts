@@ -11,18 +11,18 @@ export async function GET(request: Request) {
   const supabase = await createClient()
 
   // Se tem token_hash (vindo do email)
-  if (token_hash && type) {
+  if (token_hash && type === 'recovery') {
     const { error } = await supabase.auth.verifyOtp({
       token_hash,
-      type: type as 'recovery' | 'email',
+      type: 'recovery',
     })
 
     if (!error) {
-      if (type === 'recovery') {
-        return NextResponse.redirect(`${origin}/nova-senha`)
-      }
-      return NextResponse.redirect(`${origin}${next}`)
+      return NextResponse.redirect(`${origin}/nova-senha`)
     }
+    
+    // Log do erro para debug
+    console.log('Erro verifyOtp:', error)
   }
 
   // Se tem code (OAuth ou magic link)
@@ -30,11 +30,14 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error) {
-      if (type === 'recovery') {
-        return NextResponse.redirect(`${origin}/nova-senha`)
-      }
       return NextResponse.redirect(`${origin}${next}`)
     }
+  }
+
+  // Se é recovery mas falhou, ainda tenta ir para nova-senha
+  // pois o token pode ser processado no client-side
+  if (type === 'recovery' && token_hash) {
+    return NextResponse.redirect(`${origin}/nova-senha?token_hash=${token_hash}`)
   }
 
   // Fallback para login
