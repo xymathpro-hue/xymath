@@ -1,1156 +1,579 @@
-'use client'
+// ============================================================
+// XYMATH - PÁGINA DE NOTAS
+// src/app/notas/page.tsx
+// ============================================================
 
-import { useEffect, useState, useCallback } from 'react'
-import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
-import { useAuth } from '@/contexts/AuthContext'
-import { createClient } from '@/lib/supabase-browser'
-import { Settings, FileText, BarChart3, Plus, Edit, Trash2, Save, Users, AlertCircle, CheckCircle, TrendingUp, Award, Target } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
+'use client';
 
-interface ConfiguracaoNotas {
-  id: string
-  usuario_id: string
-  tipo_periodo: 'bimestral' | 'trimestral'
-  num_periodos: number
-  media_aprovacao: number
-  permite_recuperacao: boolean
-  permite_prova_final: boolean
-  arredondamento: number
-  pesos_periodos: number[]
-}
-
-interface ComponenteAvaliacao {
-  id: string
-  usuario_id: string
-  nome: string
-  peso: number
-  ordem: number
-  ativo: boolean
-}
-
-interface Turma {
-  id: string
-  nome: string
-  ano_serie: string
-}
-
-interface Aluno {
-  id: string
-  nome: string
-  numero?: number
-  turma_id: string
-}
-
-interface Nota {
-  id?: string
-  aluno_id: string
-  turma_id: string
-  componente_id: string
-  periodo: number
-  ano_letivo: number
-  nota: number | null
-  nota_recuperacao: number | null
-  observacao?: string
-}
-
-type TabType = 'configuracao' | 'lancamento' | 'relatorio'
-
-const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
+import { useState, useEffect, useCallback } from 'react';
+import { 
+  FileText, 
+  Settings, 
+  Save, 
+  Calculator,
+  AlertTriangle,
+  CheckCircle,
+  ChevronDown,
+  Users,
+  BookOpen
+} from 'lucide-react';
+import { useNotas } from '@/hooks/useNotas';
+import { useTurmas } from '@/hooks/useTurmas';
+import type { 
+  TipoDivisao, 
+  AlunoComNotas,
+  LancarNota 
+} from '@/types/notas';
+import { 
+  getNomePeriodo, 
+  getPeriodoAtual,
+  PERIODOS_BIMESTRE,
+  PERIODOS_TRIMESTRE
+} from '@/types/notas';
 
 export default function NotasPage() {
-  const { usuario } = useAuth()
-  const supabase = createClient()
+  // Estados
+  const [turmaId, setTurmaId] = useState<string>('');
+  const [periodo, setPeriodo] = useState<number>(1);
+  const [mostrarConfig, setMostrarConfig] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [notasEditadas, setNotasEditadas] = useState<Record<string, Record<number, string>>>({});
+  
+  // Hooks
+  const { 
+    configuracao, 
+    alunosComNotas, 
+    loading, 
+    error,
+    carregarConfiguracao,
+    salvarConfiguracao,
+    carregarNotasTurma,
+    lancarNota,
+    lancarNotasEmLote,
+    calcularMediaPeriodo,
+    limparErro
+  } = useNotas();
+  
+  const { turmas, carregarTurmas } = useTurmas();
 
-  const [activeTab, setActiveTab] = useState<TabType>('configuracao')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
-
-  // Configuração
-  const [config, setConfig] = useState<ConfiguracaoNotas | null>(null)
-  const [componentes, setComponentes] = useState<ComponenteAvaliacao[]>([])
-  const [modalComponenteOpen, setModalComponenteOpen] = useState(false)
-  const [editingComponente, setEditingComponente] = useState<ComponenteAvaliacao | null>(null)
-  const [componenteForm, setComponenteForm] = useState({ nome: '', peso: '1.0' })
-
-  // Lançamento
-  const [turmas, setTurmas] = useState<Turma[]>([])
-  const [alunos, setAlunos] = useState<Aluno[]>([])
-  const [notas, setNotas] = useState<Nota[]>([])
-  const [turmaSelecionada, setTurmaSelecionada] = useState<string>('')
-  const [periodoSelecionado, setPeriodoSelecionado] = useState<number>(1)
-  const [notasEditadas, setNotasEditadas] = useState<Record<string, Nota>>({})
-
-  // Relatório
-  const [todasNotas, setTodasNotas] = useState<Nota[]>([])
-  const [todosAlunos, setTodosAlunos] = useState<Aluno[]>([])
-  const [relatorioTurma, setRelatorioTurma] = useState<string>('')
-
-  const anoLetivo = new Date().getFullYear()
-
-  // Configuração padrão
-  const configPadrao: Omit<ConfiguracaoNotas, 'id' | 'usuario_id'> = {
-    tipo_periodo: 'bimestral',
-    num_periodos: 4,
+  // Configuração local para edição
+  const [configLocal, setConfigLocal] = useState({
+    tipo_divisao: 'bimestral' as TipoDivisao,
+    notas_por_periodo: 2,
     media_aprovacao: 6.0,
-    permite_recuperacao: true,
-    permite_prova_final: true,
-    arredondamento: 0.5,
-    pesos_periodos: [1, 1, 1, 1]
-  }
+    tem_recuperacao_paralela: true,
+    tem_prova_final: true
+  });
 
-  const fetchData = useCallback(async () => {
-    if (!usuario?.id) { setLoading(false); return }
-
-    try {
-      // Buscar configuração
-      const { data: configData } = await supabase
-        .from('configuracoes_notas')
-        .select('*')
-        .eq('usuario_id', usuario.id)
-        .single()
-
-      if (configData) {
-        setConfig(configData)
-      }
-
-      // Buscar componentes
-      const { data: compData } = await supabase
-        .from('componentes_avaliacao')
-        .select('*')
-        .eq('usuario_id', usuario.id)
-        .eq('ativo', true)
-        .order('ordem')
-
-      setComponentes(compData || [])
-
-      // Buscar turmas
-      const { data: turmasData } = await supabase
-        .from('turmas')
-        .select('id, nome, ano_serie')
-        .eq('usuario_id', usuario.id)
-        .eq('ativa', true)
-        .order('nome')
-
-      setTurmas(turmasData || [])
-
-      // Buscar todos os alunos para relatório
-      const { data: alunosData } = await supabase
-        .from('alunos')
-        .select('id, nome, numero, turma_id')
-        .eq('ativo', true)
-
-      setTodosAlunos(alunosData || [])
-
-      // Buscar todas as notas para relatório
-      const { data: notasData } = await supabase
-        .from('notas')
-        .select('*')
-        .eq('ano_letivo', anoLetivo)
-
-      setTodasNotas(notasData || [])
-
-    } catch (e) {
-      console.error('Erro:', e)
-    } finally {
-      setLoading(false)
-    }
-  }, [usuario?.id, supabase, anoLetivo])
-
-  useEffect(() => { fetchData() }, [fetchData])
-
-  // Buscar alunos quando selecionar turma
+  // Carregar dados iniciais
   useEffect(() => {
-    if (!turmaSelecionada) {
-      setAlunos([])
-      setNotas([])
-      return
+    carregarConfiguracao();
+    carregarTurmas();
+  }, [carregarConfiguracao, carregarTurmas]);
+
+  // Atualizar config local quando carregar
+  useEffect(() => {
+    if (configuracao) {
+      setConfigLocal({
+        tipo_divisao: configuracao.tipo_divisao,
+        notas_por_periodo: configuracao.notas_por_periodo,
+        media_aprovacao: configuracao.media_aprovacao,
+        tem_recuperacao_paralela: configuracao.tem_recuperacao_paralela,
+        tem_prova_final: configuracao.tem_prova_final
+      });
+      setPeriodo(getPeriodoAtual(configuracao.tipo_divisao));
     }
+  }, [configuracao]);
 
-    const fetchAlunos = async () => {
-      const { data: alunosData } = await supabase
-        .from('alunos')
-        .select('id, nome, numero, turma_id')
-        .eq('turma_id', turmaSelecionada)
-        .eq('ativo', true)
-        .order('numero')
-
-      setAlunos(alunosData || [])
-
-      // Buscar notas existentes
-      const { data: notasData } = await supabase
-        .from('notas')
-        .select('*')
-        .eq('turma_id', turmaSelecionada)
-        .eq('periodo', periodoSelecionado)
-        .eq('ano_letivo', anoLetivo)
-
-      setNotas(notasData || [])
-      setNotasEditadas({})
+  // Carregar notas quando mudar turma ou período
+  useEffect(() => {
+    if (turmaId && periodo) {
+      carregarNotasTurma(turmaId, periodo);
+      setNotasEditadas({});
     }
+  }, [turmaId, periodo, carregarNotasTurma]);
 
-    fetchAlunos()
-  }, [turmaSelecionada, periodoSelecionado, supabase, anoLetivo])
+  // Salvar configuração
+  const handleSalvarConfig = async () => {
+    setSalvando(true);
+    await salvarConfiguracao(configLocal);
+    setSalvando(false);
+    setMostrarConfig(false);
+  };
 
-  // === CONFIGURAÇÃO ===
-
-  const handleSaveConfig = async () => {
-    if (!usuario?.id) return
-    setSaving(true)
-    setSaveError(null)
-
-    try {
-      const dataToSave = {
-        usuario_id: usuario.id,
-        tipo_periodo: config?.tipo_periodo || configPadrao.tipo_periodo,
-        num_periodos: config?.num_periodos || configPadrao.num_periodos,
-        media_aprovacao: config?.media_aprovacao || configPadrao.media_aprovacao,
-        permite_recuperacao: config?.permite_recuperacao ?? configPadrao.permite_recuperacao,
-        permite_prova_final: config?.permite_prova_final ?? configPadrao.permite_prova_final,
-        arredondamento: config?.arredondamento || configPadrao.arredondamento,
-        pesos_periodos: config?.pesos_periodos || configPadrao.pesos_periodos
-      }
-
-      let result
-      if (config?.id) {
-        result = await supabase
-          .from('configuracoes_notas')
-          .update(dataToSave)
-          .eq('id', config.id)
-          .select()
-      } else {
-        result = await supabase
-          .from('configuracoes_notas')
-          .insert(dataToSave)
-          .select()
-      }
-
-      if (result.error) throw result.error
-
-      setConfig(result.data[0])
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
-    } catch (e: any) {
-      setSaveError(e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleTipoPeriodoChange = (tipo: 'bimestral' | 'trimestral') => {
-    const numPeriodos = tipo === 'bimestral' ? 4 : 3
-    const pesos = Array(numPeriodos).fill(1)
-    setConfig(prev => ({
-      ...prev!,
-      tipo_periodo: tipo,
-      num_periodos: numPeriodos,
-      pesos_periodos: pesos
-    } as ConfiguracaoNotas))
-  }
-
-  const handlePesoChange = (index: number, valor: string) => {
-    const pesos = [...(config?.pesos_periodos || configPadrao.pesos_periodos)]
-    pesos[index] = parseFloat(valor) || 1
-    setConfig(prev => ({ ...prev!, pesos_periodos: pesos } as ConfiguracaoNotas))
-  }
-
-  // === COMPONENTES ===
-
-  const handleOpenComponenteModal = (comp?: ComponenteAvaliacao) => {
-    if (comp) {
-      setEditingComponente(comp)
-      setComponenteForm({ nome: comp.nome, peso: comp.peso.toString() })
-    } else {
-      setEditingComponente(null)
-      setComponenteForm({ nome: '', peso: '1.0' })
-    }
-    setModalComponenteOpen(true)
-  }
-
-  const handleSaveComponente = async () => {
-    if (!usuario?.id || !componenteForm.nome.trim()) return
-    setSaving(true)
-
-    try {
-      const dataToSave = {
-        usuario_id: usuario.id,
-        nome: componenteForm.nome.trim(),
-        peso: parseFloat(componenteForm.peso) || 1,
-        ordem: editingComponente?.ordem ?? componentes.length,
-        ativo: true
-      }
-
-      if (editingComponente) {
-        await supabase
-          .from('componentes_avaliacao')
-          .update(dataToSave)
-          .eq('id', editingComponente.id)
-      } else {
-        await supabase
-          .from('componentes_avaliacao')
-          .insert(dataToSave)
-      }
-
-      setModalComponenteOpen(false)
-      fetchData()
-    } catch (e: any) {
-      setSaveError(e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleDeleteComponente = async (id: string) => {
-    if (!confirm('Excluir este componente?')) return
-
-    await supabase
-      .from('componentes_avaliacao')
-      .update({ ativo: false })
-      .eq('id', id)
-
-    fetchData()
-  }
-
-  // === LANÇAMENTO ===
-
-  const getNotaKey = (alunoId: string, componenteId: string) => `${alunoId}-${componenteId}`
-
-  const getNotaValue = (alunoId: string, componenteId: string): number | null => {
-    const key = getNotaKey(alunoId, componenteId)
-    if (notasEditadas[key]) {
-      return notasEditadas[key].nota
-    }
-    const notaExistente = notas.find(n => n.aluno_id === alunoId && n.componente_id === componenteId)
-    return notaExistente?.nota ?? null
-  }
-
-  const getRecuperacaoValue = (alunoId: string, componenteId: string): number | null => {
-    const key = getNotaKey(alunoId, componenteId)
-    if (notasEditadas[key]) {
-      return notasEditadas[key].nota_recuperacao
-    }
-    const notaExistente = notas.find(n => n.aluno_id === alunoId && n.componente_id === componenteId)
-    return notaExistente?.nota_recuperacao ?? null
-  }
-
-  const handleNotaChange = (alunoId: string, componenteId: string, valor: string, isRecuperacao = false) => {
-    const key = getNotaKey(alunoId, componenteId)
-    const notaExistente = notas.find(n => n.aluno_id === alunoId && n.componente_id === componenteId)
-    const notaAtual = notasEditadas[key] || {
-      aluno_id: alunoId,
-      turma_id: turmaSelecionada,
-      componente_id: componenteId,
-      periodo: periodoSelecionado,
-      ano_letivo: anoLetivo,
-      nota: notaExistente?.nota ?? null,
-      nota_recuperacao: notaExistente?.nota_recuperacao ?? null,
-      id: notaExistente?.id
-    }
-
-    const valorNumerico = valor === '' ? null : Math.min(10, Math.max(0, parseFloat(valor) || 0))
-
+  // Atualizar nota no estado local
+  const handleNotaChange = (alunoId: string, numeroNota: number, valor: string) => {
     setNotasEditadas(prev => ({
       ...prev,
-      [key]: {
-        ...notaAtual,
-        [isRecuperacao ? 'nota_recuperacao' : 'nota']: valorNumerico
+      [alunoId]: {
+        ...(prev[alunoId] || {}),
+        [numeroNota]: valor
       }
-    }))
-  }
+    }));
+  };
 
-  const calcularMedia = (alunoId: string): number | null => {
-    if (componentes.length === 0) return null
+  // Salvar nota individual
+  const handleSalvarNota = async (alunoId: string, numeroNota: number) => {
+    const valorStr = notasEditadas[alunoId]?.[numeroNota];
+    if (valorStr === undefined) return;
 
-    let somaNotas = 0
-    let somaPesos = 0
-
-    for (const comp of componentes) {
-      const nota = getNotaValue(alunoId, comp.id)
-      const recuperacao = getRecuperacaoValue(alunoId, comp.id)
-
-      // Usa a maior nota entre normal e recuperação
-      const notaFinal = recuperacao !== null && recuperacao > (nota || 0) ? recuperacao : nota
-
-      if (notaFinal !== null) {
-        somaNotas += notaFinal * comp.peso
-        somaPesos += comp.peso
-      }
+    const valor = parseFloat(valorStr.replace(',', '.'));
+    if (isNaN(valor) || valor < 0 || valor > 10) {
+      alert('Nota inválida. Digite um valor entre 0 e 10.');
+      return;
     }
 
-    if (somaPesos === 0) return null
+    const sucesso = await lancarNota({
+      aluno_id: alunoId,
+      turma_id: turmaId,
+      periodo: periodo,
+      numero_nota: numeroNota,
+      nota: valor
+    });
 
-    const media = somaNotas / somaPesos
-    const arredondamento = config?.arredondamento || 0.5
-    return Math.round(media / arredondamento) * arredondamento
-  }
-
-  const handleSaveNotas = async () => {
-    const notasParaSalvar = Object.values(notasEditadas)
-    if (notasParaSalvar.length === 0) return
-
-    setSaving(true)
-    setSaveError(null)
-
-    try {
-      for (const nota of notasParaSalvar) {
-        if (nota.id) {
-          await supabase
-            .from('notas')
-            .update({
-              nota: nota.nota,
-              nota_recuperacao: nota.nota_recuperacao
-            })
-            .eq('id', nota.id)
-        } else {
-          await supabase
-            .from('notas')
-            .insert({
-              aluno_id: nota.aluno_id,
-              turma_id: nota.turma_id,
-              componente_id: nota.componente_id,
-              periodo: nota.periodo,
-              ano_letivo: nota.ano_letivo,
-              nota: nota.nota,
-              nota_recuperacao: nota.nota_recuperacao
-            })
+    if (sucesso) {
+      // Limpar edição
+      setNotasEditadas(prev => {
+        const novo = { ...prev };
+        if (novo[alunoId]) {
+          delete novo[alunoId][numeroNota];
+          if (Object.keys(novo[alunoId]).length === 0) {
+            delete novo[alunoId];
+          }
         }
-      }
+        return novo;
+      });
 
-      // Recarregar notas
-      const { data: notasData } = await supabase
-        .from('notas')
-        .select('*')
-        .eq('turma_id', turmaSelecionada)
-        .eq('periodo', periodoSelecionado)
-        .eq('ano_letivo', anoLetivo)
-
-      setNotas(notasData || [])
-      setNotasEditadas({})
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
-      
-      // Atualizar dados do relatório
-      fetchData()
-    } catch (e: any) {
-      setSaveError(e.message)
-    } finally {
-      setSaving(false)
+      // Recalcular média
+      await calcularMediaPeriodo(alunoId, turmaId, periodo);
+      await carregarNotasTurma(turmaId, periodo);
     }
-  }
+  };
 
-  const getStatusAluno = (media: number | null): { status: string; color: string } => {
-    if (media === null) return { status: '-', color: 'text-gray-400' }
-    const mediaAprovacao = config?.media_aprovacao || 6.0
-    if (media >= mediaAprovacao) return { status: 'Aprovado', color: 'text-green-600' }
-    if (media >= mediaAprovacao - 1) return { status: 'Recuperação', color: 'text-yellow-600' }
-    return { status: 'Abaixo', color: 'text-red-600' }
-  }
+  // Salvar todas as notas editadas
+  const handleSalvarTodas = async () => {
+    setSalvando(true);
+    
+    const notasParaSalvar: LancarNota[] = [];
+    
+    Object.entries(notasEditadas).forEach(([alunoId, notas]) => {
+      Object.entries(notas).forEach(([numNota, valorStr]) => {
+        const valor = parseFloat(valorStr.replace(',', '.'));
+        if (!isNaN(valor) && valor >= 0 && valor <= 10) {
+          notasParaSalvar.push({
+            aluno_id: alunoId,
+            turma_id: turmaId,
+            periodo: periodo,
+            numero_nota: parseInt(numNota),
+            nota: valor
+          });
+        }
+      });
+    });
 
-  // === RELATÓRIO ===
-
-  const getMediaTurma = (turmaId: string): number => {
-    const notasTurma = todasNotas.filter(n => n.turma_id === turmaId && n.nota !== null)
-    if (notasTurma.length === 0) return 0
-    const soma = notasTurma.reduce((acc, n) => acc + (n.nota || 0), 0)
-    return Math.round((soma / notasTurma.length) * 10) / 10
-  }
-
-  const getMediaPorPeriodo = (turmaId?: string) => {
-    const periodos = config?.tipo_periodo === 'trimestral'
-      ? ['1º Tri', '2º Tri', '3º Tri']
-      : ['1º Bim', '2º Bim', '3º Bim', '4º Bim']
-
-    return periodos.map((nome, idx) => {
-      const notasPeriodo = todasNotas.filter(n => 
-        n.periodo === idx + 1 && 
-        n.nota !== null &&
-        (!turmaId || n.turma_id === turmaId)
-      )
-      const media = notasPeriodo.length > 0
-        ? notasPeriodo.reduce((acc, n) => acc + (n.nota || 0), 0) / notasPeriodo.length
-        : 0
-      return {
-        nome,
-        media: Math.round(media * 10) / 10
+    if (notasParaSalvar.length > 0) {
+      const sucesso = await lancarNotasEmLote(notasParaSalvar);
+      if (sucesso) {
+        setNotasEditadas({});
+        // Recalcular médias
+        for (const nota of notasParaSalvar) {
+          await calcularMediaPeriodo(nota.aluno_id, turmaId, periodo);
+        }
+        await carregarNotasTurma(turmaId, periodo);
       }
-    })
-  }
-
-  const getDistribuicaoNotas = (turmaId?: string) => {
-    const faixas = [
-      { nome: '0-2', min: 0, max: 2, count: 0 },
-      { nome: '2-4', min: 2, max: 4, count: 0 },
-      { nome: '4-6', min: 4, max: 6, count: 0 },
-      { nome: '6-8', min: 6, max: 8, count: 0 },
-      { nome: '8-10', min: 8, max: 10, count: 0 },
-    ]
-
-    const notasFiltradas = todasNotas.filter(n => 
-      n.nota !== null && (!turmaId || n.turma_id === turmaId)
-    )
-
-    notasFiltradas.forEach(n => {
-      const nota = n.nota || 0
-      const faixa = faixas.find(f => nota >= f.min && nota <= f.max)
-      if (faixa) faixa.count++
-    })
-
-    return faixas
-  }
-
-  const getRankingAlunos = (turmaId?: string, limit = 10) => {
-    const alunosFiltrados = turmaId 
-      ? todosAlunos.filter(a => a.turma_id === turmaId)
-      : todosAlunos
-
-    const ranking = alunosFiltrados.map(aluno => {
-      const notasAluno = todasNotas.filter(n => n.aluno_id === aluno.id && n.nota !== null)
-      const media = notasAluno.length > 0
-        ? notasAluno.reduce((acc, n) => acc + (n.nota || 0), 0) / notasAluno.length
-        : 0
-      return {
-        ...aluno,
-        media: Math.round(media * 10) / 10,
-        turma: turmas.find(t => t.id === aluno.turma_id)?.nome || ''
-      }
-    })
-
-    return ranking
-      .filter(a => a.media > 0)
-      .sort((a, b) => b.media - a.media)
-      .slice(0, limit)
-  }
-
-  const getEstatisticasGerais = (turmaId?: string) => {
-    const notasFiltradas = todasNotas.filter(n => 
-      n.nota !== null && (!turmaId || n.turma_id === turmaId)
-    )
-
-    if (notasFiltradas.length === 0) {
-      return { media: 0, maior: 0, menor: 0, aprovados: 0, total: 0 }
     }
+    
+    setSalvando(false);
+  };
 
-    const valores = notasFiltradas.map(n => n.nota || 0)
-    const media = valores.reduce((a, b) => a + b, 0) / valores.length
-    const mediaAprovacao = config?.media_aprovacao || 6.0
-
-    return {
-      media: Math.round(media * 10) / 10,
-      maior: Math.max(...valores),
-      menor: Math.min(...valores),
-      aprovados: valores.filter(v => v >= mediaAprovacao).length,
-      total: valores.length
+  // Obter valor da nota (editada ou original)
+  const getNotaValor = (aluno: AlunoComNotas, numeroNota: number): string => {
+    if (notasEditadas[aluno.id]?.[numeroNota] !== undefined) {
+      return notasEditadas[aluno.id][numeroNota];
     }
-  }
+    const nota = aluno.notas[numeroNota];
+    return nota !== null && nota !== undefined ? nota.toFixed(1) : '';
+  };
 
-  const dadosMediasTurmas = turmas.map(t => ({
-    nome: t.nome,
-    media: getMediaTurma(t.id)
-  })).filter(t => t.media > 0)
+  // Verificar se nota foi editada
+  const isNotaEditada = (alunoId: string, numeroNota: number): boolean => {
+    return notasEditadas[alunoId]?.[numeroNota] !== undefined;
+  };
 
-  const dadosEvolucao = getMediaPorPeriodo(relatorioTurma || undefined)
-  const dadosDistribuicao = getDistribuicaoNotas(relatorioTurma || undefined)
-  const rankingAlunos = getRankingAlunos(relatorioTurma || undefined)
-  const estatisticas = getEstatisticasGerais(relatorioTurma || undefined)
+  // Obter cor da situação
+  const getCorSituacao = (situacao: string) => {
+    switch (situacao) {
+      case 'aprovado': return 'bg-green-100 text-green-800';
+      case 'recuperacao': return 'bg-yellow-100 text-yellow-800';
+      case 'reprovado': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
 
-  const periodos = config?.tipo_periodo === 'trimestral'
-    ? ['1º Tri', '2º Tri', '3º Tri']
-    : ['1º Bim', '2º Bim', '3º Bim', '4º Bim']
+  // Períodos disponíveis
+  const periodos = configLocal.tipo_divisao === 'trimestral' 
+    ? PERIODOS_TRIMESTRE 
+    : PERIODOS_BIMESTRE;
 
-  if (loading) {
-    return (
-      <div className="p-6 flex justify-center py-12">
-        <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
-      </div>
-    )
-  }
+  // Quantidade de notas por período
+  const notasColunas = Array.from(
+    { length: configLocal.notas_por_periodo }, 
+    (_, i) => i + 1
+  );
+
+  // Verificar se há notas pendentes
+  const temNotasPendentes = Object.keys(notasEditadas).length > 0;
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Sistema de Notas</h1>
-        <p className="text-gray-600">Configure e lance notas dos alunos</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <FileText className="h-7 w-7 text-purple-600" />
+              Sistema de Notas
+            </h1>
+            <p className="text-gray-500 mt-1">
+              Lançamento e acompanhamento de notas por período
+            </p>
+          </div>
+          
+          <button
+            onClick={() => setMostrarConfig(!mostrarConfig)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+          >
+            <Settings className="h-5 w-5" />
+            Configurações
+          </button>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6 border-b">
-        <button
-          onClick={() => setActiveTab('configuracao')}
-          className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-            activeTab === 'configuracao'
-              ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Settings className="w-4 h-4" />
-          Configuração
-        </button>
-        <button
-          onClick={() => setActiveTab('lancamento')}
-          className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-            activeTab === 'lancamento'
-              ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          Lançamento
-        </button>
-        <button
-          onClick={() => setActiveTab('relatorio')}
-          className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-            activeTab === 'relatorio'
-              ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          Relatório
-        </button>
-      </div>
+      {/* Painel de Configuração */}
+      {mostrarConfig && (
+        <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Configurações do Sistema de Notas</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Tipo de Divisão */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Divisão do Ano
+              </label>
+              <select
+                value={configLocal.tipo_divisao}
+                onChange={(e) => setConfigLocal(prev => ({ 
+                  ...prev, 
+                  tipo_divisao: e.target.value as TipoDivisao 
+                }))}
+                className="w-full border rounded-lg px-3 py-2"
+              >
+                <option value="bimestral">Bimestral (4 períodos)</option>
+                <option value="trimestral">Trimestral (3 períodos)</option>
+              </select>
+            </div>
 
-      {/* Mensagens */}
-      {saveError && (
-        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
-          <AlertCircle className="w-5 h-5 text-red-500" />
-          <p className="text-sm text-red-600">{saveError}</p>
-        </div>
-      )}
-      {saveSuccess && (
-        <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
-          <CheckCircle className="w-5 h-5 text-green-500" />
-          <p className="text-sm text-green-600">Salvo com sucesso!</p>
-        </div>
-      )}
+            {/* Notas por Período */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notas por Período
+              </label>
+              <select
+                value={configLocal.notas_por_periodo}
+                onChange={(e) => setConfigLocal(prev => ({ 
+                  ...prev, 
+                  notas_por_periodo: parseInt(e.target.value) 
+                }))}
+                className="w-full border rounded-lg px-3 py-2"
+              >
+                <option value={1}>1 nota (N1)</option>
+                <option value={2}>2 notas (N1, N2)</option>
+                <option value={3}>3 notas (N1, N2, N3)</option>
+              </select>
+            </div>
 
-      {/* === ABA CONFIGURAÇÃO === */}
-      {activeTab === 'configuracao' && (
-        <div className="space-y-6">
-          {/* Tipo de Período */}
-          <Card variant="bordered">
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Período Letivo</h3>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="radio"
-                    name="tipo_periodo"
-                    checked={(config?.tipo_periodo || configPadrao.tipo_periodo) === 'bimestral'}
-                    onChange={() => handleTipoPeriodoChange('bimestral')}
-                    className="w-4 h-4 text-indigo-600"
-                  />
-                  <div>
-                    <p className="font-medium text-gray-900">Bimestral</p>
-                    <p className="text-sm text-gray-500">4 períodos por ano</p>
-                  </div>
-                </label>
-                <label className="flex items-center gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="radio"
-                    name="tipo_periodo"
-                    checked={(config?.tipo_periodo || configPadrao.tipo_periodo) === 'trimestral'}
-                    onChange={() => handleTipoPeriodoChange('trimestral')}
-                    className="w-4 h-4 text-indigo-600"
-                  />
-                  <div>
-                    <p className="font-medium text-gray-900">Trimestral</p>
-                    <p className="text-sm text-gray-500">3 períodos por ano</p>
-                  </div>
-                </label>
-              </div>
-            </CardContent>
-          </Card>
+            {/* Média de Aprovação */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Média de Aprovação
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="10"
+                step="0.5"
+                value={configLocal.media_aprovacao}
+                onChange={(e) => setConfigLocal(prev => ({ 
+                  ...prev, 
+                  media_aprovacao: parseFloat(e.target.value) 
+                }))}
+                className="w-full border rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
 
-          {/* Pesos dos Períodos */}
-          <Card variant="bordered">
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Pesos dos Períodos</h3>
-              <div className="grid grid-cols-4 gap-4">
-                {(config?.pesos_periodos || configPadrao.pesos_periodos).map((peso, idx) => (
-                  <div key={idx}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {idx + 1}º {(config?.tipo_periodo || configPadrao.tipo_periodo) === 'bimestral' ? 'Bimestre' : 'Trimestre'}
-                    </label>
-                    <input
-                      type="number"
-                      min="0.5"
-                      max="10"
-                      step="0.5"
-                      value={peso}
-                      onChange={(e) => handlePesoChange(idx, e.target.value)}
-                      className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                    />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {/* Checkboxes */}
+          <div className="flex gap-6 mt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={configLocal.tem_recuperacao_paralela}
+                onChange={(e) => setConfigLocal(prev => ({ 
+                  ...prev, 
+                  tem_recuperacao_paralela: e.target.checked 
+                }))}
+                className="w-4 h-4 text-purple-600 rounded"
+              />
+              <span className="text-sm">Recuperação Paralela</span>
+            </label>
 
-          {/* Configurações Gerais */}
-          <Card variant="bordered">
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Configurações Gerais</h3>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Média para Aprovação</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    step="0.5"
-                    value={config?.media_aprovacao ?? configPadrao.media_aprovacao}
-                    onChange={(e) => setConfig(prev => ({ ...prev!, media_aprovacao: parseFloat(e.target.value) || 6 } as ConfiguracaoNotas))}
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Arredondamento</label>
-                  <select
-                    value={config?.arredondamento ?? configPadrao.arredondamento}
-                    onChange={(e) => setConfig(prev => ({ ...prev!, arredondamento: parseFloat(e.target.value) } as ConfiguracaoNotas))}
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                  >
-                    <option value="0.1">0.1</option>
-                    <option value="0.25">0.25</option>
-                    <option value="0.5">0.5</option>
-                    <option value="1">1.0</option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="recuperacao"
-                    checked={config?.permite_recuperacao ?? configPadrao.permite_recuperacao}
-                    onChange={(e) => setConfig(prev => ({ ...prev!, permite_recuperacao: e.target.checked } as ConfiguracaoNotas))}
-                    className="w-4 h-4 rounded text-indigo-600"
-                  />
-                  <label htmlFor="recuperacao" className="text-sm text-gray-700">Permitir Recuperação</label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="prova_final"
-                    checked={config?.permite_prova_final ?? configPadrao.permite_prova_final}
-                    onChange={(e) => setConfig(prev => ({ ...prev!, permite_prova_final: e.target.checked } as ConfiguracaoNotas))}
-                    className="w-4 h-4 rounded text-indigo-600"
-                  />
-                  <label htmlFor="prova_final" className="text-sm text-gray-700">Permitir Prova Final</label>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Componentes de Avaliação */}
-          <Card variant="bordered">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-900">Componentes de Avaliação</h3>
-                <Button size="sm" onClick={() => handleOpenComponenteModal()}>
-                  <Plus className="w-4 h-4 mr-1" />Adicionar
-                </Button>
-              </div>
-              {componentes.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">Nenhum componente cadastrado. Adicione provas, trabalhos, etc.</p>
-              ) : (
-                <div className="space-y-2">
-                  {componentes.map(comp => (
-                    <div key={comp.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium text-gray-900">{comp.nome}</span>
-                        <Badge>Peso: {comp.peso}</Badge>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => handleOpenComponenteModal(comp)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteComponente(comp.id)}>
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={configLocal.tem_prova_final}
+                onChange={(e) => setConfigLocal(prev => ({ 
+                  ...prev, 
+                  tem_prova_final: e.target.checked 
+                }))}
+                className="w-4 h-4 text-purple-600 rounded"
+              />
+              <span className="text-sm">Prova Final</span>
+            </label>
+          </div>
 
           {/* Botão Salvar */}
-          <div className="flex justify-end">
-            <Button onClick={handleSaveConfig} loading={saving}>
-              <Save className="w-4 h-4 mr-2" />Salvar Configurações
-            </Button>
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={handleSalvarConfig}
+              disabled={salvando}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              {salvando ? 'Salvando...' : 'Salvar Configurações'}
+            </button>
           </div>
         </div>
       )}
 
-      {/* === ABA LANÇAMENTO === */}
-      {activeTab === 'lancamento' && (
-        <div className="space-y-6">
-          {/* Seletores */}
-          <Card variant="bordered">
-            <CardContent className="p-4">
-              <div className="flex flex-wrap gap-4 items-end">
-                <div className="flex-1 min-w-[200px]">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Turma</label>
-                  <select
-                    value={turmaSelecionada}
-                    onChange={(e) => setTurmaSelecionada(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                  >
-                    <option value="">Selecione uma turma</option>
-                    {turmas.map(t => (
-                      <option key={t.id} value={t.id}>{t.nome} - {t.ano_serie}</option>
+      {/* Seleção de Turma e Período */}
+      <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Turma */}
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <Users className="h-4 w-4 inline mr-1" />
+              Turma
+            </label>
+            <select
+              value={turmaId}
+              onChange={(e) => setTurmaId(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
+            >
+              <option value="">Selecione uma turma</option>
+              {turmas.map(turma => (
+                <option key={turma.id} value={turma.id}>
+                  {turma.nome} - {turma.ano_letivo}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Período */}
+          <div className="w-48">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <BookOpen className="h-4 w-4 inline mr-1" />
+              Período
+            </label>
+            <select
+              value={periodo}
+              onChange={(e) => setPeriodo(parseInt(e.target.value))}
+              className="w-full border rounded-lg px-3 py-2"
+            >
+              {periodos.map(p => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Botão Salvar Todas */}
+          {temNotasPendentes && (
+            <button
+              onClick={handleSalvarTodas}
+              disabled={salvando}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              {salvando ? 'Salvando...' : `Salvar Todas (${Object.keys(notasEditadas).length})`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Erro */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-red-500" />
+          <span className="text-red-700">{error}</span>
+          <button onClick={limparErro} className="ml-auto text-red-500 hover:text-red-700">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Tabela de Notas */}
+      {turmaId ? (
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">
+              Carregando notas...
+            </div>
+          ) : alunosComNotas.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              Nenhum aluno encontrado nesta turma.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Aluno
+                    </th>
+                    {notasColunas.map(num => (
+                      <th key={num} className="px-4 py-3 text-center text-sm font-semibold text-gray-700 w-24">
+                        N{num}
+                      </th>
                     ))}
-                  </select>
-                </div>
-                <div className="min-w-[150px]">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Período</label>
-                  <select
-                    value={periodoSelecionado}
-                    onChange={(e) => setPeriodoSelecionado(parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                  >
-                    {periodos.map((p, idx) => (
-                      <option key={idx} value={idx + 1}>{p}</option>
-                    ))}
-                  </select>
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 w-24">
+                      Média
+                    </th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 w-32">
+                      Situação
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {alunosComNotas.map((aluno, index) => (
+                    <tr key={aluno.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      {/* Nome do Aluno */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{aluno.nome}</span>
+                          {aluno.possui_laudo && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                              {aluno.tipo_laudo || 'Laudo'}
+                            </span>
+                          )}
+                        </div>
+                        {aluno.matricula && (
+                          <span className="text-xs text-gray-500">{aluno.matricula}</span>
+                        )}
+                      </td>
+
+                      {/* Colunas de Notas */}
+                      {notasColunas.map(num => (
+                        <td key={num} className="px-4 py-3 text-center">
+                          <input
+                            type="text"
+                            value={getNotaValor(aluno, num)}
+                            onChange={(e) => handleNotaChange(aluno.id, num, e.target.value)}
+                            onBlur={() => {
+                              if (isNotaEditada(aluno.id, num)) {
+                                handleSalvarNota(aluno.id, num);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && isNotaEditada(aluno.id, num)) {
+                                handleSalvarNota(aluno.id, num);
+                              }
+                            }}
+                            className={`w-16 text-center border rounded px-2 py-1 text-sm
+                              ${isNotaEditada(aluno.id, num) 
+                                ? 'border-yellow-400 bg-yellow-50' 
+                                : 'border-gray-300'
+                              }
+                              focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
+                            `}
+                            placeholder="--"
+                          />
+                        </td>
+                      ))}
+
+                      {/* Média */}
+                      <td className="px-4 py-3 text-center">
+                        <span className={`font-semibold ${
+                          aluno.media_periodo !== null
+                            ? aluno.media_periodo >= (configLocal.media_aprovacao || 6)
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                            : 'text-gray-400'
+                        }`}>
+                          {aluno.media_periodo !== null 
+                            ? aluno.media_periodo.toFixed(1) 
+                            : '--'
+                          }
+                        </span>
+                      </td>
+
+                      {/* Situação */}
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCorSituacao(aluno.situacao)}`}>
+                          {aluno.situacao === 'aprovado' && 'Aprovado'}
+                          {aluno.situacao === 'recuperacao' && 'Recuperação'}
+                          {aluno.situacao === 'reprovado' && 'Reprovado'}
+                          {aluno.situacao === 'cursando' && 'Cursando'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Estatísticas */}
+          {alunosComNotas.length > 0 && (
+            <div className="border-t bg-gray-50 px-4 py-3">
+              <div className="flex flex-wrap gap-6 text-sm">
+                <div>
+                  <span className="text-gray-500">Total:</span>
+                  <span className="ml-1 font-semibold">{alunosComNotas.length} alunos</span>
                 </div>
                 <div>
-                  <Badge variant="info" className="text-sm">{anoLetivo}</Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Tabela de Notas */}
-          {!turmaSelecionada ? (
-            <Card variant="bordered">
-              <CardContent className="p-12 text-center">
-                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Selecione uma turma</h3>
-                <p className="text-gray-500">Escolha a turma e o período para lançar notas</p>
-              </CardContent>
-            </Card>
-          ) : componentes.length === 0 ? (
-            <Card variant="bordered">
-              <CardContent className="p-12 text-center">
-                <Settings className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Configure os componentes</h3>
-                <p className="text-gray-500 mb-4">Adicione componentes de avaliação na aba Configuração</p>
-                <Button onClick={() => setActiveTab('configuracao')}>
-                  <Settings className="w-4 h-4 mr-2" />Ir para Configuração
-                </Button>
-              </CardContent>
-            </Card>
-          ) : alunos.length === 0 ? (
-            <Card variant="bordered">
-              <CardContent className="p-12 text-center">
-                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum aluno</h3>
-                <p className="text-gray-500">Esta turma não possui alunos cadastrados</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              {/* Botão Salvar no topo */}
-              {Object.keys(notasEditadas).length > 0 && (
-                <div className="flex justify-between items-center bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <span className="text-yellow-800">
-                    {Object.keys(notasEditadas).length} nota(s) alterada(s)
+                  <span className="text-gray-500">Aprovados:</span>
+                  <span className="ml-1 font-semibold text-green-600">
+                    {alunosComNotas.filter(a => a.situacao === 'aprovado').length}
                   </span>
-                  <Button onClick={handleSaveNotas} loading={saving}>
-                    <Save className="w-4 h-4 mr-2" />Salvar Notas
-                  </Button>
                 </div>
-              )}
-
-              <Card variant="bordered">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Nº</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Aluno</th>
-                        {componentes.map(comp => (
-                          <th key={comp.id} className="px-4 py-3 text-center text-sm font-semibold text-gray-900">
-                            {comp.nome}
-                            <span className="block text-xs font-normal text-gray-500">Peso: {comp.peso}</span>
-                          </th>
-                        ))}
-                        {config?.permite_recuperacao && (
-                          <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900">Rec.</th>
-                        )}
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900">Média</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {alunos.map(aluno => {
-                        const media = calcularMedia(aluno.id)
-                        const status = getStatusAluno(media)
-                        return (
-                          <tr key={aluno.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm text-gray-500">{aluno.numero || '-'}</td>
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{aluno.nome}</td>
-                            {componentes.map(comp => (
-                              <td key={comp.id} className="px-4 py-3">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="10"
-                                  step="0.1"
-                                  value={getNotaValue(aluno.id, comp.id) ?? ''}
-                                  onChange={(e) => handleNotaChange(aluno.id, comp.id, e.target.value)}
-                                  className="w-16 px-2 py-1 text-center border rounded text-gray-900"
-                                  placeholder="-"
-                                />
-                              </td>
-                            ))}
-                            {config?.permite_recuperacao && (
-                              <td className="px-4 py-3">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="10"
-                                  step="0.1"
-                                  value={getRecuperacaoValue(aluno.id, componentes[0]?.id) ?? ''}
-                                  onChange={(e) => handleNotaChange(aluno.id, componentes[0]?.id, e.target.value, true)}
-                                  className="w-16 px-2 py-1 text-center border rounded text-gray-900 bg-yellow-50"
-                                  placeholder="-"
-                                />
-                              </td>
-                            )}
-                            <td className="px-4 py-3 text-center">
-                              <span className="font-bold text-lg text-gray-900">
-                                {media !== null ? media.toFixed(1) : '-'}
-                              </span>
-                            </td>
-                            <td className={`px-4 py-3 text-center text-sm font-medium ${status.color}`}>
-                              {status.status}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                <div>
+                  <span className="text-gray-500">Recuperação:</span>
+                  <span className="ml-1 font-semibold text-yellow-600">
+                    {alunosComNotas.filter(a => a.situacao === 'recuperacao').length}
+                  </span>
                 </div>
-              </Card>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* === ABA RELATÓRIO === */}
-      {activeTab === 'relatorio' && (
-        <div className="space-y-6">
-          {/* Filtro */}
-          <Card variant="bordered">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-700">Filtrar por turma:</label>
-                <select
-                  value={relatorioTurma}
-                  onChange={(e) => setRelatorioTurma(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-gray-900"
-                >
-                  <option value="">Todas as turmas</option>
-                  {turmas.map(t => (
-                    <option key={t.id} value={t.id}>{t.nome}</option>
-                  ))}
-                </select>
+                <div>
+                  <span className="text-gray-500">Média da turma:</span>
+                  <span className="ml-1 font-semibold">
+                    {(() => {
+                      const comMedia = alunosComNotas.filter(a => a.media_periodo !== null);
+                      if (comMedia.length === 0) return '--';
+                      const soma = comMedia.reduce((acc, a) => acc + (a.media_periodo || 0), 0);
+                      return (soma / comMedia.length).toFixed(1);
+                    })()}
+                  </span>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Cards de Estatísticas */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <Card variant="bordered">
-              <CardContent className="p-4 text-center">
-                <TrendingUp className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">Média Geral</p>
-                <p className="text-2xl font-bold text-gray-900">{estatisticas.media}</p>
-              </CardContent>
-            </Card>
-            <Card variant="bordered">
-              <CardContent className="p-4 text-center">
-                <Award className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">Maior Nota</p>
-                <p className="text-2xl font-bold text-green-600">{estatisticas.maior}</p>
-              </CardContent>
-            </Card>
-            <Card variant="bordered">
-              <CardContent className="p-4 text-center">
-                <Target className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">Menor Nota</p>
-                <p className="text-2xl font-bold text-red-600">{estatisticas.menor}</p>
-              </CardContent>
-            </Card>
-            <Card variant="bordered">
-              <CardContent className="p-4 text-center">
-                <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">Aprovados</p>
-                <p className="text-2xl font-bold text-green-600">{estatisticas.aprovados}</p>
-              </CardContent>
-            </Card>
-            <Card variant="bordered">
-              <CardContent className="p-4 text-center">
-                <Users className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">Total Notas</p>
-                <p className="text-2xl font-bold text-gray-900">{estatisticas.total}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Gráficos */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Média por Turma */}
-            {!relatorioTurma && dadosMediasTurmas.length > 0 && (
-              <Card variant="bordered">
-                <CardContent className="p-6">
-                  <h3 className="font-semibold text-gray-900 mb-4">📊 Média por Turma</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={dadosMediasTurmas}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="nome" />
-                      <YAxis domain={[0, 10]} />
-                      <Tooltip />
-                      <Bar dataKey="media" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Evolução por Período */}
-            <Card variant="bordered">
-              <CardContent className="p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">📈 Evolução por Período</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={dadosEvolucao}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="nome" />
-                    <YAxis domain={[0, 10]} />
-                    <Tooltip />
-                    <Line 
-                      type="monotone" 
-                      dataKey="media" 
-                      stroke="#6366f1" 
-                      strokeWidth={3}
-                      dot={{ fill: '#6366f1', strokeWidth: 2, r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Distribuição de Notas */}
-            <Card variant="bordered">
-              <CardContent className="p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">📉 Distribuição de Notas</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={dadosDistribuicao}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="nome" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#22c55e" radius={[4, 4, 0, 0]}>
-                      {dadosDistribuicao.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={index < 2 ? '#ef4444' : index === 2 ? '#f59e0b' : '#22c55e'} 
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Ranking de Alunos */}
-            <Card variant="bordered">
-              <CardContent className="p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">🏆 Top 10 Alunos</h3>
-                {rankingAlunos.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">Nenhuma nota lançada ainda</p>
-                ) : (
-                  <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                    {rankingAlunos.map((aluno, idx) => (
-                      <div key={aluno.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <span className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
-                            idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : idx === 2 ? 'bg-amber-600' : 'bg-gray-300'
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          <div>
-                            <p className="font-medium text-gray-900">{aluno.nome}</p>
-                            {!relatorioTurma && (
-                              <p className="text-xs text-gray-500">{aluno.turma}</p>
-                            )}
-                          </div>
-                        </div>
-                        <span className="font-bold text-lg text-indigo-600">{aluno.media}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Mensagem se não houver dados */}
-          {todasNotas.length === 0 && (
-            <Card variant="bordered">
-              <CardContent className="p-12 text-center">
-                <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum dado disponível</h3>
-                <p className="text-gray-500">Lance notas na aba Lançamento para ver os relatórios</p>
-              </CardContent>
-            </Card>
+            </div>
           )}
         </div>
-      )}
-
-      {/* Modal Componente */}
-      <Modal
-        isOpen={modalComponenteOpen}
-        onClose={() => setModalComponenteOpen(false)}
-        title={editingComponente ? 'Editar Componente' : 'Novo Componente'}
-        size="sm"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
-            <Input
-              placeholder="Ex: Prova Bimestral"
-              value={componenteForm.nome}
-              onChange={(e) => setComponenteForm({ ...componenteForm, nome: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Peso</label>
-            <input
-              type="number"
-              min="0.5"
-              max="10"
-              step="0.5"
-              value={componenteForm.peso}
-              onChange={(e) => setComponenteForm({ ...componenteForm, peso: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg text-gray-900"
-            />
-          </div>
-          <div className="flex gap-3 pt-4 border-t">
-            <Button variant="outline" className="flex-1" onClick={() => setModalComponenteOpen(false)}>
-              Cancelar
-            </Button>
-            <Button className="flex-1" onClick={handleSaveComponente} loading={saving}>
-              {editingComponente ? 'Salvar' : 'Criar'}
-            </Button>
-          </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-500">
+          <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+          <p>Selecione uma turma para lançar notas</p>
         </div>
-      </Modal>
+      )}
     </div>
-  )
+  );
 }
