@@ -273,7 +273,18 @@ export function useNotas(): UseNotasReturn {
     periodo: number
   ): Promise<number | null> => {
     try {
-      const notasPorPeriodo = configuracao?.notas_por_periodo || 2;
+      // Buscar configuração atualizada do banco
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) return null;
+
+      const { data: configAtual } = await supabase
+        .from('configuracao_notas')
+        .select('notas_por_periodo, media_aprovacao')
+        .eq('usuario_id', user.user.id)
+        .single();
+
+      const notasPorPeriodo = configAtual?.notas_por_periodo || 2;
+      const mediaAprovacao = configAtual?.media_aprovacao || 6.0;
 
       // Buscar notas do aluno no período
       const { data: notas, error: notasError } = await supabase
@@ -292,7 +303,6 @@ export function useNotas(): UseNotasReturn {
       const media = soma / notasPorPeriodo;
 
       // Salvar média
-      const mediaAprovacao = configuracao?.media_aprovacao || 6.0;
       const situacao: SituacaoAluno = media >= mediaAprovacao ? 'aprovado' : 'recuperacao';
 
       await supabase
@@ -313,7 +323,7 @@ export function useNotas(): UseNotasReturn {
       console.error('Erro ao calcular média:', err);
       return null;
     }
-  }, [supabase, configuracao]);
+  }, [supabase]);
 
   // Atualizar situação do aluno
   const atualizarSituacao = useCallback(async (
