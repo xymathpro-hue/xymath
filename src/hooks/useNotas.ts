@@ -138,9 +138,9 @@ export function useNotas(): UseNotasReturn {
 
       if (alunosError) throw alunosError;
 
-      // Buscar notas do período
+      // Buscar notas do período (tabela notas_periodo)
       const { data: notas, error: notasError } = await supabase
-        .from('notas')
+        .from('notas_periodo')
         .select('*')
         .eq('turma_id', turmaId)
         .eq('periodo', periodo);
@@ -154,17 +154,19 @@ export function useNotas(): UseNotasReturn {
         .eq('turma_id', turmaId)
         .eq('periodo', periodo);
 
-      if (mediasError) throw mediasError;
+      if (mediasError && mediasError.code !== 'PGRST116') {
+        throw mediasError;
+      }
 
       // Montar dados dos alunos com notas
       const alunosComNotasData: AlunoComNotas[] = (alunos || []).map(aluno => {
         const notasAluno = (notas || []).filter(n => n.aluno_id === aluno.id);
-        const mediaAluno = (medias || []).find(m => m.aluno_id === aluno.id);
+        const mediaAluno = (medias || [])?.find(m => m.aluno_id === aluno.id);
 
         // Montar objeto de notas por numero_nota
         const notasObj: Record<number, number | null> = {};
         notasAluno.forEach(n => {
-          notasObj[n.numero_nota] = n.nota;
+          notasObj[n.numero_nota] = n.valor;
         });
 
         return {
@@ -174,7 +176,7 @@ export function useNotas(): UseNotasReturn {
           possui_laudo: aluno.possui_laudo || false,
           tipo_laudo: aluno.tipo_laudo,
           notas: notasObj,
-          media_atividades: null, // Será calculado depois se necessário
+          media_atividades: null,
           media_periodo: mediaAluno?.media || null,
           situacao: (mediaAluno?.situacao as SituacaoAluno) || 'cursando'
         };
@@ -195,14 +197,13 @@ export function useNotas(): UseNotasReturn {
     
     try {
       const { error: upsertError } = await supabase
-        .from('notas')
+        .from('notas_periodo')
         .upsert({
           aluno_id: dados.aluno_id,
           turma_id: dados.turma_id,
           periodo: dados.periodo,
           numero_nota: dados.numero_nota,
-          nota: dados.nota,
-          componentes: dados.componentes || null,
+          valor: dados.nota,
           observacao: dados.observacao || null,
           updated_at: new Date().toISOString()
         }, {
@@ -244,14 +245,13 @@ export function useNotas(): UseNotasReturn {
         turma_id: n.turma_id,
         periodo: n.periodo,
         numero_nota: n.numero_nota,
-        nota: n.nota,
-        componentes: n.componentes || null,
+        valor: n.nota,
         observacao: n.observacao || null,
         updated_at: new Date().toISOString()
       }));
 
       const { error: upsertError } = await supabase
-        .from('notas')
+        .from('notas_periodo')
         .upsert(notasParaUpsert, {
           onConflict: 'aluno_id,turma_id,periodo,numero_nota'
         });
@@ -277,18 +277,18 @@ export function useNotas(): UseNotasReturn {
 
       // Buscar notas do aluno no período
       const { data: notas, error: notasError } = await supabase
-        .from('notas')
-        .select('nota')
+        .from('notas_periodo')
+        .select('valor')
         .eq('aluno_id', alunoId)
         .eq('turma_id', turmaId)
         .eq('periodo', periodo)
-        .not('nota', 'is', null);
+        .not('valor', 'is', null);
 
       if (notasError) throw notasError;
 
       if (!notas || notas.length === 0) return null;
 
-      const soma = notas.reduce((acc, n) => acc + (n.nota || 0), 0);
+      const soma = notas.reduce((acc, n) => acc + (n.valor || 0), 0);
       const media = soma / notasPorPeriodo;
 
       // Salvar média
