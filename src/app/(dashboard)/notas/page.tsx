@@ -5,15 +5,13 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   FileText, 
   Settings, 
   Save, 
-  Calculator,
   AlertTriangle,
-  CheckCircle,
-  ChevronDown,
   Users,
   BookOpen
 } from 'lucide-react';
@@ -25,7 +23,6 @@ import type {
   LancarNota 
 } from '@/types/notas';
 import { 
-  getNomePeriodo, 
   PERIODOS_BIMESTRE,
   PERIODOS_TRIMESTRE
 } from '@/types/notas';
@@ -239,13 +236,22 @@ export default function NotasPage() {
             </p>
           </div>
           
-          <button
-            onClick={() => setMostrarConfig(!mostrarConfig)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-          >
-            <Settings className="h-5 w-5" />
-            Configurações
-          </button>
+          <div className="flex gap-2">
+            <Link
+              href="/notas/composicao"
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white hover:bg-purple-700 rounded-lg transition"
+            >
+              <Settings className="h-5 w-5" />
+              Composição de Notas
+            </Link>
+            <button
+              onClick={() => setMostrarConfig(!mostrarConfig)}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+            >
+              <Settings className="h-5 w-5" />
+              Config. Básica
+            </button>
+          </div>
         </div>
       </div>
 
