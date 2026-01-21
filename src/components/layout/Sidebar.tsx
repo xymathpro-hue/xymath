@@ -18,7 +18,8 @@ import {
   Flame,
   FileUp,
   PieChart,
-  Shield
+  Shield,
+  Calculator
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -30,6 +31,7 @@ const menuItems = [
   { href: '/turmas', label: 'Turmas', icon: Users },
   { href: '/alunos', label: 'Alunos', icon: GraduationCap },
   { href: '/atividades', label: 'Atividades', icon: ClipboardList },
+  { href: '/notas', label: 'Notas', icon: Calculator },
   { href: '/questoes', label: 'Banco de Questões', icon: BookOpen },
   { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
   { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
