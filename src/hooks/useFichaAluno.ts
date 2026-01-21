@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase-browser';
 import type { 
   FichaAluno, 
   AlunoAnotacao, 
@@ -35,7 +35,7 @@ export function useFichaAluno(): UseFichaAlunoReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   // Carregar ficha completa do aluno
   const carregarFicha = useCallback(async (alunoId: string) => {
@@ -79,6 +79,7 @@ export function useFichaAluno(): UseFichaAlunoReturn {
       if (anotacoesError) throw anotacoesError;
 
       // Montar objeto da ficha
+      const turmaData = aluno.turmas as any;
       const fichaCompleta: FichaAluno = {
         aluno: {
           id: aluno.id,
@@ -93,9 +94,9 @@ export function useFichaAluno(): UseFichaAlunoReturn {
           updated_at: aluno.updated_at
         },
         turma: {
-          id: aluno.turmas.id,
-          nome: aluno.turmas.nome,
-          ano_serie: aluno.turmas.ano_serie
+          id: turmaData.id,
+          nome: turmaData.nome,
+          ano_serie: turmaData.ano_serie
         },
         anotacoes: anotacoesData || [],
         estatisticas: {
