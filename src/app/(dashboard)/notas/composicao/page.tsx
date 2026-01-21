@@ -24,7 +24,8 @@ import {
   PenLine,
   GraduationCap,
   Info,
-  Edit3
+  Edit3,
+  Download
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase-browser';
@@ -175,6 +176,13 @@ export default function ComposicaoNotasPage() {
     tipo: 'manual' as TipoComponente,
     peso: 1.0
   });
+  
+  // Estado para importar simulado
+  const [mostrarModalImportar, setMostrarModalImportar] = useState(false);
+  const [componenteImportar, setComponenteImportar] = useState<ComponenteAvaliacao | null>(null);
+  const [simuladosDisponiveis, setSimuladosDisponiveis] = useState<{id: string; titulo: string; data_aplicacao: string; status: string}[]>([]);
+  const [simuladoSelecionado, setSimuladoSelecionado] = useState<string>('');
+  const [importando, setImportando] = useState(false);
 
   // ========== CARREGAR TURMAS ==========
   useEffect(() => {
@@ -595,6 +603,107 @@ export default function ComposicaoNotasPage() {
       setError(err.message);
     } finally {
       setSalvando(false);
+    }
+  };
+
+  // ========== IMPORTAR SIMULADO ==========
+  const handleAbrirImportarSimulado = async (comp: ComponenteAvaliacao) => {
+    setComponenteImportar(comp);
+    setSimuladoSelecionado('');
+    
+    // Buscar simulados da turma
+    try {
+      const { data, error } = await supabase
+        .from('simulados')
+        .select('id, titulo, data_aplicacao, status')
+        .eq('turma_id', turmaId)
+        .order('data_aplicacao', { ascending: false });
+
+      if (error) throw error;
+      
+      setSimuladosDisponiveis(data || []);
+      setMostrarModalImportar(true);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleImportarNotas = async () => {
+    if (!simuladoSelecionado || !componenteImportar || !composicao) return;
+    
+    setImportando(true);
+    
+    try {
+      // Buscar notas do simulado
+      const { data: notasSimulado, error: notasError } = await supabase
+        .from('respostas_simulados')
+        .select('aluno_id, acertos, total_questoes, nota')
+        .eq('simulado_id', simuladoSelecionado);
+
+      if (notasError) throw notasError;
+
+      if (!notasSimulado || notasSimulado.length === 0) {
+        alert('Nenhum resultado encontrado para este simulado.');
+        setImportando(false);
+        return;
+      }
+
+      // Preparar notas para inserir
+      const notasParaInserir = notasSimulado.map(ns => {
+        // Calcular nota: (acertos / total) * 10, ou usar nota já calculada
+        let notaFinal = ns.nota;
+        if (notaFinal === null || notaFinal === undefined) {
+          notaFinal = ns.total_questoes > 0 
+            ? Math.round((ns.acertos / ns.total_questoes) * 100) / 10 
+            : 0;
+        }
+        
+        return {
+          aluno_id: ns.aluno_id,
+          componente_id: componenteImportar.id,
+          composicao_id: composicao.id,
+          valor: notaFinal
+        };
+      });
+
+      // Inserir/atualizar notas
+      const { error: insertError } = await supabase
+        .from('notas_componente')
+        .upsert(notasParaInserir, { onConflict: 'aluno_id,componente_id' });
+
+      if (insertError) throw insertError;
+
+      // Vincular simulado ao componente
+      await supabase
+        .from('composicao_componentes')
+        .update({ simulado_id: simuladoSelecionado })
+        .eq('id', componenteImportar.id);
+
+      // Atualizar componente local
+      setComponentes(prev =>
+        prev.map(c => c.id === componenteImportar.id
+          ? { ...c, simulado_id: simuladoSelecionado }
+          : c
+        )
+      );
+
+      // Recarregar notas dos alunos
+      await carregarNotasAlunos(composicao.id);
+
+      // Recalcular médias para todos os alunos que receberam nota
+      for (const nota of notasParaInserir) {
+        await recalcularMedia(nota.aluno_id);
+      }
+
+      setMostrarModalImportar(false);
+      setComponenteImportar(null);
+      setSimuladoSelecionado('');
+      
+      alert(`${notasParaInserir.length} notas importadas com sucesso!`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setImportando(false);
     }
   };
 
@@ -1290,6 +1399,16 @@ export default function ComposicaoNotasPage() {
                               className="w-16 border rounded px-2 py-1 text-sm text-center"
                             />
                           </div>
+                          {(comp.tipo === 'simulado' || comp.tipo === 'atividade') && (
+                            <button
+                              onClick={() => handleAbrirImportarSimulado(comp)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded flex items-center gap-1"
+                              title="Importar notas"
+                            >
+                              <Download className="h-4 w-4" />
+                              <span className="text-xs">Importar</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => handleAbrirEdicao(comp)}
                             className="p-1 text-blue-500 hover:bg-blue-50 rounded"
@@ -1490,6 +1609,84 @@ export default function ComposicaoNotasPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ========== MODAL IMPORTAR SIMULADO ========== */}
+      {mostrarModalImportar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4">
+            <h3 className="text-lg font-semibold mb-2">Importar Notas do Simulado</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Selecione o simulado para importar as notas para "{componenteImportar?.nome}"
+            </p>
+            
+            {simuladosDisponiveis.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Gamepad2 className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <p>Nenhum simulado encontrado para esta turma.</p>
+                <p className="text-sm mt-1">Crie um simulado primeiro na página de Simulados.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
+                {simuladosDisponiveis.map(sim => (
+                  <label 
+                    key={sim.id} 
+                    className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${
+                      simuladoSelecionado === sim.id ? 'border-purple-500 bg-purple-50' : ''
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="simulado"
+                      value={sim.id}
+                      checked={simuladoSelecionado === sim.id}
+                      onChange={(e) => setSimuladoSelecionado(e.target.value)}
+                      className="w-4 h-4 text-purple-600"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium">{sim.titulo}</div>
+                      <div className="text-xs text-gray-500">
+                        {sim.data_aplicacao ? new Date(sim.data_aplicacao).toLocaleDateString('pt-BR') : 'Sem data'}
+                        {sim.status && (
+                          <span className={`ml-2 px-2 py-0.5 rounded-full ${
+                            sim.status === 'finalizado' ? 'bg-green-100 text-green-700' :
+                            sim.status === 'em_andamento' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {sim.status === 'finalizado' ? 'Finalizado' :
+                             sim.status === 'em_andamento' ? 'Em andamento' :
+                             sim.status}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setMostrarModalImportar(false);
+                  setComponenteImportar(null);
+                  setSimuladoSelecionado('');
+                }}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleImportarNotas}
+                disabled={!simuladoSelecionado || importando}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                {importando ? 'Importando...' : 'Importar Notas'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
