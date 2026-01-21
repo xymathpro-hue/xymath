@@ -23,7 +23,8 @@ import {
   Gamepad2,
   PenLine,
   GraduationCap,
-  Info
+  Info,
+  Edit3
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase-browser';
@@ -162,6 +163,14 @@ export default function ComposicaoNotasPage() {
   const [periodosCopiar, setPeriodosCopiar] = useState<number[]>([]);
   
   const [novoComponente, setNovoComponente] = useState({
+    nome: '',
+    tipo: 'manual' as TipoComponente,
+    peso: 1.0
+  });
+  
+  // Estado para edição de componente
+  const [componenteEditando, setComponenteEditando] = useState<ComponenteAvaliacao | null>(null);
+  const [editTemp, setEditTemp] = useState({
     nome: '',
     tipo: 'manual' as TipoComponente,
     peso: 1.0
@@ -548,6 +557,47 @@ export default function ComposicaoNotasPage() {
     }
   };
 
+  // ========== EDITAR COMPONENTE ==========
+  const handleAbrirEdicao = (comp: ComponenteAvaliacao) => {
+    setComponenteEditando(comp);
+    setEditTemp({
+      nome: comp.nome,
+      tipo: comp.tipo,
+      peso: comp.peso
+    });
+  };
+
+  const handleSalvarEdicao = async () => {
+    if (!componenteEditando) return;
+    
+    setSalvando(true);
+    
+    try {
+      const { error } = await supabase
+        .from('composicao_componentes')
+        .update({
+          nome: editTemp.nome,
+          tipo: editTemp.tipo,
+          peso: editTemp.peso
+        })
+        .eq('id', componenteEditando.id);
+
+      if (error) throw error;
+      
+      setComponentes(prev => 
+        prev.map(c => c.id === componenteEditando.id 
+          ? { ...c, nome: editTemp.nome, tipo: editTemp.tipo, peso: editTemp.peso } 
+          : c
+        )
+      );
+      setComponenteEditando(null);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   // ========== LANÇAR NOTA ==========
   const handleNotaChange = (alunoId: string, componenteId: string, valor: string) => {
     setNotasEditadas(prev => ({
@@ -659,6 +709,7 @@ export default function ComposicaoNotasPage() {
 
     componentes.forEach(comp => {
       const nota = aluno.notas_componentes[comp.id];
+      // Só considera componentes que têm nota lançada (não null/undefined)
       if (nota !== null && nota !== undefined) {
         if (composicao.tipo_calculo === 'ponderada') {
           somaNotas += nota * comp.peso;
@@ -670,21 +721,41 @@ export default function ComposicaoNotasPage() {
       }
     });
 
+    // Só calcula média se tiver pelo menos uma nota
     if (composicao.tipo_calculo === 'ponderada' && somaPesos > 0) {
       media = somaNotas / somaPesos;
     } else if (qtdNotas > 0) {
       media = somaNotas / qtdNotas;
+    } else {
+      // Sem notas, não salva média
+      setAlunosNotas(prev =>
+        prev.map(a =>
+          a.id === alunoId
+            ? { ...a, media_calculada: null, situacao: 'cursando' }
+            : a
+        )
+      );
+      return;
     }
 
     const mediaAprovacao = configTurma?.media_aprovacao || 6.0;
     let situacao: AlunoNota['situacao'] = 'cursando';
     
-    if (media >= mediaAprovacao) {
-      situacao = 'aprovado';
-    } else if (media >= mediaAprovacao - 1.5) {
-      situacao = 'recuperacao';
-    } else if (qtdNotas === componentes.length || somaPesos > 0) {
-      situacao = 'reprovado';
+    // Só define situação final se TODOS os componentes tiverem nota
+    const totalComponentes = componentes.length;
+    const componentesComNota = componentes.filter(c => 
+      aluno.notas_componentes[c.id] !== null && aluno.notas_componentes[c.id] !== undefined
+    ).length;
+    
+    if (componentesComNota === totalComponentes) {
+      // Todas as notas lançadas - pode definir situação final
+      if (media >= mediaAprovacao) {
+        situacao = 'aprovado';
+      } else if (media >= mediaAprovacao - 1.5) {
+        situacao = 'recuperacao';
+      } else {
+        situacao = 'reprovado';
+      }
     }
 
     try {
@@ -1220,6 +1291,13 @@ export default function ComposicaoNotasPage() {
                             />
                           </div>
                           <button
+                            onClick={() => handleAbrirEdicao(comp)}
+                            className="p-1 text-blue-500 hover:bg-blue-50 rounded"
+                            title="Editar"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <button
                             onClick={() => handleRemoverComponente(comp.id)}
                             className="p-1 text-red-500 hover:bg-red-50 rounded"
                             title="Remover"
@@ -1412,6 +1490,76 @@ export default function ComposicaoNotasPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ========== MODAL EDITAR COMPONENTE ========== */}
+      {componenteEditando && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Editar Componente</h3>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nome do Componente
+                </label>
+                <input
+                  type="text"
+                  value={editTemp.nome}
+                  onChange={(e) => setEditTemp(prev => ({ ...prev, nome: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="Ex: Prova de Rede 1"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tipo
+                </label>
+                <select
+                  value={editTemp.tipo}
+                  onChange={(e) => setEditTemp(prev => ({ ...prev, tipo: e.target.value as TipoComponente }))}
+                  className="w-full border rounded-lg px-3 py-2"
+                >
+                  {Object.entries(TIPOS_COMPONENTE).map(([valor, { label }]) => (
+                    <option key={valor} value={valor}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Peso
+                </label>
+                <input
+                  type="number"
+                  min="0.1"
+                  max="10"
+                  step="0.1"
+                  value={editTemp.peso}
+                  onChange={(e) => setEditTemp(prev => ({ ...prev, peso: parseFloat(e.target.value) || 1 }))}
+                  className="w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setComponenteEditando(null)}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSalvarEdicao}
+                disabled={!editTemp.nome.trim() || salvando}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {salvando ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
