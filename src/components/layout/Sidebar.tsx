@@ -19,7 +19,8 @@ import {
   FileUp,
   PieChart,
   Shield,
-  Calculator
+  Calculator,
+  Upload
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -36,6 +37,7 @@ const menuItems = [
   { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
   { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
   { href: '/simulados', label: 'Simulados', icon: FileText },
+  { href: '/avaliacoes-rede', label: 'Avaliações de Rede', icon: Upload },
   { href: '/resultados', label: 'Resultados', icon: BarChart3 },
   { href: '/gestao-horarios', label: 'Gestão de Horários', icon: Clock },
   { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
