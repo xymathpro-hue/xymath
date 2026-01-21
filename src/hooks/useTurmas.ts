@@ -10,12 +10,10 @@ export interface Turma {
   id: string;
   nome: string;
   ano_letivo: number;
-  serie: string | null;
+  ano_serie: string | null;
   turno: string | null;
-  escola: string | null;
-  ativo: boolean;
+  ativa: boolean;
   created_at: string;
-  updated_at: string;
 }
 
 interface UseTurmasReturn {
@@ -45,7 +43,7 @@ export function useTurmas(): UseTurmasReturn {
         .from('turmas')
         .select('*')
         .eq('usuario_id', user.user.id)
-        .eq('ativo', true)
+        .eq('ativa', true)
         .order('ano_letivo', { ascending: false })
         .order('nome');
 
