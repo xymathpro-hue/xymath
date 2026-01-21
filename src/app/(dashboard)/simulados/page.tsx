@@ -9,7 +9,7 @@ import {
   Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, 
   Wand2, Filter, Users, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, 
   AlertCircle, BarChart3, Download, FileDown, ChevronDown, ChevronUp,
-  BookOpen, Target, Layers, Clock, SlidersHorizontal, RefreshCw
+  BookOpen, Target, Layers, Clock, SlidersHorizontal, RefreshCw, Copy
 } from 'lucide-react'
 import { exportToWord, exportToPDF } from '@/lib/export-document'
 
@@ -70,6 +70,9 @@ const ANO_SERIE_OPTIONS = [
   { value: '7º ano EF', label: '7º ano EF' },
   { value: '8º ano EF', label: '8º ano EF' },
   { value: '9º ano EF', label: '9º ano EF' },
+  { value: '1º ano EM', label: '1º ano EM' },
+  { value: '2º ano EM', label: '2º ano EM' },
+  { value: '3º ano EM', label: '3º ano EM' },
 ]
 
 const DIFICULDADE_OPTIONS = [
@@ -135,6 +138,15 @@ export default function SimuladosPage() {
   const [exportMenuOpen, setExportMenuOpen] = useState<string | null>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
 
+  // Estados para duplicar simulado
+  const [showDuplicarModal, setShowDuplicarModal] = useState(false)
+  const [simuladoParaDuplicar, setSimuladoParaDuplicar] = useState<Simulado | null>(null)
+  const [duplicarForm, setDuplicarForm] = useState({
+    titulo: '',
+    turmas_ids: [] as string[]
+  })
+  const [duplicando, setDuplicando] = useState(false)
+
   // Temas disponíveis
   const temasDisponiveis = [...new Set(
     questoesDisponiveis
@@ -180,13 +192,9 @@ export default function SimuladosPage() {
 
   // Filtrar questões
   const questoesFiltradas = questoesDisponiveis.filter(q => {
-    // Filtro por ano (exceto quando é TEMA)
     if (filtros.fonte !== 'TEMA' && filtros.ano_serie && q.ano_serie !== filtros.ano_serie) return false
-    
-    // Filtro por dificuldade
     if (filtros.dificuldade && q.dificuldade !== filtros.dificuldade) return false
     
-    // Filtro por fonte
     if (filtros.fonte) {
       if (filtros.fonte === 'TEMA') {
         if (!q.unidade_tematica) return false
@@ -196,7 +204,6 @@ export default function SimuladosPage() {
       }
     }
     
-    // Filtro por habilidades/descritores/temas
     if (filtros.habilidades_ids.length > 0) {
       if (filtros.fonte === 'SAEB') {
         if (!q.descritor_codigo || !filtros.habilidades_ids.includes(q.descritor_codigo)) return false
@@ -207,7 +214,6 @@ export default function SimuladosPage() {
       }
     }
     
-    // Filtro por busca textual
     if (filtros.busca) {
       const busca = filtros.busca.toLowerCase()
       if (!q.enunciado.toLowerCase().includes(busca)) return false
@@ -358,7 +364,6 @@ export default function SimuladosPage() {
     const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.5)
     const disponiveis = questoesFiltradas.filter(q => !questoesSelecionadas.includes(q.id))
     
-    // Distribuir por dificuldade
     const faceis = shuffle(disponiveis.filter(q => q.dificuldade === 'facil'))
     const medias = shuffle(disponiveis.filter(q => q.dificuldade === 'medio'))
     const dificeis = shuffle(disponiveis.filter(q => q.dificuldade === 'dificil'))
@@ -427,6 +432,73 @@ export default function SimuladosPage() {
     } catch (e) {
       console.error('Erro ao exportar:', e)
       alert('Erro ao exportar documento')
+    }
+  }
+
+  // ============================================
+  // FUNÇÕES DE DUPLICAR SIMULADO
+  // ============================================
+  
+  // Abrir modal de duplicar
+  const abrirDuplicarModal = (simulado: Simulado) => {
+    setSimuladoParaDuplicar(simulado)
+    setDuplicarForm({
+      titulo: `${simulado.titulo} (cópia)`,
+      turmas_ids: []
+    })
+    setShowDuplicarModal(true)
+  }
+
+  // Toggle turma no formulário de duplicar
+  const toggleTurmaDuplicar = (id: string) => {
+    setDuplicarForm(prev => ({
+      ...prev,
+      turmas_ids: prev.turmas_ids.includes(id)
+        ? prev.turmas_ids.filter(t => t !== id)
+        : [...prev.turmas_ids, id]
+    }))
+  }
+
+  // Executar duplicação
+  const executarDuplicacao = async () => {
+    if (!usuario?.id || !simuladoParaDuplicar) return
+    if (!duplicarForm.titulo.trim()) {
+      alert('Digite um título para o simulado')
+      return
+    }
+
+    setDuplicando(true)
+    try {
+      const configOriginal = simuladoParaDuplicar.configuracoes || {}
+      
+      const novoSimulado = {
+        usuario_id: usuario.id,
+        titulo: duplicarForm.titulo.trim(),
+        descricao: simuladoParaDuplicar.descricao,
+        turma_id: duplicarForm.turmas_ids[0] || null,
+        tempo_minutos: simuladoParaDuplicar.tempo_minutos,
+        questoes_ids: simuladoParaDuplicar.questoes_ids,
+        configuracoes: {
+          ...configOriginal,
+          turmas_selecionadas: duplicarForm.turmas_ids
+        },
+        status: 'rascunho'
+      }
+
+      const { error } = await supabase.from('simulados').insert(novoSimulado)
+      
+      if (error) {
+        alert(`Erro ao duplicar: ${error.message}`)
+        return
+      }
+
+      setShowDuplicarModal(false)
+      setSimuladoParaDuplicar(null)
+      fetchData()
+    } catch (e: any) {
+      alert(e.message || 'Erro ao duplicar')
+    } finally {
+      setDuplicando(false)
     }
   }
 
@@ -610,6 +682,9 @@ export default function SimuladosPage() {
                       <Button variant="ghost" size="sm" onClick={() => iniciarCriacao(s)} title="Editar">
                         <Edit className="w-4 h-4" />
                       </Button>
+                      <Button variant="ghost" size="sm" onClick={() => abrirDuplicarModal(s)} title="Duplicar">
+                        <Copy className="w-4 h-4 text-blue-600" />
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => handleDelete(s.id)} title="Excluir">
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
@@ -620,6 +695,95 @@ export default function SimuladosPage() {
             ))}
           </div>
         )}
+
+        {/* ============================================ */}
+        {/* MODAL: DUPLICAR SIMULADO */}
+        {/* ============================================ */}
+        <Modal 
+          isOpen={showDuplicarModal} 
+          onClose={() => setShowDuplicarModal(false)} 
+          title="Duplicar Simulado" 
+          size="md"
+        >
+          {simuladoParaDuplicar && (
+            <div className="space-y-4">
+              {/* Info do simulado original */}
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-sm text-gray-500">Duplicando:</p>
+                <p className="font-medium text-gray-900">{simuladoParaDuplicar.titulo}</p>
+                <p className="text-sm text-gray-600">
+                  {simuladoParaDuplicar.questoes_ids?.length || 0} questões • {simuladoParaDuplicar.tempo_minutos} min
+                </p>
+              </div>
+
+              {/* Novo título */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Título do novo simulado *
+                </label>
+                <Input
+                  value={duplicarForm.titulo}
+                  onChange={(e) => setDuplicarForm({ ...duplicarForm, titulo: e.target.value })}
+                  placeholder="Digite o título..."
+                />
+              </div>
+
+              {/* Selecionar turmas */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Aplicar para quais turmas?
+                </label>
+                <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
+                  {turmas.length === 0 ? (
+                    <p className="text-center text-gray-500 py-2 text-sm">Nenhuma turma cadastrada</p>
+                  ) : (
+                    turmas.map(turma => (
+                      <label 
+                        key={turma.id} 
+                        className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={duplicarForm.turmas_ids.includes(turma.id)}
+                          onChange={() => toggleTurmaDuplicar(turma.id)}
+                          className="rounded text-indigo-600"
+                        />
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">{turma.nome}</p>
+                          <p className="text-xs text-gray-500">{turma.ano_serie}</p>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+                {duplicarForm.turmas_ids.length > 0 && (
+                  <p className="text-xs text-indigo-600 mt-1">
+                    {duplicarForm.turmas_ids.length} turma(s) selecionada(s)
+                  </p>
+                )}
+              </div>
+
+              {/* Ações */}
+              <div className="flex gap-3 pt-4 border-t">
+                <Button 
+                  variant="outline" 
+                  className="flex-1" 
+                  onClick={() => setShowDuplicarModal(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  className="flex-1" 
+                  onClick={executarDuplicacao}
+                  loading={duplicando}
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  Duplicar
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
       </div>
     )
   }
