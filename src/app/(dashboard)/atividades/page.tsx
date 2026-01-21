@@ -19,7 +19,8 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  TrendingUp
 } from 'lucide-react'
 import { 
   TIPOS_ATIVIDADE_CONFIG, 
@@ -46,6 +47,17 @@ interface Turma {
   ano_serie: string
 }
 
+// Função para detectar bimestre atual pela data
+function getBimestreAtual(): number {
+  const mes = new Date().getMonth() + 1 // Janeiro = 1
+  
+  if (mes >= 2 && mes <= 4) return 1      // Fev-Abr: 1º Bimestre
+  if (mes >= 5 && mes <= 6) return 2      // Mai-Jun: 2º Bimestre
+  if (mes >= 7 && mes <= 9) return 3      // Jul-Set: 3º Bimestre
+  if (mes >= 10 && mes <= 12) return 4    // Out-Dez: 4º Bimestre
+  return 1                                 // Janeiro: considera 1º Bimestre
+}
+
 export default function AtividadesPage() {
   const { usuario } = useAuth()
   const supabase = createClient()
@@ -62,12 +74,16 @@ export default function AtividadesPage() {
   // Estados
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [turmaSelecionada, setTurmaSelecionada] = useState<string>('')
-  const [bimestreSelecionado, setBimestreSelecionado] = useState<number | undefined>()
+  const [bimestreAtual] = useState<number>(getBimestreAtual())
+  const [bimestreSelecionado, setBimestreSelecionado] = useState<number | undefined>(getBimestreAtual())
   const [searchTerm, setSearchTerm] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editando, setEditando] = useState<AtividadeComEstatisticas | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [loadingTurmas, setLoadingTurmas] = useState(true)
+
+  // Estados para estatísticas do ano
+  const [statsAno, setStatsAno] = useState({ total: 0, pontos: 0, entrega: 0 })
 
   // Form states
   const [formTitulo, setFormTitulo] = useState('')
@@ -75,7 +91,7 @@ export default function AtividadesPage() {
   const [formTipo, setFormTipo] = useState<TipoAtividade>('classe')
   const [formDataEntrega, setFormDataEntrega] = useState('')
   const [formValor, setFormValor] = useState('0')
-  const [formBimestre, setFormBimestre] = useState<number>(1)
+  const [formBimestre, setFormBimestre] = useState<number>(getBimestreAtual())
 
   // Carregar turmas
   useEffect(() => {
@@ -88,6 +104,8 @@ export default function AtividadesPage() {
   useEffect(() => {
     if (turmaSelecionada) {
       carregarAtividades(turmaSelecionada, bimestreSelecionado)
+      // Carregar stats do ano inteiro
+      carregarStatsAno()
     }
   }, [turmaSelecionada, bimestreSelecionado, carregarAtividades])
 
@@ -107,6 +125,51 @@ export default function AtividadesPage() {
     setLoadingTurmas(false)
   }
 
+  // Carregar estatísticas do ano inteiro
+  const carregarStatsAno = async () => {
+    if (!turmaSelecionada) return
+
+    const { data: todasAtividades } = await supabase
+      .from('atividades')
+      .select('id, valor')
+      .eq('turma_id', turmaSelecionada)
+
+    if (!todasAtividades) {
+      setStatsAno({ total: 0, pontos: 0, entrega: 0 })
+      return
+    }
+
+    const totalAtividades = todasAtividades.length
+    const totalPontos = todasAtividades.reduce((sum, a) => sum + (a.valor || 0), 0)
+
+    // Calcular média de entrega do ano
+    let somaEntrega = 0
+    for (const atividade of todasAtividades) {
+      const { count: totalAlunos } = await supabase
+        .from('alunos')
+        .select('*', { count: 'exact', head: true })
+        .eq('turma_id', turmaSelecionada)
+        .eq('ativo', true)
+
+      const { data: entregas } = await supabase
+        .from('atividade_entregas')
+        .select('status')
+        .eq('atividade_id', atividade.id)
+
+      const entregues = entregas?.filter(e => e.status === 'entregue' || e.status === 'atrasado').length || 0
+      const percentual = totalAlunos ? (entregues / totalAlunos) * 100 : 0
+      somaEntrega += percentual
+    }
+
+    const mediaEntrega = totalAtividades > 0 ? Math.round(somaEntrega / totalAtividades) : 0
+
+    setStatsAno({
+      total: totalAtividades,
+      pontos: totalPontos,
+      entrega: mediaEntrega
+    })
+  }
+
   // Abrir modal para criar/editar
   const handleOpenModal = (atividade?: AtividadeComEstatisticas) => {
     if (atividade) {
@@ -116,7 +179,7 @@ export default function AtividadesPage() {
       setFormTipo(atividade.tipo)
       setFormDataEntrega(atividade.data_entrega || '')
       setFormValor(atividade.valor.toString())
-      setFormBimestre(atividade.bimestre || 1)
+      setFormBimestre(atividade.bimestre || bimestreAtual)
     } else {
       setEditando(null)
       setFormTitulo('')
@@ -124,7 +187,7 @@ export default function AtividadesPage() {
       setFormTipo('classe')
       setFormDataEntrega('')
       setFormValor('0')
-      setFormBimestre(1)
+      setFormBimestre(bimestreAtual)
     }
     setModalOpen(true)
   }
@@ -155,6 +218,7 @@ export default function AtividadesPage() {
     if (sucesso) {
       setModalOpen(false)
       carregarAtividades(turmaSelecionada, bimestreSelecionado)
+      carregarStatsAno()
     }
     
     setSalvando(false)
@@ -167,6 +231,7 @@ export default function AtividadesPage() {
     const sucesso = await excluirAtividade(id)
     if (sucesso) {
       carregarAtividades(turmaSelecionada, bimestreSelecionado)
+      carregarStatsAno()
     }
   }
 
@@ -175,7 +240,7 @@ export default function AtividadesPage() {
     a.titulo.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Estatísticas gerais
+  // Estatísticas do período selecionado
   const totalAtividades = atividades.length
   const totalValor = atividades.reduce((sum, a) => sum + (a.valor || 0), 0)
   const mediaEntrega = atividades.length > 0
@@ -187,6 +252,11 @@ export default function AtividadesPage() {
     if (!data) return '-'
     return new Date(data + 'T00:00:00').toLocaleDateString('pt-BR')
   }
+
+  // Nome do bimestre selecionado
+  const nomeBimestre = bimestreSelecionado 
+    ? BIMESTRES_OPTIONS.find(b => b.value === bimestreSelecionado)?.label 
+    : 'Ano Letivo'
 
   if (loadingTurmas) {
     return (
@@ -248,15 +318,22 @@ export default function AtividadesPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Bimestre</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Bimestre
+            {bimestreSelecionado === bimestreAtual && (
+              <span className="ml-2 text-xs text-green-600 font-normal">(atual)</span>
+            )}
+          </label>
           <select
             value={bimestreSelecionado || ''}
             onChange={(e) => setBimestreSelecionado(e.target.value ? parseInt(e.target.value) : undefined)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 bg-white"
           >
-            <option value="">Todos</option>
+            <option value="">Todos (Ano Letivo)</option>
             {BIMESTRES_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option key={opt.value} value={opt.value}>
+                {opt.label} {opt.value === bimestreAtual ? '(atual)' : ''}
+              </option>
             ))}
           </select>
         </div>
@@ -274,13 +351,13 @@ export default function AtividadesPage() {
         </div>
       </div>
 
-      {/* Cards de Estatísticas */}
+      {/* Cards de Estatísticas do Período */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total de Atividades</p>
+                <p className="text-sm text-gray-600">Atividades ({nomeBimestre})</p>
                 <p className="text-2xl font-bold text-gray-900">{totalAtividades}</p>
               </div>
               <ClipboardList className="w-10 h-10 text-blue-500" />
@@ -291,7 +368,7 @@ export default function AtividadesPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total de Pontos</p>
+                <p className="text-sm text-gray-600">Pontos ({nomeBimestre})</p>
                 <p className="text-2xl font-bold text-purple-600">{totalValor.toFixed(1)}</p>
               </div>
               <FileText className="w-10 h-10 text-purple-500" />
@@ -311,6 +388,27 @@ export default function AtividadesPage() {
         </Card>
       </div>
 
+      {/* Resumo do Ano (se estiver filtrando por bimestre) */}
+      {bimestreSelecionado && statsAno.total > 0 && (
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp className="w-5 h-5 text-indigo-600" />
+            <span className="font-medium text-indigo-900">Resumo do Ano Letivo</span>
+          </div>
+          <div className="flex flex-wrap gap-6 text-sm">
+            <span className="text-gray-700">
+              <strong className="text-indigo-600">{statsAno.total}</strong> atividades
+            </span>
+            <span className="text-gray-700">
+              <strong className="text-purple-600">{statsAno.pontos.toFixed(1)}</strong> pontos
+            </span>
+            <span className="text-gray-700">
+              <strong className="text-green-600">{statsAno.entrega}%</strong> média de entrega
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Lista de Atividades */}
       {loading ? (
         <div className="flex justify-center py-8">
@@ -321,7 +419,7 @@ export default function AtividadesPage() {
           <CardContent className="p-12 text-center">
             <ClipboardList className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {searchTerm ? 'Nenhuma atividade encontrada' : 'Nenhuma atividade cadastrada'}
+              {searchTerm ? 'Nenhuma atividade encontrada' : `Nenhuma atividade no ${nomeBimestre}`}
             </h3>
             <p className="text-gray-600 mb-4">
               {searchTerm ? 'Tente outros termos de busca' : 'Clique em "Nova Atividade" para começar'}
@@ -480,7 +578,9 @@ export default function AtividadesPage() {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 bg-white"
             >
               {BIMESTRES_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} {opt.value === bimestreAtual ? '(atual)' : ''}
+                </option>
               ))}
             </select>
           </div>
