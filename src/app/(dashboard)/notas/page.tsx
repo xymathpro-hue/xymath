@@ -1,6 +1,6 @@
 // ============================================================
 // XYMATH - PÁGINA DE NOTAS
-// src/app/notas/page.tsx
+// src/app/(dashboard)/notas/page.tsx
 // ============================================================
 
 'use client';
@@ -26,7 +26,6 @@ import type {
 } from '@/types/notas';
 import { 
   getNomePeriodo, 
-  getPeriodoAtual,
   PERIODOS_BIMESTRE,
   PERIODOS_TRIMESTRE
 } from '@/types/notas';
@@ -81,7 +80,8 @@ export default function NotasPage() {
         tem_recuperacao_paralela: configuracao.tem_recuperacao_paralela,
         tem_prova_final: configuracao.tem_prova_final
       });
-      setPeriodo(getPeriodoAtual(configuracao.tipo_divisao));
+      // Sempre iniciar no 1º período
+      setPeriodo(1);
     }
   }, [configuracao]);
 
