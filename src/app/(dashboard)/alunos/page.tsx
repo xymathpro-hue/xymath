@@ -5,8 +5,10 @@ import { Card, CardContent, Button, Input } from '@/components/ui'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Search, Users, GraduationCap, ChevronDown, ChevronRight } from 'lucide-react'
+import { Search, Users, GraduationCap, ChevronDown, ChevronRight, Eye } from 'lucide-react'
 import Link from 'next/link'
+import FichaAlunoModal from '@/components/alunos/FichaAlunoModal'
+import BadgeLaudo from '@/components/alunos/BadgeLaudo'
 
 interface AlunoComTurma {
   id: string
@@ -15,6 +17,8 @@ interface AlunoComTurma {
   ativo: boolean
   turma_id: string
   turma_nome: string
+  possui_laudo?: boolean
+  tipo_laudo?: string
 }
 
 interface TurmaComAlunos {
@@ -32,6 +36,7 @@ export default function AlunosPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [totalAlunos, setTotalAlunos] = useState(0)
   const [alunosAtivos, setAlunosAtivos] = useState(0)
+  const [alunoSelecionado, setAlunoSelecionado] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -58,7 +63,7 @@ export default function AlunosPage() {
     const turmaIds = turmasData.map((t: any) => t.id)
     const { data: alunosData } = await supabase
       .from('alunos')
-      .select('*')
+      .select('*, possui_laudo, tipo_laudo')
       .in('turma_id', turmaIds)
       .order('nome')
 
@@ -92,6 +97,11 @@ export default function AlunosPage() {
     )
   })).filter(turma => searchTerm === '' || turma.alunos.length > 0)
 
+  // Contagem de alunos com laudo
+  const alunosComLaudo = turmasComAlunos.reduce((total, turma) => 
+    total + turma.alunos.filter(a => a.possui_laudo).length, 0
+  )
+
   return (
     <div className="space-y-6">
       <div>
@@ -99,7 +109,7 @@ export default function AlunosPage() {
         <p className="text-gray-600">Visualize todos os alunos organizados por turma</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -119,6 +129,17 @@ export default function AlunosPage() {
                 <p className="text-2xl font-bold text-green-600">{alunosAtivos}</p>
               </div>
               <GraduationCap className="w-10 h-10 text-green-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Com Laudo</p>
+                <p className="text-2xl font-bold text-yellow-600">{alunosComLaudo}</p>
+              </div>
+              <Users className="w-10 h-10 text-yellow-500" />
             </div>
           </CardContent>
         </Card>
@@ -202,18 +223,39 @@ export default function AlunosPage() {
                         <TableHead>Nome</TableHead>
                         <TableHead>Matrícula</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="w-20">Ficha</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {turma.alunos.map((aluno, index) => (
                         <TableRow key={aluno.id}>
                           <TableCell className="text-gray-500">{index + 1}</TableCell>
-                          <TableCell className="font-medium text-gray-900">{aluno.nome}</TableCell>
+                          <TableCell className="font-medium text-gray-900">
+                            <div className="flex items-center gap-2">
+                              {aluno.nome}
+                              <BadgeLaudo 
+                                possuiLaudo={aluno.possui_laudo || false} 
+                                tipoLaudo={aluno.tipo_laudo as any}
+                              />
+                            </div>
+                          </TableCell>
                           <TableCell className="text-gray-600">{aluno.matricula || '-'}</TableCell>
                           <TableCell>
                             <span className={`px-2 py-1 rounded-full text-xs ${aluno.ativo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                               {aluno.ativo ? 'Ativo' : 'Inativo'}
                             </span>
+                          </TableCell>
+                          <TableCell>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setAlunoSelecionado(aluno.id)
+                              }}
+                              className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-blue-600 transition-colors"
+                              title="Ver ficha do aluno"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -234,6 +276,13 @@ export default function AlunosPage() {
           ))}
         </div>
       )}
+
+      {/* Modal Ficha do Aluno */}
+      <FichaAlunoModal
+        alunoId={alunoSelecionado || ''}
+        isOpen={!!alunoSelecionado}
+        onClose={() => setAlunoSelecionado(null)}
+      />
     </div>
   )
 }
