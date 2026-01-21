@@ -2,13 +2,6 @@
 // XYMATH - PÁGINA DE COMPOSIÇÃO DE NOTAS (VERSÃO FLEXÍVEL)
 // src/app/(dashboard)/notas/composicao/page.tsx
 // ============================================================
-// Permite:
-// - Escolher 3 trimestres OU 4 bimestres por turma
-// - Definir quantidade de notas por período (1, 2, 3, 4, 5...)
-// - Configurar componentes de cada nota (manual, simulado, atividade)
-// - Média simples ou ponderada com validação de pesos
-// - Replicar configuração para outras turmas
-// ============================================================
 
 'use client';
 
@@ -21,25 +14,19 @@ import {
   Copy,
   GripVertical,
   FileText,
-  Calculator,
-  Edit3,
   Users,
   BookOpen,
   ArrowLeft,
   Printer,
   AlertTriangle,
   CheckCircle,
-  ChevronDown,
-  ChevronUp,
   Gamepad2,
   PenLine,
   GraduationCap,
-  Info,
-  Check,
-  X
+  Info
 } from 'lucide-react';
 import Link from 'next/link';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase-browser';
 
 // ============================================================
 // TIPOS
@@ -54,7 +41,7 @@ interface ConfiguracaoTurma {
   turma_id: string;
   tipo_periodo: TipoPeriodo;
   quantidade_periodos: number;
-  notas_por_periodo: number[];  // Array com qtd de notas para cada período
+  notas_por_periodo: number[];
   media_aprovacao: number;
   tem_recuperacao: boolean;
   tem_prova_final: boolean;
@@ -101,26 +88,22 @@ interface AlunoNota {
 // CONSTANTES
 // ============================================================
 
-const TIPOS_COMPONENTE: Record<TipoComponente, { label: string; descricao: string; icone: any }> = {
+const TIPOS_COMPONENTE: Record<TipoComponente, { label: string; descricao: string }> = {
   manual: { 
     label: 'Avaliação Manual', 
-    descricao: 'Professor lança a nota manualmente',
-    icone: PenLine
+    descricao: 'Professor lança a nota manualmente'
   },
   simulado: { 
     label: 'Simulado', 
-    descricao: 'Nota importada de simulado da plataforma',
-    icone: Gamepad2
+    descricao: 'Nota importada de simulado da plataforma'
   },
   atividade: { 
     label: 'Atividade Exportada', 
-    descricao: 'Nota importada de atividade da plataforma',
-    icone: FileText
+    descricao: 'Nota importada de atividade da plataforma'
   },
   prova_rede: { 
     label: 'Prova de Rede', 
-    descricao: 'Prova aplicada pela rede de ensino',
-    icone: GraduationCap
+    descricao: 'Prova aplicada pela rede de ensino'
   }
 };
 
@@ -142,16 +125,13 @@ const TIPOS_CALCULO: Record<TipoCalculo, { label: string; descricao: string; for
 // ============================================================
 
 export default function ComposicaoNotasPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
   
   // ========== ESTADOS ==========
-  
-  // Turmas e seleção
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [turmaId, setTurmaId] = useState<string>('');
   const [turmaSelecionada, setTurmaSelecionada] = useState<Turma | null>(null);
   
-  // Configuração da turma (bimestre/trimestre + qtd notas)
   const [configTurma, setConfigTurma] = useState<ConfiguracaoTurma | null>(null);
   const [mostrarConfigInicial, setMostrarConfigInicial] = useState(false);
   const [configTemp, setConfigTemp] = useState<Partial<ConfiguracaoTurma>>({
@@ -163,19 +143,15 @@ export default function ComposicaoNotasPage() {
     tem_prova_final: false
   });
   
-  // Seleção de período e nota
   const [periodo, setPeriodo] = useState<number>(1);
   const [numeroNota, setNumeroNota] = useState<number>(1);
   
-  // Composição atual
   const [composicao, setComposicao] = useState<ComposicaoNota | null>(null);
   const [componentes, setComponentes] = useState<ComponenteAvaliacao[]>([]);
   
-  // Notas dos alunos
   const [alunosNotas, setAlunosNotas] = useState<AlunoNota[]>([]);
   const [notasEditadas, setNotasEditadas] = useState<Record<string, Record<string, string>>>({});
   
-  // UI
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,24 +161,19 @@ export default function ComposicaoNotasPage() {
   const [turmasReplicar, setTurmasReplicar] = useState<string[]>([]);
   const [periodosCopiar, setPeriodosCopiar] = useState<number[]>([]);
   
-  // Novo componente
   const [novoComponente, setNovoComponente] = useState({
     nome: '',
     tipo: 'manual' as TipoComponente,
     peso: 1.0
   });
-  
-  // Simulados disponíveis
-  const [simulados, setSimulados] = useState<{ id: string; titulo: string }[]>([]);
 
   // ========== CARREGAR TURMAS ==========
-  
   useEffect(() => {
     async function carregarTurmas() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('turmas')
         .select('id, nome, ano_letivo')
         .order('ano_letivo', { ascending: false })
@@ -214,13 +185,11 @@ export default function ComposicaoNotasPage() {
   }, [supabase]);
 
   // ========== CARREGAR CONFIGURAÇÃO DA TURMA ==========
-  
   const carregarConfigTurma = useCallback(async (turmaId: string) => {
     setLoading(true);
     setError(null);
     
     try {
-      // Buscar configuração existente
       const { data, error } = await supabase
         .from('configuracao_notas')
         .select('*')
@@ -244,7 +213,6 @@ export default function ComposicaoNotasPage() {
         });
         setMostrarConfigInicial(false);
       } else {
-        // Não tem configuração, mostrar tela inicial
         setConfigTurma(null);
         setMostrarConfigInicial(true);
         setConfigTemp({
@@ -264,7 +232,6 @@ export default function ComposicaoNotasPage() {
   }, [supabase]);
 
   // ========== QUANDO MUDA TURMA ==========
-  
   useEffect(() => {
     if (turmaId) {
       const turma = turmas.find(t => t.id === turmaId);
@@ -283,7 +250,6 @@ export default function ComposicaoNotasPage() {
   }, [turmaId, turmas, carregarConfigTurma]);
 
   // ========== SALVAR CONFIGURAÇÃO INICIAL ==========
-  
   const salvarConfigInicial = async () => {
     if (!turmaId) return;
     
@@ -327,8 +293,7 @@ export default function ComposicaoNotasPage() {
     }
   };
 
-  // ========== ATUALIZAR QTD NOTAS POR PERÍODO ==========
-  
+  // ========== HANDLERS DE CONFIGURAÇÃO ==========
   const handleQtdNotasPeriodo = (periodoIndex: number, qtd: number) => {
     setConfigTemp(prev => {
       const novasNotas = [...(prev.notas_por_periodo || [])];
@@ -337,8 +302,6 @@ export default function ComposicaoNotasPage() {
     });
   };
 
-  // ========== MUDAR TIPO PERÍODO ==========
-  
   const handleTipoPeriodo = (tipo: TipoPeriodo) => {
     const qtd = tipo === 'trimestre' ? 3 : 4;
     const notas = Array(qtd).fill(2);
@@ -351,7 +314,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== CARREGAR COMPOSIÇÃO ==========
-  
   const carregarComposicao = useCallback(async () => {
     if (!turmaId || !configTurma) return;
     
@@ -361,7 +323,6 @@ export default function ComposicaoNotasPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Buscar composição
       const { data: comp, error: compError } = await supabase
         .from('composicao_nota')
         .select('*')
@@ -375,7 +336,6 @@ export default function ComposicaoNotasPage() {
       if (comp) {
         setComposicao(comp);
         
-        // Buscar componentes
         const { data: comps, error: compsError } = await supabase
           .from('composicao_componentes')
           .select('*')
@@ -385,7 +345,6 @@ export default function ComposicaoNotasPage() {
         if (compsError) throw compsError;
         setComponentes(comps || []);
         
-        // Carregar notas dos alunos
         await carregarNotasAlunos(comp.id);
       } else {
         setComposicao(null);
@@ -406,10 +365,8 @@ export default function ComposicaoNotasPage() {
   }, [configTurma, mostrarConfigInicial, periodo, numeroNota, carregarComposicao]);
 
   // ========== CARREGAR NOTAS DOS ALUNOS ==========
-  
   const carregarNotasAlunos = async (composicaoId: string) => {
     try {
-      // Buscar alunos da turma
       const { data: alunos, error: alunosError } = await supabase
         .from('alunos')
         .select('id, nome, matricula, possui_laudo, tipo_laudo')
@@ -419,7 +376,6 @@ export default function ComposicaoNotasPage() {
 
       if (alunosError) throw alunosError;
 
-      // Buscar notas
       const { data: notas, error: notasError } = await supabase
         .from('notas_componente')
         .select('aluno_id, componente_id, valor')
@@ -427,7 +383,6 @@ export default function ComposicaoNotasPage() {
 
       if (notasError) throw notasError;
 
-      // Buscar médias
       const { data: medias, error: mediasError } = await supabase
         .from('medias_periodo')
         .select('aluno_id, media, situacao')
@@ -437,7 +392,6 @@ export default function ComposicaoNotasPage() {
 
       if (mediasError) throw mediasError;
 
-      // Montar dados
       const alunosComNotas: AlunoNota[] = (alunos || []).map(aluno => {
         const notasAluno: Record<string, number | null> = {};
         (notas || [])
@@ -466,7 +420,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== CRIAR COMPOSIÇÃO ==========
-  
   const criarComposicao = async () => {
     if (!turmaId) return;
     
@@ -502,7 +455,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== ATUALIZAR TIPO CÁLCULO ==========
-  
   const atualizarTipoCalculo = async (tipo: TipoCalculo) => {
     if (!composicao) return;
     
@@ -521,7 +473,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== ADICIONAR COMPONENTE ==========
-  
   const handleAdicionarComponente = async () => {
     if (!composicao || !novoComponente.nome.trim()) return;
     
@@ -554,7 +505,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== REMOVER COMPONENTE ==========
-  
   const handleRemoverComponente = async (componenteId: string) => {
     if (!confirm('Remover este componente? As notas lançadas serão perdidas.')) return;
     
@@ -581,7 +531,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== ATUALIZAR PESO ==========
-  
   const handleAtualizarPeso = async (componenteId: string, peso: number) => {
     try {
       const { error } = await supabase
@@ -600,7 +549,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== LANÇAR NOTA ==========
-  
   const handleNotaChange = (alunoId: string, componenteId: string, valor: string) => {
     setNotasEditadas(prev => ({
       ...prev,
@@ -633,7 +581,6 @@ export default function ComposicaoNotasPage() {
 
       if (error) throw error;
 
-      // Limpar edição
       setNotasEditadas(prev => {
         const novo = { ...prev };
         if (novo[alunoId]) {
@@ -645,7 +592,6 @@ export default function ComposicaoNotasPage() {
         return novo;
       });
 
-      // Atualizar estado local
       setAlunosNotas(prev => 
         prev.map(a => 
           a.id === alunoId 
@@ -654,7 +600,6 @@ export default function ComposicaoNotasPage() {
         )
       );
 
-      // Recalcular média
       await recalcularMedia(alunoId);
     } catch (err: any) {
       setError(err.message);
@@ -701,14 +646,12 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== RECALCULAR MÉDIA ==========
-  
   const recalcularMedia = async (alunoId: string) => {
     if (!composicao) return;
     
     const aluno = alunosNotas.find(a => a.id === alunoId);
     if (!aluno) return;
 
-    // Calcular média
     let media = 0;
     let somaPesos = 0;
     let somaNotas = 0;
@@ -733,7 +676,6 @@ export default function ComposicaoNotasPage() {
       media = somaNotas / qtdNotas;
     }
 
-    // Determinar situação
     const mediaAprovacao = configTurma?.media_aprovacao || 6.0;
     let situacao: AlunoNota['situacao'] = 'cursando';
     
@@ -745,7 +687,6 @@ export default function ComposicaoNotasPage() {
       situacao = 'reprovado';
     }
 
-    // Salvar média
     try {
       await supabase
         .from('medias_periodo')
@@ -758,7 +699,6 @@ export default function ComposicaoNotasPage() {
           situacao
         }, { onConflict: 'aluno_id,turma_id,periodo,numero_nota' });
 
-      // Atualizar estado local
       setAlunosNotas(prev =>
         prev.map(a =>
           a.id === alunoId
@@ -772,7 +712,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== REPLICAR CONFIGURAÇÃO ==========
-  
   const handleReplicarConfig = async () => {
     if (!configTurma || turmasReplicar.length === 0) return;
     
@@ -810,7 +749,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== COPIAR COMPOSIÇÃO ==========
-  
   const handleCopiarComposicao = async () => {
     if (!composicao || periodosCopiar.length === 0) return;
     
@@ -821,7 +759,6 @@ export default function ComposicaoNotasPage() {
       if (!user) throw new Error('Usuário não autenticado');
 
       for (const p of periodosCopiar) {
-        // Criar composição no período destino
         const { data: novaComp, error: compError } = await supabase
           .from('composicao_nota')
           .insert({
@@ -838,7 +775,6 @@ export default function ComposicaoNotasPage() {
 
         if (compError) throw compError;
 
-        // Copiar componentes
         if (componentes.length > 0) {
           const novosComps = componentes.map(c => ({
             composicao_id: novaComp.id,
@@ -867,7 +803,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== HELPERS ==========
-  
   const getNotaValor = (alunoId: string, componenteId: string): string => {
     if (notasEditadas[alunoId]?.[componenteId] !== undefined) {
       return notasEditadas[alunoId][componenteId];
@@ -912,7 +847,6 @@ export default function ComposicaoNotasPage() {
   };
 
   // ========== RENDER ==========
-  
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6 print:p-0 print:bg-white">
       {/* Header */}
@@ -957,7 +891,6 @@ export default function ComposicaoNotasPage() {
 
           {configTurma && !mostrarConfigInicial && (
             <>
-              {/* Período */}
               <div className="w-40">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   <BookOpen className="h-4 w-4 inline mr-1" />
@@ -974,7 +907,6 @@ export default function ComposicaoNotasPage() {
                 </select>
               </div>
 
-              {/* Nota */}
               <div className="w-32">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Nota
@@ -990,7 +922,6 @@ export default function ComposicaoNotasPage() {
                 </select>
               </div>
 
-              {/* Botões */}
               <div className="flex gap-2">
                 <button
                   onClick={() => setMostrarModalReplicar(true)}
