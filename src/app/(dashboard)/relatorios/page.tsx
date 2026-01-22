@@ -774,7 +774,7 @@ export default function RelatoriosPage() {
                       paddingAngle={2}
                       dataKey="quantidade"
                       nameKey="faixa"
-                      label={({ faixa, quantidade }) => quantidade > 0 ? `${quantidade}` : ''}
+                      label={({ value }) => value > 0 ? `${value}` : ''}
                     >
                       {dados.distribuicaoNotas.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.cor} />
