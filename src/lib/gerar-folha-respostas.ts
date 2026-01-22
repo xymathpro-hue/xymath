@@ -1,205 +1,143 @@
 import jsPDF from 'jspdf'
-import QRCode from 'qrcode'
 
-interface AlunoFolha {
+interface Aluno {
   id: string
   nome: string
   numero?: number
 }
 
-interface ConfiguracaoFolha {
-  simuladoId: string
-  simuladoTitulo: string
-  turmaId: string
-  turmaNome: string
+interface DadosFolha {
+  simulado: {
+    id: string
+    titulo: string
+    duracao: number
+  }
+  turma: {
+    id: string
+    nome: string
+    ano_escolar: string
+  }
+  alunos: Aluno[]
   totalQuestoes: number
-  opcoesLetra: number
-  alunos: AlunoFolha[]
 }
 
-/**
- * Gera folhas de respostas em PDF para correção automática via OpenCV
- */
-export async function gerarFolhasRespostas(config: ConfiguracaoFolha): Promise<Blob> {
-  const { simuladoId, simuladoTitulo, turmaId, turmaNome, totalQuestoes, opcoesLetra, alunos } = config
-  
-  const pdf = new jsPDF('portrait', 'mm', 'a4')
+export async function gerarFolhasRespostas(dados: DadosFolha): Promise<void> {
+  const { simulado, turma, alunos, totalQuestoes } = dados
+
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  })
+
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
   const margin = 15
-  const markerSize = 8
-  
-  for (let alunoIdx = 0; alunoIdx < alunos.length; alunoIdx++) {
-    const aluno = alunos[alunoIdx]
-    
-    if (alunoIdx > 0) {
+
+  alunos.forEach((aluno, alunoIndex) => {
+    if (alunoIndex > 0) {
       pdf.addPage()
     }
-    
-    // MARCADORES DE CANTO (para OpenCV detectar)
-    pdf.setFillColor(0, 0, 0)
-    pdf.rect(margin, margin, markerSize, markerSize, 'F')
-    pdf.rect(pageWidth - margin - markerSize, margin, markerSize, markerSize, 'F')
-    pdf.rect(margin, pageHeight - margin - markerSize, markerSize, markerSize, 'F')
-    pdf.rect(pageWidth - margin - markerSize, pageHeight - margin - markerSize, markerSize, markerSize, 'F')
-    
-    // QR CODE
-    const qrData = `${simuladoId}|${aluno.id}|${turmaId}|${totalQuestoes}`
-    
-    try {
-      const qrDataUrl = await QRCode.toDataURL(qrData, {
-        width: 200,
-        margin: 1,
-        errorCorrectionLevel: 'H'
-      })
-      
-      const qrX = margin + markerSize + 5
-      const qrY = margin + markerSize + 5
-      const qrSize = 30
-      
-      pdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize)
-    } catch (error) {
-      console.error('Erro ao gerar QR Code:', error)
-    }
-    
-    // CABEÇALHO
-    const headerX = margin + markerSize + 45
-    const headerY = margin + markerSize + 10
-    
-    pdf.setFontSize(14)
+
+    // Cabeçalho
+    pdf.setFontSize(16)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('FOLHA DE RESPOSTAS', headerX, headerY)
-    
-    pdf.setFontSize(10)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(simuladoTitulo, headerX, headerY + 6)
-    pdf.text(`Turma: ${turmaNome}`, headerX, headerY + 12)
-    
-    // Nome do aluno
+    pdf.text(simulado.titulo, pageWidth / 2, 20, { align: 'center' })
+
     pdf.setFontSize(11)
-    pdf.setFont('helvetica', 'bold')
-    const nomeY = headerY + 22
-    pdf.text('Aluno:', headerX, nomeY)
     pdf.setFont('helvetica', 'normal')
-    pdf.text(aluno.nome, headerX + 15, nomeY)
-    
-    if (aluno.numero) {
-      pdf.text(`Nº: ${aluno.numero}`, headerX + 100, nomeY)
-    }
-    
+    pdf.text(`Turma: ${turma.nome} - ${turma.ano_escolar}`, margin, 30)
+    pdf.text(`Duração: ${simulado.duracao} minutos`, pageWidth - margin, 30, { align: 'right' })
+
+    // Dados do aluno
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'bold')
+    const numeroStr = aluno.numero ? `Nº ${aluno.numero} - ` : ''
+    pdf.text(`${numeroStr}${aluno.nome}`, margin, 42)
+
     // Linha separadora
-    pdf.setDrawColor(200, 200, 200)
-    pdf.line(margin + markerSize, nomeY + 8, pageWidth - margin - markerSize, nomeY + 8)
-    
-    // INSTRUÇÕES
-    const instrY = nomeY + 15
-    pdf.setFontSize(8)
+    pdf.setLineWidth(0.5)
+    pdf.line(margin, 47, pageWidth - margin, 47)
+
+    // Instruções
+    pdf.setFontSize(9)
     pdf.setFont('helvetica', 'italic')
-    pdf.text('Preencha completamente o círculo da alternativa escolhida usando caneta preta ou azul escuro.', margin + markerSize + 5, instrY)
-    pdf.text('Não rasure. Não use corretivo. Apenas uma resposta por questão.', margin + markerSize + 5, instrY + 4)
-    
-    // GRADE DE BOLHAS
-    const gradeStartY = instrY + 15
-    const gradeStartX = margin + markerSize + 10
-    
-    const questoesPorColuna = Math.ceil(totalQuestoes / 2)
-    const colunaWidth = (pageWidth - 2 * margin - 2 * markerSize - 20) / 2
-    const linhaHeight = 8
-    const bolhaRadius = 3
-    const bolhaSpacing = 12
-    
-    const letras = ['A', 'B', 'C', 'D', 'E'].slice(0, opcoesLetra)
-    
-    for (let col = 0; col < 2; col++) {
-      const colX = gradeStartX + col * colunaWidth
-      const questaoInicio = col * questoesPorColuna
-      const questaoFim = Math.min(questaoInicio + questoesPorColuna, totalQuestoes)
+    pdf.text('Marque apenas UMA alternativa por questão. Use caneta azul ou preta.', margin, 54)
+
+    // Grade de respostas
+    const startY = 62
+    const colWidth = 35
+    const rowHeight = 8
+    const questoesPerCol = Math.ceil(totalQuestoes / 4)
+    const cols = Math.min(4, Math.ceil(totalQuestoes / questoesPerCol))
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+
+    for (let i = 0; i < totalQuestoes; i++) {
+      const col = Math.floor(i / questoesPerCol)
+      const row = i % questoesPerCol
       
-      // Cabeçalho da coluna
-      pdf.setFontSize(8)
+      const x = margin + (col * colWidth)
+      const y = startY + (row * rowHeight)
+
+      // Número da questão
       pdf.setFont('helvetica', 'bold')
-      pdf.text('Nº', colX, gradeStartY)
-      
-      letras.forEach((letra, idx) => {
-        const letraX = colX + 15 + idx * bolhaSpacing
-        pdf.text(letra, letraX, gradeStartY)
-      })
-      
-      // Questões
+      pdf.text(`${(i + 1).toString().padStart(2, '0')}.`, x, y + 5)
+
+      // Alternativas
       pdf.setFont('helvetica', 'normal')
-      for (let q = questaoInicio; q < questaoFim; q++) {
-        const linhaY = gradeStartY + 5 + (q - questaoInicio) * linhaHeight
+      const altX = x + 10
+      const alternatives = ['A', 'B', 'C', 'D']
+      
+      alternatives.forEach((alt, altIndex) => {
+        const circleX = altX + (altIndex * 6)
         
-        pdf.setFontSize(9)
-        const numQuestao = String(q + 1).padStart(2, '0')
-        pdf.text(numQuestao, colX, linhaY + 2.5)
+        // Círculo
+        pdf.circle(circleX, y + 3.5, 2)
         
-        // Bolhas
-        letras.forEach((_, idx) => {
-          const bolhaX = colX + 15 + idx * bolhaSpacing
-          const bolhaY = linhaY
-          
-          pdf.setDrawColor(0, 0, 0)
-          pdf.setLineWidth(0.3)
-          pdf.circle(bolhaX, bolhaY + 1.5, bolhaRadius, 'S')
-        })
-      }
+        // Letra
+        pdf.setFontSize(7)
+        pdf.text(alt, circleX - 1.2, y + 4.5)
+        pdf.setFontSize(10)
+      })
     }
-    
-    // RODAPÉ
-    pdf.setFontSize(7)
-    pdf.setFont('helvetica', 'italic')
-    pdf.setTextColor(128, 128, 128)
-    pdf.text(
-      'xyMath - Sistema de Correção Automática | Não dobre ou amasse esta folha',
-      pageWidth / 2,
-      pageHeight - margin - markerSize - 5,
-      { align: 'center' }
-    )
-    pdf.setTextColor(0, 0, 0)
-  }
-  
-  return pdf.output('blob')
-}
 
-/**
- * Gera folhas em branco (sem nome do aluno)
- */
-export async function gerarFolhaEmBranco(config: {
-  simuladoId: string
-  simuladoTitulo: string
-  turmaId: string
-  turmaNome: string
-  totalQuestoes: number
-  opcoesLetra: number
-  quantidade: number
-}): Promise<Blob> {
-  const alunos: AlunoFolha[] = []
-  
-  for (let i = 0; i < config.quantidade; i++) {
-    alunos.push({
-      id: `blank_${i + 1}`,
-      nome: '_______________________________________________',
-      numero: undefined
+    // QR Code placeholder (área para QR)
+    const qrSize = 25
+    const qrX = pageWidth - margin - qrSize
+    const qrY = pageHeight - margin - qrSize - 15
+
+    // Gerar dados do QR Code
+    const qrData = JSON.stringify({
+      s: simulado.id,
+      a: aluno.id,
+      t: turma.id
     })
-  }
-  
-  return gerarFolhasRespostas({
-    ...config,
-    alunos
-  })
-}
 
-/**
- * Baixa o PDF gerado
- */
-export function downloadPDF(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+    // Desenhar área do QR Code
+    pdf.setDrawColor(200)
+    pdf.setLineWidth(0.3)
+    pdf.rect(qrX, qrY, qrSize, qrSize)
+
+    // Texto do QR Code (simulado - em produção usaria biblioteca de QR)
+    pdf.setFontSize(6)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text('QR Code', qrX + qrSize/2, qrY + qrSize/2, { align: 'center' })
+    pdf.text(aluno.id.substring(0, 8), qrX + qrSize/2, qrY + qrSize/2 + 3, { align: 'center' })
+
+    // Rodapé
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(`ID: ${aluno.id.substring(0, 8)}`, margin, pageHeight - margin)
+    pdf.text(`Página ${alunoIndex + 1} de ${alunos.length}`, pageWidth / 2, pageHeight - margin, { align: 'center' })
+
+    // Assinatura do aluno
+    pdf.setFontSize(9)
+    pdf.text('Assinatura do aluno: _______________________________', margin, pageHeight - margin - 20)
+  })
+
+  // Baixar PDF
+  const nomeArquivo = `Folhas_Respostas_${simulado.titulo.replace(/[^a-zA-Z0-9]/g, '_')}_${turma.nome.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+  pdf.save(nomeArquivo)
 }
