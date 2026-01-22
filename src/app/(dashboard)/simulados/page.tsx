@@ -14,10 +14,18 @@ import {
 import { gerarProvaWord } from '@/lib/gerar-prova-word'
 import { ModalFolhaRespostas } from '@/components/ModalFolhaRespostas'
 
+interface SimuladoTurma {
+  turma_id: string
+  turmas: {
+    nome: string
+    ano_serie: string
+  }
+}
+
 interface Simulado {
   id: string
   titulo: string
-  turma_id: string
+  turma_id: string | null
   data_aplicacao: string | null
   tempo_minutos: number | null
   status: 'rascunho' | 'publicado' | 'encerrado'
@@ -25,7 +33,8 @@ interface Simulado {
   turmas?: {
     nome: string
     ano_serie: string
-  }
+  } | null
+  simulado_turmas?: SimuladoTurma[]
   questoes_count?: number
   respostas_count?: number
   tipo_pontuacao: string
@@ -148,12 +157,16 @@ export default function SimuladosPage() {
       
       setTurmas(turmasData || [])
       
-      // Carregar simulados
+      // Carregar simulados com turmas vinculadas
       const { data: simuladosData } = await supabase
         .from('simulados')
         .select(`
           *,
-          turmas (nome, ano_serie)
+          turmas (nome, ano_serie),
+          simulado_turmas (
+            turma_id,
+            turmas (nome, ano_serie)
+          )
         `)
         .eq('usuario_id', user.id)
         .order('created_at', { ascending: false })
@@ -195,6 +208,33 @@ export default function SimuladosPage() {
     carregarDados()
   }, [carregarDados])
 
+  // Função para obter nomes das turmas do simulado
+  const getTurmasNomes = (simulado: Simulado): string => {
+    // Primeiro verifica simulado_turmas (novo sistema)
+    if (simulado.simulado_turmas && simulado.simulado_turmas.length > 0) {
+      return simulado.simulado_turmas
+        .map(st => st.turmas?.nome || '')
+        .filter(Boolean)
+        .join(', ')
+    }
+    // Fallback para turma_id (sistema antigo)
+    if (simulado.turmas?.nome) {
+      return simulado.turmas.nome
+    }
+    return 'Sem turma'
+  }
+
+  // Função para obter IDs das turmas do simulado
+  const getTurmasIds = (simulado: Simulado): string[] => {
+    if (simulado.simulado_turmas && simulado.simulado_turmas.length > 0) {
+      return simulado.simulado_turmas.map(st => st.turma_id)
+    }
+    if (simulado.turma_id) {
+      return [simulado.turma_id]
+    }
+    return []
+  }
+
   const abrirModalCriar = () => {
     setEditando(null)
     setFormData({
@@ -209,7 +249,7 @@ export default function SimuladosPage() {
     setEditando(simulado)
     setFormData({
       titulo: simulado.titulo,
-      turmas_ids: [simulado.turma_id],
+      turmas_ids: getTurmasIds(simulado),
       data_aplicacao: simulado.data_aplicacao || ''
     })
     setModalAberto(true)
@@ -297,43 +337,63 @@ export default function SimuladosPage() {
           .from('simulados')
           .update({
             titulo: formData.titulo,
-            turma_id: formData.turmas_ids[0],
             data_aplicacao: formData.data_aplicacao || null
           })
           .eq('id', editando.id)
         
+        // Atualizar turmas vinculadas
+        // Primeiro remove as antigas
+        await supabase
+          .from('simulado_turmas')
+          .delete()
+          .eq('simulado_id', editando.id)
+        
+        // Depois insere as novas
+        if (formData.turmas_ids.length > 0) {
+          await supabase
+            .from('simulado_turmas')
+            .insert(
+              formData.turmas_ids.map(turmaId => ({
+                simulado_id: editando.id,
+                turma_id: turmaId
+              }))
+            )
+        }
+        
         setModalAberto(false)
         carregarDados()
       } else {
-        // Criar simulado(s) - um para cada turma selecionada
-        const simuladosCriados = []
+        // Criar novo simulado (único) vinculado a múltiplas turmas
+        const { data: novoSimulado, error } = await supabase
+          .from('simulados')
+          .insert({
+            titulo: formData.titulo,
+            turma_id: formData.turmas_ids[0], // Mantém compatibilidade
+            data_aplicacao: formData.data_aplicacao || null,
+            usuario_id: user.id,
+            status: 'rascunho'
+          })
+          .select()
+          .single()
         
-        for (const turmaId of formData.turmas_ids) {
-          const { data: novoSimulado, error } = await supabase
-            .from('simulados')
-            .insert({
-              titulo: formData.titulo,
-              turma_id: turmaId,
-              data_aplicacao: formData.data_aplicacao || null,
-              usuario_id: user.id,
-              status: 'rascunho'
-            })
-            .select()
-            .single()
-          
-          if (error) throw error
-          simuladosCriados.push(novoSimulado)
+        if (error) throw error
+        
+        // Vincular todas as turmas selecionadas
+        if (formData.turmas_ids.length > 0) {
+          await supabase
+            .from('simulado_turmas')
+            .insert(
+              formData.turmas_ids.map(turmaId => ({
+                simulado_id: novoSimulado.id,
+                turma_id: turmaId
+              }))
+            )
         }
         
         setModalAberto(false)
         
-        // Se criou apenas 1 simulado, redireciona para adicionar questões
-        if (simuladosCriados.length === 1) {
-          router.push(`/simulados/${simuladosCriados[0].id}`)
-        } else {
-          // Se criou múltiplos, recarrega a lista
-          carregarDados()
-        }
+        // Redireciona para página de questões
+        router.push(`/simulados/${novoSimulado.id}`)
       }
     } catch (error) {
       console.error('Erro ao salvar:', error)
@@ -354,13 +414,19 @@ export default function SimuladosPage() {
     
     setExcluindo(true)
     try {
-      // Primeiro excluir respostas
+      // Excluir turmas vinculadas
+      await supabase
+        .from('simulado_turmas')
+        .delete()
+        .eq('simulado_id', simuladoExcluir.id)
+      
+      // Excluir respostas
       await supabase
         .from('respostas_simulado')
         .delete()
         .eq('simulado_id', simuladoExcluir.id)
       
-      // Depois excluir questões do simulado
+      // Excluir questões do simulado
       await supabase
         .from('simulado_questoes')
         .delete()
@@ -455,7 +521,7 @@ export default function SimuladosPage() {
       // Gerar documento Word
       await gerarProvaWord({
         titulo: simulado.titulo,
-        turma: simulado.turmas?.nome || '',
+        turma: getTurmasNomes(simulado),
         data: simulado.data_aplicacao || '',
         duracao: 60,
         questoes: questoes.map(q => ({
@@ -494,6 +560,19 @@ export default function SimuladosPage() {
         .single()
       
       if (erroSimulado) throw erroSimulado
+      
+      // Copiar turmas vinculadas
+      const turmasIds = getTurmasIds(simulado)
+      if (turmasIds.length > 0) {
+        await supabase
+          .from('simulado_turmas')
+          .insert(
+            turmasIds.map(turmaId => ({
+              simulado_id: novoSimulado.id,
+              turma_id: turmaId
+            }))
+          )
+      }
       
       // Copiar questões da tabela simulado_questoes
       const { data: questoesOriginal } = await supabase
@@ -534,7 +613,7 @@ export default function SimuladosPage() {
 
   const simuladosFiltrados = simulados.filter(s =>
     s.titulo.toLowerCase().includes(busca.toLowerCase()) ||
-    s.turmas?.nome?.toLowerCase().includes(busca.toLowerCase())
+    getTurmasNomes(s).toLowerCase().includes(busca.toLowerCase())
   )
 
   return (
@@ -603,7 +682,7 @@ export default function SimuladosPage() {
                     <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                       <span className="flex items-center gap-1">
                         <Users className="w-4 h-4" />
-                        {s.turmas?.nome || 'Sem turma'}
+                        {getTurmasNomes(s)}
                       </span>
                       <span className="flex items-center gap-1">
                         <FileText className="w-4 h-4" />
@@ -884,11 +963,6 @@ export default function SimuladosPage() {
                 ))
               )}
             </div>
-            {!editando && formData.turmas_ids.length > 1 && (
-              <p className="text-xs text-gray-500 mt-1">
-                Será criado um simulado para cada turma selecionada
-              </p>
-            )}
           </div>
 
           <div>
@@ -910,7 +984,7 @@ export default function SimuladosPage() {
               onClick={salvarSimulado} 
               disabled={salvando || !formData.titulo || formData.turmas_ids.length === 0}
             >
-              {salvando ? 'Salvando...' : editando ? 'Salvar' : 'Continuar'}
+              {salvando ? 'Salvando...' : editando ? 'Salvar' : 'Continuar para Questões'}
             </Button>
           </div>
         </div>
