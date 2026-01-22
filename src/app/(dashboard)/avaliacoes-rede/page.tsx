@@ -722,7 +722,7 @@ export default function AvaliacoesRedePage() {
                         </span>
                       )}
                       {av.total_questoes && (
-                        <Badge variant="secondary">{av.total_questoes} questões</Badge>
+                        <Badge variant="info">{av.total_questoes} questões</Badge>
                       )}
                     </div>
                   </div>
@@ -889,11 +889,11 @@ export default function AvaliacoesRedePage() {
             {/* Ações */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Badge variant="secondary">
+                <Badge variant="info">
                   {dadosExtraidos.alunos.length} alunos encontrados
                 </Badge>
                 {dadosExtraidos.totalQuestoes && (
-                  <Badge variant="secondary">
+                  <Badge variant="info">
                     {dadosExtraidos.totalQuestoes} questões
                   </Badge>
                 )}
