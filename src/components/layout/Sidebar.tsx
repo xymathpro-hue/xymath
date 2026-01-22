@@ -22,7 +22,8 @@ import {
   Bell,
   FileSpreadsheet,
   Calculator,
-  Calendar
+  Calendar,
+  ScanLine
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -46,6 +47,7 @@ const menuItems = [
   { href: '/gestao-horarios', label: 'Gestão de Horários', icon: Clock },
   { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
   { href: '/relatorios', label: 'Relatórios', icon: PieChart },
+  { href: '/correcao-automatica', label: 'Correção Automática', icon: ScanLine },
   { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
 ]
 
