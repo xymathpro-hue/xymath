@@ -6,7 +6,7 @@ import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
 import { 
-  Plus, Search, FileText, Users, Calendar, Clock, Download, Trash2, Edit, 
+  Plus, Search, FileText, Users, Calendar, Download, Trash2, Edit, 
   Eye, QrCode, MoreVertical, ChevronDown, ChevronUp, CheckCircle, XCircle,
   ClipboardList, Copy
 } from 'lucide-react'
@@ -18,19 +18,17 @@ interface Simulado {
   titulo: string
   turma_id: string
   data_aplicacao: string | null
-  duracao_minutos: number | null
+  tempo_minutos: number | null
   status: 'rascunho' | 'publicado' | 'encerrado'
   created_at: string
   turmas?: {
     nome: string
-    ano_escolar: string
+    ano_serie: string
   }
   questoes_count?: number
   respostas_count?: number
-  pontuacao_tipo: 'padrao' | 'personalizada'
-  pontuacao_acerto: number
-  pontuacao_erro: number
-  pontuacao_branco: number
+  tipo_pontuacao: string
+  questoes_ids?: string[]
 }
 
 interface SimuladoQuestao {
@@ -87,12 +85,7 @@ export default function SimuladosPage() {
   const [formData, setFormData] = useState({
     titulo: '',
     turma_id: '',
-    data_aplicacao: '',
-    duracao_minutos: 60,
-    pontuacao_tipo: 'padrao' as 'padrao' | 'personalizada',
-    pontuacao_acerto: 1,
-    pontuacao_erro: 0,
-    pontuacao_branco: 0
+    data_aplicacao: ''
   })
   const [salvando, setSalvando] = useState(false)
   
@@ -153,12 +146,12 @@ export default function SimuladosPage() {
       
       setTurmas(turmasData || [])
       
-      // Carregar simulados com contagem de questões
+      // Carregar simulados
       const { data: simuladosData } = await supabase
         .from('simulados')
         .select(`
           *,
-          turmas (nome, ano_escolar)
+          turmas (nome, ano_serie)
         `)
         .eq('usuario_id', user.id)
         .order('created_at', { ascending: false })
@@ -172,11 +165,6 @@ export default function SimuladosPage() {
               .select('*', { count: 'exact', head: true })
               .eq('simulado_id', s.id)
             
-            const { count: respostasCount } = await supabase
-              .from('respostas_simulado')
-              .select('*', { count: 'exact', head: true })
-              .eq('simulado_id', s.id)
-            
             // Contar alunos únicos que responderam
             const { data: alunosUnicos } = await supabase
               .from('respostas_simulado')
@@ -187,7 +175,7 @@ export default function SimuladosPage() {
             
             return {
               ...s,
-              questoes_count: questoesCount || 0,
+              questoes_count: s.questoes_ids?.length || questoesCount || 0,
               respostas_count: alunosSet.size
             }
           })
@@ -210,12 +198,7 @@ export default function SimuladosPage() {
     setFormData({
       titulo: '',
       turma_id: '',
-      data_aplicacao: '',
-      duracao_minutos: 60,
-      pontuacao_tipo: 'padrao',
-      pontuacao_acerto: 1,
-      pontuacao_erro: 0,
-      pontuacao_branco: 0
+      data_aplicacao: ''
     })
     setModalAberto(true)
   }
@@ -225,12 +208,7 @@ export default function SimuladosPage() {
     setFormData({
       titulo: simulado.titulo,
       turma_id: simulado.turma_id,
-      data_aplicacao: simulado.data_aplicacao || '',
-      duracao_minutos: simulado.duracao_minutos || 60,
-      pontuacao_tipo: simulado.pontuacao_tipo || 'padrao',
-      pontuacao_acerto: simulado.pontuacao_acerto ?? 1,
-      pontuacao_erro: simulado.pontuacao_erro ?? 0,
-      pontuacao_branco: simulado.pontuacao_branco ?? 0
+      data_aplicacao: simulado.data_aplicacao || ''
     })
     setModalAberto(true)
     setMenuAberto(null)
@@ -298,12 +276,8 @@ export default function SimuladosPage() {
         titulo: formData.titulo,
         turma_id: formData.turma_id,
         data_aplicacao: formData.data_aplicacao || null,
-        duracao_minutos: formData.duracao_minutos,
         usuario_id: user.id,
-        pontuacao_tipo: formData.pontuacao_tipo,
-        pontuacao_acerto: formData.pontuacao_acerto,
-        pontuacao_erro: formData.pontuacao_erro,
-        pontuacao_branco: formData.pontuacao_branco
+        status: 'rascunho'
       }
       
       if (editando) {
@@ -321,6 +295,7 @@ export default function SimuladosPage() {
       carregarDados()
     } catch (error) {
       console.error('Erro ao salvar:', error)
+      alert('Erro ao salvar simulado. Tente novamente.')
     } finally {
       setSalvando(false)
     }
@@ -440,7 +415,7 @@ export default function SimuladosPage() {
         titulo: simulado.titulo,
         turma: simulado.turmas?.nome || '',
         data: simulado.data_aplicacao || '',
-        duracao: simulado.duracao_minutos || 60,
+        duracao: 60,
         questoes: questoes.map(q => ({
           enunciado: q.questoes.enunciado,
           alternativa_a: q.questoes.alternativa_a,
@@ -469,20 +444,16 @@ export default function SimuladosPage() {
           titulo: `${simulado.titulo} (Cópia)`,
           turma_id: simulado.turma_id,
           data_aplicacao: null,
-          duracao_minutos: simulado.duracao_minutos,
           status: 'rascunho',
           usuario_id: user?.id,
-          pontuacao_tipo: simulado.pontuacao_tipo,
-          pontuacao_acerto: simulado.pontuacao_acerto,
-          pontuacao_erro: simulado.pontuacao_erro,
-          pontuacao_branco: simulado.pontuacao_branco
+          questoes_ids: simulado.questoes_ids || []
         })
         .select()
         .single()
       
       if (erroSimulado) throw erroSimulado
       
-      // Copiar questões
+      // Copiar questões da tabela simulado_questoes
       const { data: questoesOriginal } = await supabase
         .from('simulado_questoes')
         .select('*')
@@ -493,8 +464,7 @@ export default function SimuladosPage() {
         const novasQuestoes = questoesOriginal.map(q => ({
           simulado_id: novoSimulado.id,
           questao_id: q.questao_id,
-          ordem: q.ordem,
-          pontuacao_personalizada: q.pontuacao_personalizada
+          ordem: q.ordem
         }))
         
         await supabase
@@ -601,12 +571,6 @@ export default function SimuladosPage() {
                         <span className="flex items-center gap-1">
                           <Calendar className="w-4 h-4" />
                           {new Date(s.data_aplicacao).toLocaleDateString('pt-BR')}
-                        </span>
-                      )}
-                      {s.duracao_minutos && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          {s.duracao_minutos} min
                         </span>
                       )}
                       {(s.respostas_count ?? 0) > 0 && (
@@ -848,90 +812,15 @@ export default function SimuladosPage() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Data de Aplicação
-              </label>
-              <Input
-                type="date"
-                value={formData.data_aplicacao}
-                onChange={(e) => setFormData({ ...formData, data_aplicacao: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Duração (minutos)
-              </label>
-              <Input
-                type="number"
-                value={formData.duracao_minutos}
-                onChange={(e) => setFormData({ ...formData, duracao_minutos: parseInt(e.target.value) || 60 })}
-                min={10}
-                max={300}
-              />
-            </div>
-          </div>
-
-          {/* Configuração de Pontuação */}
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tipo de Pontuação
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Data de Aplicação (opcional)
             </label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="pontuacao_tipo"
-                  value="padrao"
-                  checked={formData.pontuacao_tipo === 'padrao'}
-                  onChange={() => setFormData({ ...formData, pontuacao_tipo: 'padrao' })}
-                />
-                <span className="text-sm">Padrão (1 ponto por acerto)</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="pontuacao_tipo"
-                  value="personalizada"
-                  checked={formData.pontuacao_tipo === 'personalizada'}
-                  onChange={() => setFormData({ ...formData, pontuacao_tipo: 'personalizada' })}
-                />
-                <span className="text-sm">Personalizada</span>
-              </label>
-            </div>
-
-            {formData.pontuacao_tipo === 'personalizada' && (
-              <div className="grid grid-cols-3 gap-4 mt-3">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Acerto</label>
-                  <Input
-                    type="number"
-                    value={formData.pontuacao_acerto}
-                    onChange={(e) => setFormData({ ...formData, pontuacao_acerto: parseFloat(e.target.value) || 0 })}
-                    step="0.1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Erro</label>
-                  <Input
-                    type="number"
-                    value={formData.pontuacao_erro}
-                    onChange={(e) => setFormData({ ...formData, pontuacao_erro: parseFloat(e.target.value) || 0 })}
-                    step="0.1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Em Branco</label>
-                  <Input
-                    type="number"
-                    value={formData.pontuacao_branco}
-                    onChange={(e) => setFormData({ ...formData, pontuacao_branco: parseFloat(e.target.value) || 0 })}
-                    step="0.1"
-                  />
-                </div>
-              </div>
-            )}
+            <Input
+              type="date"
+              value={formData.data_aplicacao}
+              onChange={(e) => setFormData({ ...formData, data_aplicacao: e.target.value })}
+            />
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
