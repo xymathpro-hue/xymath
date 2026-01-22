@@ -635,7 +635,7 @@ export default function CorrecaoAutomaticaPage() {
                 <div className="mt-2">
                   <Badge variant={
                     (currentResult.percentual || 0) >= 60 ? 'success' : 
-                    (currentResult.percentual || 0) >= 40 ? 'warning' : 'error'
+                    (currentResult.percentual || 0) >= 40 ? 'warning' : 'danger'
                   }>
                     {currentResult.percentual || 0}% - {currentResult.acertos || 0} acertos
                   </Badge>
