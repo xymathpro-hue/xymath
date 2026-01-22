@@ -22,10 +22,10 @@ interface Simulado {
   id: string
   titulo: string
   turma_id: string
-  duracao_minutos: number | null
+  tempo_minutos: number | null
   turmas?: {
     nome: string
-    ano_escolar: string
+    ano_serie: string
   }
 }
 
@@ -115,7 +115,7 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
         simulado: {
           id: simulado.id,
           titulo: simulado.titulo,
-          duracao: simulado.duracao_minutos || 60
+          duracao: simulado.tempo_minutos || 60
         },
         turma: turma ? {
           id: turma.id,
