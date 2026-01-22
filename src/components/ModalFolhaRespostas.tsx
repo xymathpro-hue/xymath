@@ -15,18 +15,25 @@ interface Aluno {
 interface Turma {
   id: string
   nome: string
-  ano_escolar: string
+  ano_serie: string
 }
 
 interface Simulado {
   id: string
   titulo: string
-  turma_id: string
+  turma_id: string | null
   tempo_minutos: number | null
   turmas?: {
     nome: string
     ano_serie: string
-  }
+  } | null
+  simulado_turmas?: {
+    turma_id: string
+    turmas: {
+      nome: string
+      ano_serie: string
+    }
+  }[]
 }
 
 interface ModalFolhaRespostasProps {
@@ -55,7 +62,7 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
         // Buscar turmas do professor
         const { data: turmasData } = await supabase
           .from('turmas')
-          .select('id, nome, ano_escolar')
+          .select('id, nome, ano_serie')
           .order('nome')
 
         setTurmas(turmasData || [])
@@ -120,7 +127,7 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
         turma: turma ? {
           id: turma.id,
           nome: turma.nome,
-          ano_escolar: turma.ano_escolar
+          ano_escolar: turma.ano_serie
         } : {
           id: turmaSelecionada,
           nome: 'Turma',
@@ -181,7 +188,7 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
                 <option value="">Selecione uma turma</option>
                 {turmas.map(t => (
                   <option key={t.id} value={t.id}>
-                    {t.nome} - {t.ano_escolar}
+                    {t.nome} - {t.ano_serie}
                   </option>
                 ))}
               </select>
