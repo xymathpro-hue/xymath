@@ -55,7 +55,7 @@ interface SimuladoQuestao {
 interface Turma {
   id: string
   nome: string
-  ano_escolar: string
+  ano_serie: string
 }
 
 interface RespostaAluno {
@@ -147,7 +147,7 @@ export default function SimuladosPage() {
       // Carregar turmas
       const { data: turmasData } = await supabase
         .from('turmas')
-        .select('id, nome, ano_escolar')
+        .select('id, nome, ano_serie')
         .eq('usuario_id', user.id)
         .order('nome')
       
@@ -842,7 +842,7 @@ export default function SimuladosPage() {
               <option value="">Selecione uma turma</option>
               {turmas.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.nome} - {t.ano_escolar}
+                  {t.nome} - {t.ano_serie}
                 </option>
               ))}
             </select>
