@@ -392,8 +392,8 @@ export default function SimuladosPage() {
         
         setModalAberto(false)
         
-        // Redireciona para página de questões
-        router.push(`/simulados/${novoSimulado.id}`)
+        // Redireciona para página de seleção de questões (step 2)
+        router.push(`/simulados/novo?edit=${novoSimulado.id}`)
       }
     } catch (error) {
       console.error('Erro ao salvar:', error)
