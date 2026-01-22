@@ -21,7 +21,8 @@ import {
   Shield,
   Bell,
   FileSpreadsheet,
-  Calculator
+  Calculator,
+  Calendar
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -30,6 +31,7 @@ import { createClient } from '@/lib/supabase-browser'
 
 const menuItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/minha-semana', label: 'Minha Semana', icon: Calendar },
   { href: '/turmas', label: 'Turmas', icon: Users },
   { href: '/alunos', label: 'Alunos', icon: GraduationCap },
   { href: '/atividades', label: 'Atividades', icon: ClipboardList },
