@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
 import { 
   Plus, Search, FileText, Users, Calendar, Download, Trash2, Edit, 
   Eye, QrCode, MoreVertical, ChevronDown, ChevronUp, CheckCircle, XCircle,
-  ClipboardList, Copy
+  ClipboardList, Copy, Check
 } from 'lucide-react'
 import { gerarProvaWord } from '@/lib/gerar-prova-word'
 import { ModalFolhaRespostas } from '@/components/ModalFolhaRespostas'
@@ -73,6 +74,7 @@ interface RespostaAluno {
 export default function SimuladosPage() {
   const { user } = useAuth()
   const supabase = createClient()
+  const router = useRouter()
   
   const [simulados, setSimulados] = useState<Simulado[]>([])
   const [turmas, setTurmas] = useState<Turma[]>([])
@@ -84,7 +86,7 @@ export default function SimuladosPage() {
   const [editando, setEditando] = useState<Simulado | null>(null)
   const [formData, setFormData] = useState({
     titulo: '',
-    turma_id: '',
+    turmas_ids: [] as string[],
     data_aplicacao: ''
   })
   const [salvando, setSalvando] = useState(false)
@@ -197,7 +199,7 @@ export default function SimuladosPage() {
     setEditando(null)
     setFormData({
       titulo: '',
-      turma_id: '',
+      turmas_ids: [],
       data_aplicacao: ''
     })
     setModalAberto(true)
@@ -207,7 +209,7 @@ export default function SimuladosPage() {
     setEditando(simulado)
     setFormData({
       titulo: simulado.titulo,
-      turma_id: simulado.turma_id,
+      turmas_ids: [simulado.turma_id],
       data_aplicacao: simulado.data_aplicacao || ''
     })
     setModalAberto(true)
@@ -267,32 +269,72 @@ export default function SimuladosPage() {
     }
   }
 
+  const toggleTurma = (turmaId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      turmas_ids: prev.turmas_ids.includes(turmaId)
+        ? prev.turmas_ids.filter(id => id !== turmaId)
+        : [...prev.turmas_ids, turmaId]
+    }))
+  }
+
+  const selecionarTodasTurmas = () => {
+    if (formData.turmas_ids.length === turmas.length) {
+      setFormData(prev => ({ ...prev, turmas_ids: [] }))
+    } else {
+      setFormData(prev => ({ ...prev, turmas_ids: turmas.map(t => t.id) }))
+    }
+  }
+
   const salvarSimulado = async () => {
-    if (!user || !formData.titulo || !formData.turma_id) return
+    if (!user || !formData.titulo || formData.turmas_ids.length === 0) return
     
     setSalvando(true)
     try {
-      const dados = {
-        titulo: formData.titulo,
-        turma_id: formData.turma_id,
-        data_aplicacao: formData.data_aplicacao || null,
-        usuario_id: user.id,
-        status: 'rascunho'
-      }
-      
       if (editando) {
+        // Editar simulado existente
         await supabase
           .from('simulados')
-          .update(dados)
+          .update({
+            titulo: formData.titulo,
+            turma_id: formData.turmas_ids[0],
+            data_aplicacao: formData.data_aplicacao || null
+          })
           .eq('id', editando.id)
+        
+        setModalAberto(false)
+        carregarDados()
       } else {
-        await supabase
-          .from('simulados')
-          .insert(dados)
+        // Criar simulado(s) - um para cada turma selecionada
+        const simuladosCriados = []
+        
+        for (const turmaId of formData.turmas_ids) {
+          const { data: novoSimulado, error } = await supabase
+            .from('simulados')
+            .insert({
+              titulo: formData.titulo,
+              turma_id: turmaId,
+              data_aplicacao: formData.data_aplicacao || null,
+              usuario_id: user.id,
+              status: 'rascunho'
+            })
+            .select()
+            .single()
+          
+          if (error) throw error
+          simuladosCriados.push(novoSimulado)
+        }
+        
+        setModalAberto(false)
+        
+        // Se criou apenas 1 simulado, redireciona para adicionar questões
+        if (simuladosCriados.length === 1) {
+          router.push(`/simulados/${simuladosCriados[0].id}`)
+        } else {
+          // Se criou múltiplos, recarrega a lista
+          carregarDados()
+        }
       }
-      
-      setModalAberto(false)
-      carregarDados()
     } catch (error) {
       console.error('Erro ao salvar:', error)
       alert('Erro ao salvar simulado. Tente novamente.')
@@ -790,26 +832,63 @@ export default function SimuladosPage() {
             <Input
               value={formData.titulo}
               onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
-              placeholder="Ex: Simulado SAEB - 9º Ano"
+              placeholder="Ex: Simulado SAEB - 6º Ano"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Turma *
-            </label>
-            <select
-              value={formData.turma_id}
-              onChange={(e) => setFormData({ ...formData, turma_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              <option value="">Selecione uma turma</option>
-              {turmas.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nome} - {t.ano_serie}
-                </option>
-              ))}
-            </select>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Turmas * {formData.turmas_ids.length > 0 && `(${formData.turmas_ids.length} selecionada${formData.turmas_ids.length > 1 ? 's' : ''})`}
+              </label>
+              <button
+                type="button"
+                onClick={selecionarTodasTurmas}
+                className="text-xs text-indigo-600 hover:text-indigo-800"
+              >
+                {formData.turmas_ids.length === turmas.length ? 'Desmarcar todas' : 'Selecionar todas'}
+              </button>
+            </div>
+            
+            <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
+              {turmas.length === 0 ? (
+                <p className="p-3 text-gray-500 text-sm">Nenhuma turma cadastrada</p>
+              ) : (
+                turmas.map((t) => (
+                  <label
+                    key={t.id}
+                    className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 border-b last:border-b-0 ${
+                      formData.turmas_ids.includes(t.id) ? 'bg-indigo-50' : ''
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                      formData.turmas_ids.includes(t.id) 
+                        ? 'bg-indigo-600 border-indigo-600' 
+                        : 'border-gray-300'
+                    }`}>
+                      {formData.turmas_ids.includes(t.id) && (
+                        <Check className="w-3 h-3 text-white" />
+                      )}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.turmas_ids.includes(t.id)}
+                      onChange={() => toggleTurma(t.id)}
+                      className="hidden"
+                    />
+                    <span className="flex-1">
+                      <span className="font-medium">{t.nome}</span>
+                      <span className="text-gray-500 text-sm ml-2">- {t.ano_serie}</span>
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+            {!editando && formData.turmas_ids.length > 1 && (
+              <p className="text-xs text-gray-500 mt-1">
+                Será criado um simulado para cada turma selecionada
+              </p>
+            )}
           </div>
 
           <div>
@@ -827,8 +906,11 @@ export default function SimuladosPage() {
             <Button variant="outline" onClick={() => setModalAberto(false)}>
               Cancelar
             </Button>
-            <Button onClick={salvarSimulado} disabled={salvando || !formData.titulo || !formData.turma_id}>
-              {salvando ? 'Salvando...' : editando ? 'Salvar' : 'Criar'}
+            <Button 
+              onClick={salvarSimulado} 
+              disabled={salvando || !formData.titulo || formData.turmas_ids.length === 0}
+            >
+              {salvando ? 'Salvando...' : editando ? 'Salvar' : 'Continuar'}
             </Button>
           </div>
         </div>
