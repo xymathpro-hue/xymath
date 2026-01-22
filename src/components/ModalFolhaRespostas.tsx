@@ -1,205 +1,250 @@
-import jsPDF from 'jspdf'
-import QRCode from 'qrcode'
+'use client'
 
-interface AlunoFolha {
+import { useState, useEffect } from 'react'
+import { Modal, Button } from '@/components/ui'
+import { createClient } from '@/lib/supabase-browser'
+import { Download, Users, FileText } from 'lucide-react'
+import { gerarFolhasRespostas } from '@/lib/gerar-folha-respostas'
+
+interface Aluno {
   id: string
   nome: string
   numero?: number
 }
 
-interface ConfiguracaoFolha {
-  simuladoId: string
-  simuladoTitulo: string
-  turmaId: string
-  turmaNome: string
-  totalQuestoes: number
-  opcoesLetra: number
-  alunos: AlunoFolha[]
+interface Turma {
+  id: string
+  nome: string
+  ano_escolar: string
 }
 
-/**
- * Gera folhas de respostas em PDF para correção automática via OpenCV
- */
-export async function gerarFolhasRespostas(config: ConfiguracaoFolha): Promise<Blob> {
-  const { simuladoId, simuladoTitulo, turmaId, turmaNome, totalQuestoes, opcoesLetra, alunos } = config
+interface Simulado {
+  id: string
+  titulo: string
+  turma_id: string
+  duracao_minutos: number | null
+  turmas?: {
+    nome: string
+    ano_escolar: string
+  }
+}
+
+interface ModalFolhaRespostasProps {
+  isOpen: boolean
+  onClose: () => void
+  simulado: Simulado
+}
+
+export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRespostasProps) {
+  const supabase = createClient()
   
-  const pdf = new jsPDF('portrait', 'mm', 'a4')
-  const pageWidth = pdf.internal.pageSize.getWidth()
-  const pageHeight = pdf.internal.pageSize.getHeight()
-  const margin = 15
-  const markerSize = 8
-  
-  for (let alunoIdx = 0; alunoIdx < alunos.length; alunoIdx++) {
-    const aluno = alunos[alunoIdx]
-    
-    if (alunoIdx > 0) {
-      pdf.addPage()
-    }
-    
-    // MARCADORES DE CANTO (para OpenCV detectar)
-    pdf.setFillColor(0, 0, 0)
-    pdf.rect(margin, margin, markerSize, markerSize, 'F')
-    pdf.rect(pageWidth - margin - markerSize, margin, markerSize, markerSize, 'F')
-    pdf.rect(margin, pageHeight - margin - markerSize, markerSize, markerSize, 'F')
-    pdf.rect(pageWidth - margin - markerSize, pageHeight - margin - markerSize, markerSize, markerSize, 'F')
-    
-    // QR CODE
-    const qrData = `${simuladoId}|${aluno.id}|${turmaId}|${totalQuestoes}`
-    
-    try {
-      const qrDataUrl = await QRCode.toDataURL(qrData, {
-        width: 200,
-        margin: 1,
-        errorCorrectionLevel: 'H'
-      })
-      
-      const qrX = margin + markerSize + 5
-      const qrY = margin + markerSize + 5
-      const qrSize = 30
-      
-      pdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize)
-    } catch (error) {
-      console.error('Erro ao gerar QR Code:', error)
-    }
-    
-    // CABEÇALHO
-    const headerX = margin + markerSize + 45
-    const headerY = margin + markerSize + 10
-    
-    pdf.setFontSize(14)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('FOLHA DE RESPOSTAS', headerX, headerY)
-    
-    pdf.setFontSize(10)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(simuladoTitulo, headerX, headerY + 6)
-    pdf.text(`Turma: ${turmaNome}`, headerX, headerY + 12)
-    
-    // Nome do aluno
-    pdf.setFontSize(11)
-    pdf.setFont('helvetica', 'bold')
-    const nomeY = headerY + 22
-    pdf.text('Aluno:', headerX, nomeY)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(aluno.nome, headerX + 15, nomeY)
-    
-    if (aluno.numero) {
-      pdf.text(`Nº: ${aluno.numero}`, headerX + 100, nomeY)
-    }
-    
-    // Linha separadora
-    pdf.setDrawColor(200, 200, 200)
-    pdf.line(margin + markerSize, nomeY + 8, pageWidth - margin - markerSize, nomeY + 8)
-    
-    // INSTRUÇÕES
-    const instrY = nomeY + 15
-    pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'italic')
-    pdf.text('Preencha completamente o círculo da alternativa escolhida usando caneta preta ou azul escuro.', margin + markerSize + 5, instrY)
-    pdf.text('Não rasure. Não use corretivo. Apenas uma resposta por questão.', margin + markerSize + 5, instrY + 4)
-    
-    // GRADE DE BOLHAS
-    const gradeStartY = instrY + 15
-    const gradeStartX = margin + markerSize + 10
-    
-    const questoesPorColuna = Math.ceil(totalQuestoes / 2)
-    const colunaWidth = (pageWidth - 2 * margin - 2 * markerSize - 20) / 2
-    const linhaHeight = 8
-    const bolhaRadius = 3
-    const bolhaSpacing = 12
-    
-    const letras = ['A', 'B', 'C', 'D', 'E'].slice(0, opcoesLetra)
-    
-    for (let col = 0; col < 2; col++) {
-      const colX = gradeStartX + col * colunaWidth
-      const questaoInicio = col * questoesPorColuna
-      const questaoFim = Math.min(questaoInicio + questoesPorColuna, totalQuestoes)
-      
-      // Cabeçalho da coluna
-      pdf.setFontSize(8)
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Nº', colX, gradeStartY)
-      
-      letras.forEach((letra, idx) => {
-        const letraX = colX + 15 + idx * bolhaSpacing
-        pdf.text(letra, letraX, gradeStartY)
-      })
-      
-      // Questões
-      pdf.setFont('helvetica', 'normal')
-      for (let q = questaoInicio; q < questaoFim; q++) {
-        const linhaY = gradeStartY + 5 + (q - questaoInicio) * linhaHeight
-        
-        pdf.setFontSize(9)
-        const numQuestao = String(q + 1).padStart(2, '0')
-        pdf.text(numQuestao, colX, linhaY + 2.5)
-        
-        // Bolhas
-        letras.forEach((_, idx) => {
-          const bolhaX = colX + 15 + idx * bolhaSpacing
-          const bolhaY = linhaY
-          
-          pdf.setDrawColor(0, 0, 0)
-          pdf.setLineWidth(0.3)
-          pdf.circle(bolhaX, bolhaY + 1.5, bolhaRadius, 'S')
-        })
+  const [turmas, setTurmas] = useState<Turma[]>([])
+  const [turmaSelecionada, setTurmaSelecionada] = useState<string>(simulado.turma_id || '')
+  const [alunos, setAlunos] = useState<Aluno[]>([])
+  const [totalQuestoes, setTotalQuestoes] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [gerando, setGerando] = useState(false)
+
+  // Carregar turmas e questões
+  useEffect(() => {
+    if (!isOpen) return
+
+    const carregar = async () => {
+      setLoading(true)
+      try {
+        // Buscar turmas do professor
+        const { data: turmasData } = await supabase
+          .from('turmas')
+          .select('id, nome, ano_escolar')
+          .order('nome')
+
+        setTurmas(turmasData || [])
+
+        // Contar questões do simulado
+        const { count } = await supabase
+          .from('simulado_questoes')
+          .select('*', { count: 'exact', head: true })
+          .eq('simulado_id', simulado.id)
+
+        setTotalQuestoes(count || 0)
+
+        // Se tem turma definida, carregar alunos
+        if (simulado.turma_id) {
+          setTurmaSelecionada(simulado.turma_id)
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error)
+      } finally {
+        setLoading(false)
       }
     }
-    
-    // RODAPÉ
-    pdf.setFontSize(7)
-    pdf.setFont('helvetica', 'italic')
-    pdf.setTextColor(128, 128, 128)
-    pdf.text(
-      'xyMath - Sistema de Correção Automática | Não dobre ou amasse esta folha',
-      pageWidth / 2,
-      pageHeight - margin - markerSize - 5,
-      { align: 'center' }
-    )
-    pdf.setTextColor(0, 0, 0)
-  }
-  
-  return pdf.output('blob')
-}
 
-/**
- * Gera folhas em branco (sem nome do aluno)
- */
-export async function gerarFolhaEmBranco(config: {
-  simuladoId: string
-  simuladoTitulo: string
-  turmaId: string
-  turmaNome: string
-  totalQuestoes: number
-  opcoesLetra: number
-  quantidade: number
-}): Promise<Blob> {
-  const alunos: AlunoFolha[] = []
-  
-  for (let i = 0; i < config.quantidade; i++) {
-    alunos.push({
-      id: `blank_${i + 1}`,
-      nome: '_______________________________________________',
-      numero: undefined
-    })
-  }
-  
-  return gerarFolhasRespostas({
-    ...config,
-    alunos
-  })
-}
+    carregar()
+  }, [isOpen, simulado.id, simulado.turma_id, supabase])
 
-/**
- * Baixa o PDF gerado
- */
-export function downloadPDF(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+  // Carregar alunos quando turma mudar
+  useEffect(() => {
+    if (!turmaSelecionada) {
+      setAlunos([])
+      return
+    }
+
+    const carregarAlunos = async () => {
+      const { data } = await supabase
+        .from('alunos')
+        .select('id, nome, numero')
+        .eq('turma_id', turmaSelecionada)
+        .eq('ativo', true)
+        .order('numero')
+        .order('nome')
+
+      setAlunos(data || [])
+    }
+
+    carregarAlunos()
+  }, [turmaSelecionada, supabase])
+
+  const handleGerar = async () => {
+    if (alunos.length === 0 || totalQuestoes === 0) return
+
+    setGerando(true)
+    try {
+      const turma = turmas.find(t => t.id === turmaSelecionada)
+      
+      await gerarFolhasRespostas({
+        simulado: {
+          id: simulado.id,
+          titulo: simulado.titulo,
+          duracao: simulado.duracao_minutos || 60
+        },
+        turma: turma ? {
+          id: turma.id,
+          nome: turma.nome,
+          ano_escolar: turma.ano_escolar
+        } : {
+          id: turmaSelecionada,
+          nome: 'Turma',
+          ano_escolar: ''
+        },
+        alunos: alunos.map(a => ({
+          id: a.id,
+          nome: a.nome,
+          numero: a.numero
+        })),
+        totalQuestoes
+      })
+
+      onClose()
+    } catch (error) {
+      console.error('Erro ao gerar folhas:', error)
+      alert('Erro ao gerar folhas de respostas. Tente novamente.')
+    } finally {
+      setGerando(false)
+    }
+  }
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Folhas de Respostas"
+    >
+      <div className="space-y-4">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Carregando...</p>
+          </div>
+        ) : (
+          <>
+            {/* Info do Simulado */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-medium text-gray-900">{simulado.titulo}</h3>
+              <div className="flex gap-4 mt-2 text-sm text-gray-600">
+                <span className="flex items-center gap-1">
+                  <FileText className="w-4 h-4" />
+                  {totalQuestoes} questões
+                </span>
+              </div>
+            </div>
+
+            {/* Seleção de Turma */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Turma
+              </label>
+              <select
+                value={turmaSelecionada}
+                onChange={(e) => setTurmaSelecionada(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="">Selecione uma turma</option>
+                {turmas.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome} - {t.ano_escolar}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Info dos Alunos */}
+            {turmaSelecionada && (
+              <div className="bg-blue-50 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-blue-800">
+                  <Users className="w-5 h-5" />
+                  <span className="font-medium">
+                    {alunos.length} {alunos.length === 1 ? 'aluno' : 'alunos'} na turma
+                  </span>
+                </div>
+                {alunos.length > 0 && (
+                  <p className="text-sm text-blue-600 mt-1">
+                    Será gerada uma folha de respostas para cada aluno com QR Code único.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Aviso se não tiver questões */}
+            {totalQuestoes === 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800">
+                <p className="font-medium">Simulado sem questões</p>
+                <p className="text-sm mt-1">Adicione questões ao simulado antes de gerar as folhas de respostas.</p>
+              </div>
+            )}
+
+            {/* Aviso se não tiver alunos */}
+            {turmaSelecionada && alunos.length === 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800">
+                <p className="font-medium">Turma sem alunos</p>
+                <p className="text-sm mt-1">Cadastre alunos na turma antes de gerar as folhas de respostas.</p>
+              </div>
+            )}
+
+            {/* Botões */}
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleGerar}
+                disabled={gerando || !turmaSelecionada || alunos.length === 0 || totalQuestoes === 0}
+              >
+                {gerando ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Gerando...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Gerar PDF ({alunos.length} folhas)
+                  </>
+                )}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  )
 }
