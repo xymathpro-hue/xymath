@@ -1,52 +1,42 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
 import { 
-  Upload, FileText, Users, Check, X, AlertCircle, Search,
-  Trash2, Eye, Download, RefreshCw, Link2, Link2Off, ChevronDown,
-  ChevronUp, FileSpreadsheet, Calendar, School, BookOpen, Target,
-  CheckCircle, XCircle, HelpCircle, Edit, Save
+  Upload, FileText, Trash2, Save, Plus, CheckCircle, AlertCircle, 
+  Loader2, Eye, XCircle, Link2, Search, Download, Calendar,
+  Users, FileSpreadsheet, RefreshCw
 } from 'lucide-react'
 
 // ============================================================
-// INTERFACES
+// TIPOS
 // ============================================================
 
 interface AvaliacaoRede {
   id: string
   usuario_id: string
-  turma_id?: string
   titulo: string
-  escola_origem?: string
-  disciplina: string
+  escola?: string
+  turma_origem?: string
+  disciplina?: string
+  data_aplicacao?: string
   total_questoes?: number
   arquivo_nome?: string
-  arquivo_tipo?: string
-  componente_nota_id?: string
-  periodo?: number
-  ano_letivo?: number
-  total_alunos: number
-  alunos_vinculados: number
-  media_turma?: number
-  status: 'pendente' | 'processado' | 'erro'
   created_at: string
 }
 
 interface NotaRede {
-  id: string
+  id?: string
   avaliacao_id: string
-  aluno_id?: string
-  nome_original: string
-  nota?: number
+  nome_pdf: string
+  turma_pdf?: string
+  nota: number
   acertos?: number
   total_questoes?: number
-  percentual?: number
+  aluno_id?: string
   vinculado: boolean
-  similaridade?: number
-  vinculado_manualmente: boolean
 }
 
 interface Turma {
@@ -59,12 +49,6 @@ interface Aluno {
   id: string
   nome: string
   turma_id: string
-}
-
-interface ComponenteAvaliacao {
-  id: string
-  nome: string
-  peso: number
 }
 
 interface DadosExtraidos {
@@ -81,54 +65,68 @@ interface DadosExtraidos {
   }[]
 }
 
-// ============================================================
-// FUNÇÕES UTILITÁRIAS
-// ============================================================
-
-// Normaliza nome para comparação
-const normalizarNome = (nome: string): string => {
-  return nome
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // remove acentos
-    .replace(/[^A-Z\s]/g, '') // remove caracteres especiais
-    .replace(/\s+/g, ' ') // normaliza espaços
-    .trim()
+interface ComponenteAvaliacao {
+  id: string
+  nome: string
 }
 
-// Calcula similaridade entre dois nomes (Levenshtein simplificado)
-const calcularSimilaridade = (nome1: string, nome2: string): number => {
-  const n1 = normalizarNome(nome1)
-  const n2 = normalizarNome(nome2)
+// ============================================================
+// FUNÇÕES AUXILIARES
+// ============================================================
+
+// Calcular similaridade entre nomes (Levenshtein simplificado)
+const calcularSimilaridade = (str1: string, str2: string): number => {
+  const s1 = str1.toLowerCase().trim()
+  const s2 = str2.toLowerCase().trim()
   
-  if (n1 === n2) return 100
+  if (s1 === s2) return 1
   
-  // Compara primeiro e último nome
-  const partes1 = n1.split(' ')
-  const partes2 = n2.split(' ')
+  const longer = s1.length > s2.length ? s1 : s2
+  const shorter = s1.length > s2.length ? s2 : s1
   
-  const primeiro1 = partes1[0]
-  const ultimo1 = partes1[partes1.length - 1]
-  const primeiro2 = partes2[0]
-  const ultimo2 = partes2[partes2.length - 1]
+  if (longer.length === 0) return 1
   
-  // Se primeiro e último nome são iguais
-  if (primeiro1 === primeiro2 && ultimo1 === ultimo2) return 95
-  
-  // Se apenas primeiro nome é igual
-  if (primeiro1 === primeiro2) return 70
-  
-  // Calcula distância de Levenshtein simplificada
-  const maxLen = Math.max(n1.length, n2.length)
-  if (maxLen === 0) return 100
-  
-  let matches = 0
-  const minLen = Math.min(n1.length, n2.length)
-  for (let i = 0; i < minLen; i++) {
-    if (n1[i] === n2[i]) matches++
+  // Verificar se um contém o outro
+  if (longer.includes(shorter) || shorter.includes(longer)) {
+    return 0.85
   }
   
-  return Math.round((matches / maxLen) * 100)
+  // Levenshtein distance
+  const costs: number[] = []
+  for (let i = 0; i <= s1.length; i++) {
+    let lastValue = i
+    for (let j = 0; j <= s2.length; j++) {
+      if (i === 0) {
+        costs[j] = j
+      } else if (j > 0) {
+        let newValue = costs[j - 1]
+        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1
+        }
+        costs[j - 1] = lastValue
+        lastValue = newValue
+      }
+    }
+    if (i > 0) costs[s2.length] = lastValue
+  }
+  
+  return (longer.length - costs[s2.length]) / longer.length
+}
+
+// Encontrar melhor match para um nome
+const encontrarMelhorMatch = (nomePdf: string, alunos: Aluno[]): { aluno: Aluno | null, score: number } => {
+  let melhorMatch: Aluno | null = null
+  let melhorScore = 0
+  
+  for (const aluno of alunos) {
+    const score = calcularSimilaridade(nomePdf, aluno.nome)
+    if (score > melhorScore && score >= 0.7) {
+      melhorScore = score
+      melhorMatch = aluno
+    }
+  }
+  
+  return { aluno: melhorMatch, score: melhorScore }
 }
 
 // Parser de CSV
@@ -136,22 +134,15 @@ const parseCSV = (content: string): DadosExtraidos => {
   const lines = content.split('\n').filter(line => line.trim())
   const alunos: DadosExtraidos['alunos'] = []
   
-  // Tenta identificar cabeçalho
-  let startIndex = 0
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
-    const lower = lines[i].toLowerCase()
-    if (lower.includes('aluno') || lower.includes('nome') || lower.includes('nota')) {
-      startIndex = i + 1
-      break
-    }
-  }
+  // Pular cabeçalho se existir
+  const startIndex = lines[0]?.toLowerCase().includes('aluno') ? 1 : 0
   
-  // Processa linhas de dados
   for (let i = startIndex; i < lines.length; i++) {
-    const cols = lines[i].split(/[,;\t]/).map(c => c.trim().replace(/"/g, ''))
+    const cols = lines[i].split(/[;,\t]/).map(c => c.trim().replace(/"/g, ''))
+    
     if (cols.length >= 2) {
       const nome = cols[0]
-      const notaStr = cols.find(c => /^\d+([.,]\d+)?$/.test(c.replace(',', '.')))
+      const notaStr = cols.find(c => /^\d+[.,]?\d*$/.test(c))
       const acertosMatch = cols.find(c => /^\d+\/\d+$/.test(c))
       
       if (nome && nome.length > 3) {
@@ -183,7 +174,7 @@ const parseCSV = (content: string): DadosExtraidos => {
   }
 }
 
-// Parser de texto do PDF (simulado - na prática precisa de lib externa)
+// Parser de texto extraído do PDF
 const parsePDFText = (text: string): DadosExtraidos => {
   const lines = text.split('\n').filter(line => line.trim())
   const alunos: DadosExtraidos['alunos'] = []
@@ -194,47 +185,68 @@ const parsePDFText = (text: string): DadosExtraidos => {
   let disciplina = ''
   let totalQuestoes: number | undefined
   
-  // Extrai metadados
-  for (const line of lines.slice(0, 10)) {
+  // Extrai metadados das primeiras linhas
+  for (const line of lines.slice(0, 15)) {
+    const lineLower = line.toLowerCase()
+    
     if (line.includes('SIMULADO') || line.includes('AVALIAÇÃO') || line.includes('PROVA')) {
       titulo = line.trim()
     }
-    if (line.toLowerCase().includes('escola:')) {
+    if (lineLower.includes('escola:')) {
       escola = line.split(':')[1]?.trim() || ''
     }
-    if (line.toLowerCase().includes('turma:')) {
+    if (lineLower.includes('turma:')) {
       turma = line.split(':')[1]?.trim() || ''
     }
-    if (line.toLowerCase().includes('disciplina:')) {
+    if (lineLower.includes('disciplina:')) {
       disciplina = line.split(':')[1]?.trim() || ''
     }
   }
   
-  // Procura padrão de notas: NOME ... NOTA ... ACERTOS/TOTAL
-  const padraoNota = /^([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇ\s]+)\s+\d+\w*\s+(\d+[.,]?\d*)\s+(\d+)\/(\d+)/i
-  const padraoSimples = /^([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇ\s]{5,})\s+(\d+[.,]?\d*)\s*$/i
-  
   for (const line of lines) {
-    let match = line.match(padraoNota)
-    if (match) {
-      const nome = match[1].trim()
-      const nota = parseFloat(match[2].replace(',', '.'))
-      const acertos = parseInt(match[3])
-      const total = parseInt(match[4])
+    const lineLower = line.toLowerCase()
+    if (lineLower.includes('aluno') && lineLower.includes('nota')) continue
+    if (lineLower.includes('turma') && lineLower.includes('acertos')) continue
+    if (line.includes('Escola:') || line.includes('Disciplina:')) continue
+    
+    // Formato: NOME_COMPLETO TURMA NOTA ACERTOS/TOTAL
+    const match1 = line.match(/^([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇ\s]+?)\s+(\d{3}\w+)\s+(\d+[.,]?\d*)\s+(\d+)\/(\d+)/i)
+    if (match1) {
+      const nome = match1[1].trim()
+      const nota = parseFloat(match1[3].replace(',', '.'))
+      const acertos = parseInt(match1[4])
+      const total = parseInt(match1[5])
       
-      if (nome.length > 3 && !nome.includes('Aluno') && !nome.includes('ALUNO')) {
+      if (nome.length > 3 && !nome.includes('ALUNO')) {
         alunos.push({ nome, nota, acertos, totalQuestoes: total })
         if (!totalQuestoes) totalQuestoes = total
+        continue
       }
-    } else {
-      match = line.match(padraoSimples)
-      if (match) {
-        const nome = match[1].trim()
-        const nota = parseFloat(match[2].replace(',', '.'))
-        
-        if (nome.length > 3 && !nome.includes('Aluno') && !nome.includes('ALUNO')) {
-          alunos.push({ nome, nota })
-        }
+    }
+    
+    // Formato: NOME_COMPLETO NOTA ACERTOS/TOTAL
+    const match2 = line.match(/^([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇ\s]{5,}?)\s+(\d+[.,]?\d*)\s+(\d+)\/(\d+)/i)
+    if (match2) {
+      const nome = match2[1].trim()
+      const nota = parseFloat(match2[2].replace(',', '.'))
+      const acertos = parseInt(match2[3])
+      const total = parseInt(match2[4])
+      
+      if (nome.length > 3 && !nome.includes('ALUNO')) {
+        alunos.push({ nome, nota, acertos, totalQuestoes: total })
+        if (!totalQuestoes) totalQuestoes = total
+        continue
+      }
+    }
+    
+    // Formato simples: NOME NOTA
+    const match3 = line.match(/^([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇ\s]{5,}?)\s+(\d+[.,]\d+)\s*$/i)
+    if (match3) {
+      const nome = match3[1].trim()
+      const nota = parseFloat(match3[2].replace(',', '.'))
+      
+      if (nome.length > 3 && !nome.includes('ALUNO')) {
+        alunos.push({ nome, nota })
       }
     }
   }
@@ -253,6 +265,12 @@ const parsePDFText = (text: string): DadosExtraidos => {
 // COMPONENTE PRINCIPAL
 // ============================================================
 
+declare global {
+  interface Window {
+    pdfjsLib: any
+  }
+}
+
 export default function AvaliacoesRedePage() {
   const { usuario } = useAuth()
   const supabase = createClient()
@@ -261,424 +279,467 @@ export default function AvaliacoesRedePage() {
   // Estados principais
   const [avaliacoes, setAvaliacoes] = useState<AvaliacaoRede[]>([])
   const [turmas, setTurmas] = useState<Turma[]>([])
+  const [alunos, setAlunos] = useState<Aluno[]>([])
+  const [componentes, setComponentes] = useState<ComponenteAvaliacao[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [pdfReady, setPdfReady] = useState(false)
 
-  // Estados do modal de importação
-  const [showImportModal, setShowImportModal] = useState(false)
-  const [importStep, setImportStep] = useState<'upload' | 'preview' | 'config'>('upload')
-  const [uploading, setUploading] = useState(false)
-  const [importError, setImportError] = useState<string | null>(null)
-
-  // Estados dos dados importados
-  const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null)
+  // Estados do upload
+  const [arquivo, setArquivo] = useState<File | null>(null)
+  const [processando, setProcessando] = useState(false)
   const [dadosExtraidos, setDadosExtraidos] = useState<DadosExtraidos | null>(null)
-  const [alunosTurma, setAlunosTurma] = useState<Aluno[]>([])
-  const [vinculacoes, setVinculacoes] = useState<Map<number, { alunoId: string | null, similaridade: number }>>(new Map())
+  const [textoExtraido, setTextoExtraido] = useState<string>('')
+  const [notasPreview, setNotasPreview] = useState<NotaRede[]>([])
 
-  // Estados de configuração
-  const [configImport, setConfigImport] = useState({
-    turma_id: '',
-    titulo: '',
-    periodo: 1,
-    ano_letivo: new Date().getFullYear()
-  })
-
-  // Estados do modal de detalhes
+  // Estados do modal
+  const [showUploadModal, setShowUploadModal] = useState(false)
   const [showDetalhesModal, setShowDetalhesModal] = useState(false)
+  const [showTextoModal, setShowTextoModal] = useState(false)
   const [avaliacaoSelecionada, setAvaliacaoSelecionada] = useState<AvaliacaoRede | null>(null)
   const [notasAvaliacao, setNotasAvaliacao] = useState<NotaRede[]>([])
-  const [loadingNotas, setLoadingNotas] = useState(false)
 
-  // Carregar dados
-  const fetchData = useCallback(async () => {
-    if (!usuario?.id) { setLoading(false); return }
+  // Estados do formulário
+  const [formData, setFormData] = useState({
+    titulo: '',
+    turma_id: '',
+    componente_id: '',
+    data_aplicacao: new Date().toISOString().split('T')[0]
+  })
+
+  const [etapa, setEtapa] = useState<'upload' | 'preview' | 'config'>('upload')
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  // Carregar PDF.js via CDN
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !window.pdfjsLib) {
+      const script = document.createElement('script')
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+      script.onload = () => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+        setPdfReady(true)
+      }
+      document.body.appendChild(script)
+    } else if (window.pdfjsLib) {
+      setPdfReady(true)
+    }
+  }, [])
+
+  // Carregar dados iniciais
+  const carregarDados = useCallback(async () => {
+    if (!usuario) return
     
+    setLoading(true)
     try {
-      const [avRes, tRes] = await Promise.all([
-        supabase
-          .from('avaliacoes_rede')
-          .select('*')
-          .eq('usuario_id', usuario.id)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('turmas')
-          .select('*')
-          .eq('usuario_id', usuario.id)
-          .eq('ativa', true)
-      ])
+      // Carregar avaliações
+      const { data: avData } = await supabase
+        .from('avaliacoes_rede')
+        .select('*')
+        .eq('usuario_id', usuario.id)
+        .order('created_at', { ascending: false })
       
-      setAvaliacoes(avRes.data || [])
-      setTurmas(tRes.data || [])
-    } catch (e) {
-      console.error('Erro ao carregar dados:', e)
+      if (avData) setAvaliacoes(avData)
+
+      // Carregar turmas
+      const { data: turmasData } = await supabase
+        .from('turmas')
+        .select('id, nome, ano_serie')
+        .eq('usuario_id', usuario.id)
+        .order('nome')
+      
+      if (turmasData) setTurmas(turmasData)
+
+      // Carregar alunos de todas as turmas
+      const { data: alunosData } = await supabase
+        .from('alunos')
+        .select('id, nome, turma_id')
+        .in('turma_id', turmasData?.map(t => t.id) || [])
+      
+      if (alunosData) setAlunos(alunosData)
+
+      // Carregar componentes de avaliação
+      const { data: compData } = await supabase
+        .from('componentes_avaliacao')
+        .select('id, nome')
+        .eq('usuario_id', usuario.id)
+        .eq('ativo', true)
+      
+      if (compData) setComponentes(compData)
+
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error)
     } finally {
       setLoading(false)
     }
-  }, [usuario?.id, supabase])
+  }, [usuario, supabase])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    carregarDados()
+  }, [carregarDados])
 
-  // Carregar alunos da turma selecionada
-  const carregarAlunosTurma = async (turmaId: string) => {
-    if (!turmaId) {
-      setAlunosTurma([])
-      return
+  // Extrair texto do PDF
+  const extractTextFromPDF = async (file: File): Promise<string> => {
+    if (!window.pdfjsLib) {
+      throw new Error('PDF.js não carregado')
+    }
+
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    
+    let fullText = ''
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const textContent = await page.getTextContent()
+      
+      // Agrupa itens por linha (baseado na posição Y)
+      const items = textContent.items as any[]
+      const lineMap = new Map<number, string[]>()
+      
+      items.forEach((item: any) => {
+        const y = Math.round(item.transform[5])
+        if (!lineMap.has(y)) {
+          lineMap.set(y, [])
+        }
+        lineMap.get(y)!.push(item.str)
+      })
+      
+      // Ordena por Y (do topo para baixo) e junta as linhas
+      const sortedYs = Array.from(lineMap.keys()).sort((a, b) => b - a)
+      sortedYs.forEach(y => {
+        const lineText = lineMap.get(y)!.join(' ').trim()
+        if (lineText) {
+          fullText += lineText + '\n'
+        }
+      })
+      
+      fullText += '\n--- Página ' + i + ' ---\n\n'
     }
     
-    const { data } = await supabase
-      .from('alunos')
-      .select('id, nome, turma_id')
-      .eq('turma_id', turmaId)
-      .eq('ativo', true)
-      .order('nome')
-    
-    setAlunosTurma(data || [])
+    return fullText
   }
 
-  // Processar arquivo selecionado
-  const processarArquivo = async (file: File) => {
-    setUploading(true)
-    setImportError(null)
+  // Processar arquivo
+  const processarArquivo = async () => {
+    if (!arquivo) return
+    
+    setProcessando(true)
+    setErro(null)
     
     try {
-      const text = await file.text()
       let dados: DadosExtraidos
       
-      if (file.name.toLowerCase().endsWith('.csv')) {
-        dados = parseCSV(text)
-      } else if (file.name.toLowerCase().endsWith('.pdf')) {
-        // Para PDF, usamos o texto extraído pelo navegador
-        // Em produção, usar pdf.js ou similar
+      if (arquivo.name.endsWith('.csv') || arquivo.name.endsWith('.txt')) {
+        const content = await arquivo.text()
+        dados = parseCSV(content)
+        setTextoExtraido(content)
+      } else if (arquivo.name.endsWith('.pdf')) {
+        if (!pdfReady) {
+          throw new Error('Aguarde o carregamento do leitor de PDF')
+        }
+        const text = await extractTextFromPDF(arquivo)
+        setTextoExtraido(text)
         dados = parsePDFText(text)
       } else {
-        // Tenta como texto genérico
-        dados = parsePDFText(text)
+        throw new Error('Formato não suportado. Use PDF ou CSV.')
       }
       
       if (dados.alunos.length === 0) {
-        throw new Error('Não foi possível extrair dados do arquivo. Verifique o formato.')
+        throw new Error('Nenhum aluno encontrado no arquivo. Verifique o formato.')
       }
       
       setDadosExtraidos(dados)
-      setConfigImport(prev => ({
+      setFormData(prev => ({
         ...prev,
-        titulo: dados.titulo
+        titulo: dados.titulo || arquivo.name.replace(/\.[^.]+$/, '')
       }))
-      setImportStep('preview')
       
-    } catch (e: any) {
-      setImportError(e.message || 'Erro ao processar arquivo')
+      // Preparar preview das notas
+      const preview: NotaRede[] = dados.alunos.map(a => ({
+        avaliacao_id: '',
+        nome_pdf: a.nome,
+        nota: a.nota,
+        acertos: a.acertos,
+        total_questoes: a.totalQuestoes,
+        vinculado: false
+      }))
+      
+      setNotasPreview(preview)
+      setEtapa('preview')
+      
+    } catch (error: any) {
+      setErro(error.message || 'Erro ao processar arquivo')
     } finally {
-      setUploading(false)
+      setProcessando(false)
     }
   }
 
   // Vincular alunos automaticamente
   const vincularAutomaticamente = () => {
-    if (!dadosExtraidos || alunosTurma.length === 0) return
+    if (!formData.turma_id) {
+      setErro('Selecione uma turma primeiro')
+      return
+    }
     
-    const novasVinculacoes = new Map<number, { alunoId: string | null, similaridade: number }>()
+    const alunosTurma = alunos.filter(a => a.turma_id === formData.turma_id)
     
-    dadosExtraidos.alunos.forEach((alunoImport, index) => {
-      let melhorMatch: { alunoId: string | null, similaridade: number } = { alunoId: null, similaridade: 0 }
+    const novasNotas = notasPreview.map(nota => {
+      const match = encontrarMelhorMatch(nota.nome_pdf, alunosTurma)
       
-      for (const alunoSistema of alunosTurma) {
-        const sim = calcularSimilaridade(alunoImport.nome, alunoSistema.nome)
-        if (sim > melhorMatch.similaridade && sim >= 70) {
-          melhorMatch = { alunoId: alunoSistema.id, similaridade: sim }
+      if (match.aluno && match.score >= 0.7) {
+        return {
+          ...nota,
+          aluno_id: match.aluno.id,
+          vinculado: true
         }
       }
       
-      novasVinculacoes.set(index, melhorMatch)
+      return nota
     })
     
-    setVinculacoes(novasVinculacoes)
+    setNotasPreview(novasNotas)
   }
 
-  // Efeito para vincular quando turma muda
-  useEffect(() => {
-    if (configImport.turma_id && dadosExtraidos) {
-      carregarAlunosTurma(configImport.turma_id).then(() => {
-        setTimeout(vincularAutomaticamente, 100)
-      })
+  // Vincular manualmente
+  const vincularManualmente = (index: number, alunoId: string) => {
+    const novasNotas = [...notasPreview]
+    novasNotas[index] = {
+      ...novasNotas[index],
+      aluno_id: alunoId || undefined,
+      vinculado: !!alunoId
     }
-  }, [configImport.turma_id, dadosExtraidos])
-
-  // Atualizar vinculação manual
-  const atualizarVinculacao = (index: number, alunoId: string | null) => {
-    const novas = new Map(vinculacoes)
-    novas.set(index, { alunoId, similaridade: alunoId ? 100 : 0 })
-    setVinculacoes(novas)
+    setNotasPreview(novasNotas)
   }
 
-  // Salvar importação
-  const salvarImportacao = async () => {
-    if (!usuario?.id || !dadosExtraidos || !configImport.turma_id) return
+  // Salvar avaliação
+  const salvarAvaliacao = async () => {
+    if (!usuario || !dadosExtraidos) return
     
-    setUploading(true)
-    setImportError(null)
+    if (!formData.titulo.trim()) {
+      setErro('Informe o título da avaliação')
+      return
+    }
+    
+    if (!formData.turma_id) {
+      setErro('Selecione uma turma')
+      return
+    }
+    
+    setSalvando(true)
+    setErro(null)
     
     try {
-      // 1. Criar registro da avaliação
-      const { data: avaliacao, error: errAv } = await supabase
+      // Criar avaliação
+      const { data: avaliacao, error: avError } = await supabase
         .from('avaliacoes_rede')
         .insert({
           usuario_id: usuario.id,
-          turma_id: configImport.turma_id,
-          titulo: configImport.titulo,
-          escola_origem: dadosExtraidos.escola,
-          disciplina: dadosExtraidos.disciplina || 'MATEMÁTICA',
+          titulo: formData.titulo,
+          escola: dadosExtraidos.escola,
+          turma_origem: dadosExtraidos.turma,
+          disciplina: dadosExtraidos.disciplina,
+          data_aplicacao: formData.data_aplicacao,
           total_questoes: dadosExtraidos.totalQuestoes,
-          arquivo_nome: arquivoSelecionado?.name,
-          arquivo_tipo: arquivoSelecionado?.name.split('.').pop()?.toLowerCase(),
-          periodo: configImport.periodo,
-          ano_letivo: configImport.ano_letivo,
-          status: 'processado'
+          arquivo_nome: arquivo?.name
         })
         .select()
         .single()
       
-      if (errAv) throw errAv
+      if (avError) throw avError
       
-      // 2. Inserir notas dos alunos
-      const notasParaInserir = dadosExtraidos.alunos.map((aluno, index) => {
-        const vinc = vinculacoes.get(index)
-        return {
-          avaliacao_id: avaliacao.id,
-          aluno_id: vinc?.alunoId || null,
-          nome_original: aluno.nome,
-          nota: aluno.nota,
-          acertos: aluno.acertos,
-          total_questoes: aluno.totalQuestoes || dadosExtraidos.totalQuestoes,
-          percentual: aluno.totalQuestoes && aluno.acertos 
-            ? Math.round((aluno.acertos / aluno.totalQuestoes) * 100) 
-            : null,
-          vinculado: !!vinc?.alunoId,
-          similaridade: vinc?.similaridade || 0,
-          vinculado_manualmente: vinc?.similaridade === 100 && vinc?.alunoId !== null
-        }
-      })
+      // Inserir notas
+      const notasParaInserir = notasPreview.map(nota => ({
+        avaliacao_id: avaliacao.id,
+        nome_pdf: nota.nome_pdf,
+        nota: nota.nota,
+        acertos: nota.acertos,
+        total_questoes: nota.total_questoes,
+        aluno_id: nota.aluno_id,
+        vinculado: nota.vinculado
+      }))
       
-      const { error: errNotas } = await supabase
+      const { error: notasError } = await supabase
         .from('notas_rede')
         .insert(notasParaInserir)
       
-      if (errNotas) throw errNotas
+      if (notasError) throw notasError
       
-      // Fechar modal e recarregar
-      setShowImportModal(false)
-      resetarImportacao()
-      fetchData()
+      // Se tiver componente selecionado, vincular às notas do sistema
+      if (formData.componente_id) {
+        const notasVinculadas = notasPreview.filter(n => n.aluno_id)
+        
+        for (const nota of notasVinculadas) {
+          // Verificar se já existe nota para este aluno/componente/período
+          const { data: existing } = await supabase
+            .from('notas')
+            .select('id')
+            .eq('aluno_id', nota.aluno_id)
+            .eq('componente_id', formData.componente_id)
+            .eq('ano_letivo', new Date().getFullYear())
+            .single()
+          
+          if (existing) {
+            // Atualizar
+            await supabase
+              .from('notas')
+              .update({ nota: nota.nota })
+              .eq('id', existing.id)
+          } else {
+            // Inserir
+            await supabase
+              .from('notas')
+              .insert({
+                aluno_id: nota.aluno_id,
+                turma_id: formData.turma_id,
+                componente_id: formData.componente_id,
+                periodo: 1,
+                ano_letivo: new Date().getFullYear(),
+                nota: nota.nota
+              })
+          }
+        }
+      }
       
-    } catch (e: any) {
-      setImportError(e.message || 'Erro ao salvar importação')
+      // Resetar e fechar
+      resetarFormulario()
+      setShowUploadModal(false)
+      carregarDados()
+      
+    } catch (error: any) {
+      setErro(error.message || 'Erro ao salvar avaliação')
     } finally {
-      setUploading(false)
+      setSalvando(false)
     }
   }
 
-  // Resetar estados de importação
-  const resetarImportacao = () => {
-    setImportStep('upload')
-    setArquivoSelecionado(null)
+  // Resetar formulário
+  const resetarFormulario = () => {
+    setArquivo(null)
     setDadosExtraidos(null)
-    setVinculacoes(new Map())
-    setAlunosTurma([])
-    setConfigImport({
-      turma_id: '',
+    setTextoExtraido('')
+    setNotasPreview([])
+    setEtapa('upload')
+    setErro(null)
+    setFormData({
       titulo: '',
-      periodo: 1,
-      ano_letivo: new Date().getFullYear()
+      turma_id: '',
+      componente_id: '',
+      data_aplicacao: new Date().toISOString().split('T')[0]
     })
-    setImportError(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   // Abrir detalhes da avaliação
   const abrirDetalhes = async (avaliacao: AvaliacaoRede) => {
     setAvaliacaoSelecionada(avaliacao)
-    setShowDetalhesModal(true)
-    setLoadingNotas(true)
     
     const { data } = await supabase
       .from('notas_rede')
       .select('*')
       .eq('avaliacao_id', avaliacao.id)
-      .order('nome_original')
+      .order('nome_pdf')
     
     setNotasAvaliacao(data || [])
-    setLoadingNotas(false)
+    setShowDetalhesModal(true)
   }
 
   // Excluir avaliação
   const excluirAvaliacao = async (id: string) => {
-    if (!confirm('Excluir esta avaliação e todas as notas vinculadas?')) return
+    if (!confirm('Tem certeza que deseja excluir esta avaliação?')) return
     
+    await supabase.from('notas_rede').delete().eq('avaliacao_id', id)
     await supabase.from('avaliacoes_rede').delete().eq('id', id)
-    fetchData()
-  }
-
-  // Filtrar avaliações
-  const avaliacoesFiltradas = avaliacoes.filter(a =>
-    a.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    a.escola_origem?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  // Helpers
-  const getTurmaNome = (turmaId?: string) => {
-    if (!turmaId) return '-'
-    return turmas.find(t => t.id === turmaId)?.nome || '-'
-  }
-
-  const getStatusBadge = (vinculados: number, total: number) => {
-    const pct = total > 0 ? (vinculados / total) * 100 : 0
-    if (pct === 100) return <Badge variant="success">100% vinculado</Badge>
-    if (pct >= 80) return <Badge variant="warning">{Math.round(pct)}% vinculado</Badge>
-    return <Badge variant="danger">{Math.round(pct)}% vinculado</Badge>
+    
+    carregarDados()
   }
 
   // ============================================================
   // RENDER
   // ============================================================
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
   return (
-    <div className="p-4 lg:p-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Avaliações de Rede</h1>
-          <p className="text-gray-600">Importe resultados de avaliações externas (SAEB, municipal, etc)</p>
+          <p className="text-gray-600">Importe resultados de avaliações externas (SAEB, simulados da rede)</p>
         </div>
-        <Button onClick={() => { resetarImportacao(); setShowImportModal(true) }}>
-          <Upload className="w-5 h-5 mr-2" />
+        <Button onClick={() => setShowUploadModal(true)}>
+          <Plus className="w-4 h-4 mr-2" />
           Importar Avaliação
         </Button>
       </div>
 
-      {/* Busca */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <Input
-              placeholder="Buscar avaliações..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-gray-900">{avaliacoes.length}</p>
-            <p className="text-sm text-gray-600">Total Importadas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">
-              {avaliacoes.filter(a => a.alunos_vinculados === a.total_alunos && a.total_alunos > 0).length}
-            </p>
-            <p className="text-sm text-gray-600">100% Vinculadas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-600">
-              {avaliacoes.filter(a => a.alunos_vinculados < a.total_alunos && a.alunos_vinculados > 0).length}
-            </p>
-            <p className="text-sm text-gray-600">Parcialmente Vinculadas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-indigo-600">
-              {avaliacoes.reduce((acc, a) => acc + a.total_alunos, 0)}
-            </p>
-            <p className="text-sm text-gray-600">Total de Notas</p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Lista de avaliações */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
-        </div>
-      ) : avaliacoesFiltradas.length === 0 ? (
+      {avaliacoes.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <FileSpreadsheet className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {searchTerm ? 'Nenhuma avaliação encontrada' : 'Nenhuma avaliação importada'}
+              Nenhuma avaliação importada
             </h3>
-            <p className="text-gray-500 mb-6">
-              Importe resultados de avaliações externas como SAEB, provas da rede municipal, etc.
+            <p className="text-gray-500 mb-4">
+              Importe PDFs ou planilhas com resultados de avaliações da rede
             </p>
-            <Button onClick={() => { resetarImportacao(); setShowImportModal(true) }}>
-              <Upload className="w-5 h-5 mr-2" />
-              Importar Primeira Avaliação
+            <Button onClick={() => setShowUploadModal(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Importar primeira avaliação
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {avaliacoesFiltradas.map(av => (
+        <div className="grid gap-4">
+          {avaliacoes.map(av => (
             <Card key={av.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <h3 className="font-semibold text-gray-900">{av.titulo}</h3>
-                      {getStatusBadge(av.alunos_vinculados, av.total_alunos)}
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-4 text-sm text-gray-500">
-                      {av.escola_origem && (
+                    <h3 className="font-medium text-gray-900">{av.titulo}</h3>
+                    <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+                      {av.escola && <span>{av.escola}</span>}
+                      {av.turma_origem && (
                         <span className="flex items-center gap-1">
-                          <School className="w-4 h-4" />
-                          {av.escola_origem}
+                          <Users className="w-4 h-4" />
+                          {av.turma_origem}
                         </span>
                       )}
-                      <span className="flex items-center gap-1">
-                        <Users className="w-4 h-4" />
-                        {getTurmaNome(av.turma_id)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Target className="w-4 h-4" />
-                        {av.total_alunos} alunos
-                      </span>
+                      {av.data_aplicacao && (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          {new Date(av.data_aplicacao).toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
                       {av.total_questoes && (
-                        <span className="flex items-center gap-1">
-                          <BookOpen className="w-4 h-4" />
-                          {av.total_questoes} questões
-                        </span>
-                      )}
-                      {av.media_turma && (
-                        <span className="flex items-center gap-1">
-                          <span className="font-medium text-indigo-600">
-                            Média: {av.media_turma.toFixed(1)}
-                          </span>
-                        </span>
+                        <Badge variant="secondary">{av.total_questoes} questões</Badge>
                       )}
                     </div>
-                    
-                    <p className="text-xs text-gray-400 mt-2">
-                      Importado em {new Date(av.created_at).toLocaleDateString('pt-BR')}
-                      {av.arquivo_nome && ` • ${av.arquivo_nome}`}
-                    </p>
                   </div>
-                  
-                  {/* Ações */}
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => abrirDetalhes(av)} title="Ver detalhes">
-                      <Eye className="w-4 h-4" />
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => abrirDetalhes(av)}
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      Ver Notas
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => excluirAvaliacao(av.id)} title="Excluir">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => excluirAvaliacao(av.id)}
+                    >
                       <Trash2 className="w-4 h-4 text-red-500" />
                     </Button>
                   </div>
@@ -689,363 +750,383 @@ export default function AvaliacoesRedePage() {
         </div>
       )}
 
-      {/* ============================================================ */}
-      {/* MODAL: IMPORTAR AVALIAÇÃO */}
-      {/* ============================================================ */}
-      <Modal
-        isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
+      {/* Modal de Upload */}
+      <Modal 
+        isOpen={showUploadModal} 
+        onClose={() => { resetarFormulario(); setShowUploadModal(false) }}
         title="Importar Avaliação de Rede"
         size="xl"
       >
-        <div className="space-y-4">
-          {/* Progress Steps */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <div className={`flex items-center gap-2 ${importStep === 'upload' ? 'text-indigo-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${importStep === 'upload' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>
-                1
-              </div>
-              <span className="text-sm font-medium hidden sm:inline">Upload</span>
+        {erro && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+            <AlertCircle className="w-5 h-5" />
+            {erro}
+          </div>
+        )}
+
+        {/* Etapa 1: Upload */}
+        {etapa === 'upload' && (
+          <div className="space-y-4">
+            <div 
+              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-600 mb-2">
+                Clique para selecionar ou arraste o arquivo
+              </p>
+              <p className="text-sm text-gray-400">
+                Formatos aceitos: PDF, CSV
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.csv,.txt"
+                className="hidden"
+                onChange={(e) => setArquivo(e.target.files?.[0] || null)}
+              />
             </div>
-            <div className="w-8 h-px bg-gray-300" />
-            <div className={`flex items-center gap-2 ${importStep === 'preview' ? 'text-indigo-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${importStep === 'preview' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>
-                2
+
+            {arquivo && (
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  <span className="font-medium">{arquivo.name}</span>
+                  <span className="text-gray-400 text-sm">
+                    ({(arquivo.size / 1024).toFixed(1)} KB)
+                  </span>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setArquivo(null)}
+                >
+                  <XCircle className="w-4 h-4" />
+                </Button>
               </div>
-              <span className="text-sm font-medium hidden sm:inline">Conferir</span>
-            </div>
-            <div className="w-8 h-px bg-gray-300" />
-            <div className={`flex items-center gap-2 ${importStep === 'config' ? 'text-indigo-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${importStep === 'config' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>
-                3
-              </div>
-              <span className="text-sm font-medium hidden sm:inline">Salvar</span>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowUploadModal(false)}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={processarArquivo}
+                disabled={!arquivo || processando || !pdfReady}
+              >
+                {processando ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processando...
+                  </>
+                ) : !pdfReady && arquivo?.name.endsWith('.pdf') ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Carregando leitor...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-4 h-4 mr-2" />
+                    Extrair Dados
+                  </>
+                )}
+              </Button>
             </div>
           </div>
+        )}
 
-          {/* Erro */}
-          {importError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-600">{importError}</p>
-              <button onClick={() => setImportError(null)} className="ml-auto">
-                <X className="w-4 h-4 text-red-400" />
-              </button>
-            </div>
-          )}
-
-          {/* Step 1: Upload */}
-          {importStep === 'upload' && (
-            <div className="space-y-4">
-              <div
-                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-indigo-400 transition-colors cursor-pointer"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">
-                  Arraste um arquivo ou clique para selecionar
-                </p>
-                <p className="text-sm text-gray-400">
-                  Formatos aceitos: PDF, CSV, TXT
-                </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.csv,.txt"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) {
-                      setArquivoSelecionado(file)
-                      processarArquivo(file)
-                    }
-                  }}
+        {/* Etapa 2: Preview */}
+        {etapa === 'preview' && dadosExtraidos && (
+          <div className="space-y-4">
+            {/* Info extraída */}
+            <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div>
+                <label className="text-sm text-gray-500">Título</label>
+                <Input
+                  value={formData.titulo}
+                  onChange={(e) => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
                 />
               </div>
-
-              {arquivoSelecionado && (
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <FileText className="w-8 h-8 text-indigo-600" />
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{arquivoSelecionado.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {(arquivoSelecionado.size / 1024).toFixed(1)} KB
-                    </p>
-                  </div>
-                  {uploading && (
-                    <div className="animate-spin w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full" />
-                  )}
-                </div>
-              )}
-
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-2">📋 Formato esperado</h4>
-                <p className="text-sm text-blue-700">
-                  O arquivo deve conter o nome do aluno e a nota (ou acertos/total).
-                  Exemplo: "JOÃO SILVA | 7,5 | 15/20"
-                </p>
+              <div>
+                <label className="text-sm text-gray-500">Data de Aplicação</label>
+                <Input
+                  type="date"
+                  value={formData.data_aplicacao}
+                  onChange={(e) => setFormData(prev => ({ ...prev, data_aplicacao: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-500">Turma para vincular</label>
+                <select
+                  className="w-full p-2 border rounded-lg"
+                  value={formData.turma_id}
+                  onChange={(e) => setFormData(prev => ({ ...prev, turma_id: e.target.value }))}
+                >
+                  <option value="">Selecione...</option>
+                  {turmas.map(t => (
+                    <option key={t.id} value={t.id}>{t.nome} - {t.ano_serie}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-gray-500">Componente de nota (opcional)</label>
+                <select
+                  className="w-full p-2 border rounded-lg"
+                  value={formData.componente_id}
+                  onChange={(e) => setFormData(prev => ({ ...prev, componente_id: e.target.value }))}
+                >
+                  <option value="">Não vincular a notas</option>
+                  {componentes.map(c => (
+                    <option key={c.id} value={c.id}>{c.nome}</option>
+                  ))}
+                </select>
               </div>
             </div>
-          )}
 
-          {/* Step 2: Preview e Vinculação */}
-          {importStep === 'preview' && dadosExtraidos && (
-            <div className="space-y-4">
-              {/* Configuração da turma */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Título da Avaliação *
-                  </label>
-                  <Input
-                    value={configImport.titulo}
-                    onChange={(e) => setConfigImport({ ...configImport, titulo: e.target.value })}
-                    placeholder="Ex: 1º Simulado SAEB"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Turma *
-                  </label>
-                  <select
-                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
-                    value={configImport.turma_id}
-                    onChange={(e) => setConfigImport({ ...configImport, turma_id: e.target.value })}
-                  >
-                    <option value="">Selecione a turma</option>
-                    {turmas.map(t => (
-                      <option key={t.id} value={t.id}>{t.nome} - {t.ano_serie}</option>
-                    ))}
-                  </select>
-                </div>
+            {/* Ações */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">
+                  {dadosExtraidos.alunos.length} alunos encontrados
+                </Badge>
+                {dadosExtraidos.totalQuestoes && (
+                  <Badge variant="secondary">
+                    {dadosExtraidos.totalQuestoes} questões
+                  </Badge>
+                )}
               </div>
-
-              {/* Info extraída */}
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <span><strong>Alunos encontrados:</strong> {dadosExtraidos.alunos.length}</span>
-                  {dadosExtraidos.escola && <span><strong>Escola:</strong> {dadosExtraidos.escola}</span>}
-                  {dadosExtraidos.totalQuestoes && <span><strong>Questões:</strong> {dadosExtraidos.totalQuestoes}</span>}
-                </div>
-              </div>
-
-              {/* Tabela de vinculação */}
-              {configImport.turma_id && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium text-gray-900">Vinculação de Alunos</h4>
-                    <Button variant="outline" size="sm" onClick={vincularAutomaticamente}>
-                      <RefreshCw className="w-4 h-4 mr-1" />
-                      Revincular
-                    </Button>
-                  </div>
-                  
-                  <div className="max-h-64 overflow-y-auto border rounded-lg">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 sticky top-0">
-                        <tr>
-                          <th className="text-left p-2">Nome no Arquivo</th>
-                          <th className="text-left p-2">Nota</th>
-                          <th className="text-left p-2">Vincular com</th>
-                          <th className="text-center p-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dadosExtraidos.alunos.map((aluno, index) => {
-                          const vinc = vinculacoes.get(index)
-                          const alunoVinculado = vinc?.alunoId 
-                            ? alunosTurma.find(a => a.id === vinc.alunoId) 
-                            : null
-                          
-                          return (
-                            <tr key={index} className="border-t hover:bg-gray-50">
-                              <td className="p-2">
-                                <span className="font-medium">{aluno.nome}</span>
-                              </td>
-                              <td className="p-2">
-                                <span className="font-bold text-indigo-600">{aluno.nota}</span>
-                                {aluno.acertos && (
-                                  <span className="text-gray-500 text-xs ml-1">
-                                    ({aluno.acertos}/{aluno.totalQuestoes})
-                                  </span>
-                                )}
-                              </td>
-                              <td className="p-2">
-                                <select
-                                  className="w-full px-2 py-1 border rounded text-sm"
-                                  value={vinc?.alunoId || ''}
-                                  onChange={(e) => atualizarVinculacao(index, e.target.value || null)}
-                                >
-                                  <option value="">Não vincular</option>
-                                  {alunosTurma.map(a => (
-                                    <option key={a.id} value={a.id}>{a.nome}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="p-2 text-center">
-                                {vinc?.alunoId ? (
-                                  vinc.similaridade >= 95 ? (
-                                    <CheckCircle className="w-5 h-5 text-green-500 inline" />
-                                  ) : vinc.similaridade >= 70 ? (
-                                    <HelpCircle className="w-5 h-5 text-yellow-500 inline" />
-                                  ) : (
-                                    <CheckCircle className="w-5 h-5 text-blue-500 inline" />
-                                  )
-                                ) : (
-                                  <XCircle className="w-5 h-5 text-gray-300 inline" />
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  
-                  {/* Legenda */}
-                  <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <CheckCircle className="w-4 h-4 text-green-500" /> Automático (95%+)
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <HelpCircle className="w-4 h-4 text-yellow-500" /> Sugerido (70-94%)
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <CheckCircle className="w-4 h-4 text-blue-500" /> Manual
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <XCircle className="w-4 h-4 text-gray-300" /> Não vinculado
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Resumo */}
-              <div className="bg-indigo-50 p-4 rounded-lg">
-                <h4 className="font-medium text-indigo-900 mb-2">Resumo da Importação</h4>
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <p className="text-2xl font-bold text-indigo-600">{dadosExtraidos.alunos.length}</p>
-                    <p className="text-sm text-indigo-700">Total</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-green-600">
-                      {Array.from(vinculacoes.values()).filter(v => v.alunoId).length}
-                    </p>
-                    <p className="text-sm text-green-700">Vinculados</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-gray-500">
-                      {dadosExtraidos.alunos.length - Array.from(vinculacoes.values()).filter(v => v.alunoId).length}
-                    </p>
-                    <p className="text-sm text-gray-600">Sem vínculo</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Ações */}
-              <div className="flex gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={() => setImportStep('upload')}>
-                  Voltar
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowTextoModal(true)}>
+                  <Eye className="w-4 h-4 mr-1" />
+                  Ver texto extraído
                 </Button>
                 <Button 
-                  className="flex-1" 
-                  onClick={salvarImportacao}
-                  disabled={!configImport.turma_id || !configImport.titulo || uploading}
-                  loading={uploading}
+                  variant="outline" 
+                  size="sm" 
+                  onClick={vincularAutomaticamente}
+                  disabled={!formData.turma_id}
                 >
-                  <Save className="w-4 h-4 mr-2" />
-                  Salvar Importação
+                  <Link2 className="w-4 h-4 mr-1" />
+                  Vincular automaticamente
                 </Button>
               </div>
             </div>
-          )}
+
+            {/* Tabela de notas */}
+            <div className="max-h-96 overflow-y-auto border rounded-lg">
+              <table className="w-full">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="p-3 text-left text-sm font-medium text-gray-600">Nome no PDF</th>
+                    <th className="p-3 text-center text-sm font-medium text-gray-600">Nota</th>
+                    <th className="p-3 text-center text-sm font-medium text-gray-600">Acertos</th>
+                    <th className="p-3 text-left text-sm font-medium text-gray-600">Vincular a</th>
+                    <th className="p-3 text-center text-sm font-medium text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {notasPreview.map((nota, index) => (
+                    <tr key={index} className={nota.vinculado ? 'bg-green-50' : ''}>
+                      <td className="p-3 text-gray-900">{nota.nome_pdf}</td>
+                      <td className="p-3 text-center font-medium">
+                        <span className={nota.nota >= 6 ? 'text-green-600' : 'text-red-600'}>
+                          {nota.nota.toFixed(1)}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center text-gray-600">
+                        {nota.acertos && nota.total_questoes 
+                          ? `${nota.acertos}/${nota.total_questoes}`
+                          : '-'
+                        }
+                      </td>
+                      <td className="p-3">
+                        <select
+                          className="w-full p-1 text-sm border rounded"
+                          value={nota.aluno_id || ''}
+                          onChange={(e) => vincularManualmente(index, e.target.value)}
+                        >
+                          <option value="">Não vincular</option>
+                          {alunos
+                            .filter(a => a.turma_id === formData.turma_id)
+                            .map(a => (
+                              <option key={a.id} value={a.id}>{a.nome}</option>
+                            ))
+                          }
+                        </select>
+                      </td>
+                      <td className="p-3 text-center">
+                        {nota.vinculado ? (
+                          <CheckCircle className="w-5 h-5 text-green-500 inline" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-gray-300 inline" />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Rodapé */}
+            <div className="flex justify-between items-center pt-4 border-t">
+              <Button variant="outline" onClick={() => setEtapa('upload')}>
+                Voltar
+              </Button>
+              <div className="flex gap-2">
+                <span className="text-sm text-gray-500 self-center">
+                  {notasPreview.filter(n => n.vinculado).length} de {notasPreview.length} vinculados
+                </span>
+                <Button onClick={salvarAvaliacao} disabled={salvando}>
+                  {salvando ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Salvar Avaliação
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal de texto extraído */}
+      <Modal
+        isOpen={showTextoModal}
+        onClose={() => setShowTextoModal(false)}
+        title="Texto Extraído do Arquivo"
+        size="xl"
+      >
+        <div className="max-h-96 overflow-y-auto">
+          <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-50 p-4 rounded-lg font-mono">
+            {textoExtraido || 'Nenhum texto extraído'}
+          </pre>
+        </div>
+        <div className="flex justify-end mt-4">
+          <Button onClick={() => setShowTextoModal(false)}>Fechar</Button>
         </div>
       </Modal>
 
-      {/* ============================================================ */}
-      {/* MODAL: DETALHES DA AVALIAÇÃO */}
-      {/* ============================================================ */}
+      {/* Modal de detalhes da avaliação */}
       <Modal
         isOpen={showDetalhesModal}
         onClose={() => setShowDetalhesModal(false)}
-        title={avaliacaoSelecionada?.titulo || 'Detalhes'}
+        title={avaliacaoSelecionada?.titulo || 'Detalhes da Avaliação'}
         size="xl"
       >
         {avaliacaoSelecionada && (
           <div className="space-y-4">
             {/* Info */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="bg-gray-50 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-gray-900">{avaliacaoSelecionada.total_alunos}</p>
-                <p className="text-sm text-gray-600">Alunos</p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-green-600">{avaliacaoSelecionada.alunos_vinculados}</p>
-                <p className="text-sm text-gray-600">Vinculados</p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-indigo-600">
-                  {avaliacaoSelecionada.media_turma?.toFixed(1) || '-'}
-                </p>
-                <p className="text-sm text-gray-600">Média</p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-gray-900">
-                  {avaliacaoSelecionada.total_questoes || '-'}
-                </p>
-                <p className="text-sm text-gray-600">Questões</p>
-              </div>
+            <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg text-sm">
+              {avaliacaoSelecionada.escola && (
+                <div>
+                  <span className="text-gray-500">Escola:</span>
+                  <p className="font-medium">{avaliacaoSelecionada.escola}</p>
+                </div>
+              )}
+              {avaliacaoSelecionada.turma_origem && (
+                <div>
+                  <span className="text-gray-500">Turma original:</span>
+                  <p className="font-medium">{avaliacaoSelecionada.turma_origem}</p>
+                </div>
+              )}
+              {avaliacaoSelecionada.data_aplicacao && (
+                <div>
+                  <span className="text-gray-500">Data:</span>
+                  <p className="font-medium">
+                    {new Date(avaliacaoSelecionada.data_aplicacao).toLocaleDateString('pt-BR')}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Estatísticas */}
+            <div className="grid grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="p-3 text-center">
+                  <p className="text-2xl font-bold text-gray-900">
+                    {notasAvaliacao.length}
+                  </p>
+                  <p className="text-xs text-gray-500">Alunos</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">
+                    {notasAvaliacao.length > 0 
+                      ? (notasAvaliacao.reduce((acc, n) => acc + n.nota, 0) / notasAvaliacao.length).toFixed(1)
+                      : '-'
+                    }
+                  </p>
+                  <p className="text-xs text-gray-500">Média</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3 text-center">
+                  <p className="text-2xl font-bold text-green-600">
+                    {notasAvaliacao.filter(n => n.nota >= 6).length}
+                  </p>
+                  <p className="text-xs text-gray-500">Aprovados</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3 text-center">
+                  <p className="text-2xl font-bold text-orange-600">
+                    {notasAvaliacao.filter(n => n.vinculado).length}
+                  </p>
+                  <p className="text-xs text-gray-500">Vinculados</p>
+                </CardContent>
+              </Card>
             </div>
 
             {/* Tabela de notas */}
-            {loadingNotas ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
-              </div>
-            ) : (
-              <div className="max-h-80 overflow-y-auto border rounded-lg">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="text-left p-3">Nome</th>
-                      <th className="text-center p-3">Nota</th>
-                      <th className="text-center p-3">Acertos</th>
-                      <th className="text-center p-3">Vinculado</th>
+            <div className="max-h-64 overflow-y-auto border rounded-lg">
+              <table className="w-full">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="p-3 text-left text-sm font-medium text-gray-600">Aluno</th>
+                    <th className="p-3 text-center text-sm font-medium text-gray-600">Nota</th>
+                    <th className="p-3 text-center text-sm font-medium text-gray-600">Acertos</th>
+                    <th className="p-3 text-center text-sm font-medium text-gray-600">Vinculado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {notasAvaliacao.map(nota => (
+                    <tr key={nota.id}>
+                      <td className="p-3 text-gray-900">{nota.nome_pdf}</td>
+                      <td className="p-3 text-center">
+                        <span className={`font-medium ${
+                          nota.nota >= 6 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {nota.nota?.toFixed(1) || '-'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center text-gray-600">
+                        {nota.acertos && nota.total_questoes 
+                          ? `${nota.acertos}/${nota.total_questoes}` 
+                          : '-'
+                        }
+                      </td>
+                      <td className="p-3 text-center">
+                        {nota.vinculado ? (
+                          <CheckCircle className="w-5 h-5 text-green-500 inline" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-gray-300 inline" />
+                        )}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {notasAvaliacao.map(nota => (
-                      <tr key={nota.id} className="border-t hover:bg-gray-50">
-                        <td className="p-3">
-                          <span className="font-medium">{nota.nome_original}</span>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className={`font-bold ${
-                            (nota.nota || 0) >= 6 ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {nota.nota?.toFixed(1) || '-'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center text-gray-600">
-                          {nota.acertos && nota.total_questoes 
-                            ? `${nota.acertos}/${nota.total_questoes}` 
-                            : '-'
-                          }
-                        </td>
-                        <td className="p-3 text-center">
-                          {nota.vinculado ? (
-                            <CheckCircle className="w-5 h-5 text-green-500 inline" />
-                          ) : (
-                            <XCircle className="w-5 h-5 text-gray-300 inline" />
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             {/* Ações */}
             <div className="flex justify-end pt-4 border-t">
