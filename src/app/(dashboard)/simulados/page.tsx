@@ -6,1425 +6,1078 @@ import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
 import { 
-  Plus, Search, FileText, Edit, Trash2, Eye, Play, QrCode, Check, X, 
-  Wand2, Filter, Users, CheckCircle, ArrowLeft, ArrowUp, ArrowDown, 
-  AlertCircle, BarChart3, Download, FileDown, ChevronDown, ChevronUp,
-  BookOpen, Target, Layers, Clock, SlidersHorizontal, RefreshCw, Copy
+  Plus, Search, FileText, Users, Calendar, Clock, Download, Trash2, Edit, 
+  Eye, QrCode, MoreVertical, ChevronDown, ChevronUp, CheckCircle, XCircle,
+  ClipboardList, Copy
 } from 'lucide-react'
-import { exportToWord, exportToPDF } from '@/lib/export-document'
+import { gerarProvaWord } from '@/lib/gerar-prova-word'
+import { ModalFolhaRespostas } from '@/components/ModalFolhaRespostas'
 
 interface Simulado {
   id: string
   titulo: string
-  descricao?: string
-  turma_id?: string
-  tempo_minutos: number
-  questoes_ids: string[]
-  configuracoes?: any
+  turma_id: string
+  data_aplicacao: string | null
+  duracao_minutos: number | null
   status: 'rascunho' | 'publicado' | 'encerrado'
   created_at: string
-  usuario_id: string
+  turmas?: {
+    nome: string
+    ano_escolar: string
+  }
+  questoes_count?: number
+  respostas_count?: number
+  pontuacao_tipo: 'padrao' | 'personalizada'
+  pontuacao_acerto: number
+  pontuacao_erro: number
+  pontuacao_branco: number
+}
+
+interface SimuladoQuestao {
+  id: string
+  simulado_id: string
+  questao_id: string
+  ordem: number
+  pontuacao_personalizada?: number
+  questoes: {
+    id: string
+    enunciado: string
+    alternativa_a: string
+    alternativa_b: string
+    alternativa_c: string
+    alternativa_d: string
+    resposta_correta: string
+    nivel_dificuldade: string
+    habilidade_bncc: string
+  }
 }
 
 interface Turma {
   id: string
   nome: string
-  ano_serie: string
-  ativa: boolean
+  ano_escolar: string
 }
 
-interface Questao {
+interface RespostaAluno {
   id: string
-  enunciado: string
-  ano_serie: string
-  dificuldade: string
-  habilidade_bncc_id?: string
-  is_publica?: boolean
-  ativa?: boolean
-  alternativa_a?: string
-  alternativa_b?: string
-  alternativa_c?: string
-  alternativa_d?: string
-  alternativa_e?: string
-  resposta_correta?: string
-  fonte?: string
-  descritor_codigo?: string
-  unidade_tematica?: string
+  simulado_id: string
+  aluno_id: string
+  questao_id: string
+  resposta: string
+  correta: boolean
+  created_at: string
+  alunos: {
+    id: string
+    nome: string
+  }
 }
-
-interface HabilidadeBncc {
-  id: string
-  codigo: string
-  descricao: string
-}
-
-interface DescritorSaeb {
-  id: string
-  codigo: string
-  descricao: string
-}
-
-const ANO_SERIE_OPTIONS = [
-  { value: '', label: 'Todos os anos' },
-  { value: '6º ano EF', label: '6º ano EF' },
-  { value: '7º ano EF', label: '7º ano EF' },
-  { value: '8º ano EF', label: '8º ano EF' },
-  { value: '9º ano EF', label: '9º ano EF' },
-  { value: '1º ano EM', label: '1º ano EM' },
-  { value: '2º ano EM', label: '2º ano EM' },
-  { value: '3º ano EM', label: '3º ano EM' },
-]
-
-const DIFICULDADE_OPTIONS = [
-  { value: '', label: 'Todas' },
-  { value: 'facil', label: 'Fácil', emoji: '🟢', color: 'text-green-600' },
-  { value: 'medio', label: 'Médio', emoji: '🟡', color: 'text-yellow-600' },
-  { value: 'dificil', label: 'Difícil', emoji: '🔴', color: 'text-red-600' },
-]
-
-const FONTE_OPTIONS = [
-  { value: '', label: 'Todas as fontes' },
-  { value: 'BNCC', label: 'BNCC' },
-  { value: 'SAEB', label: 'SAEB' },
-  { value: 'TEMA', label: 'Por Tema' },
-]
 
 export default function SimuladosPage() {
-  const { usuario } = useAuth()
+  const { user } = useAuth()
   const supabase = createClient()
-
-  // Estados principais
+  
   const [simulados, setSimulados] = useState<Simulado[]>([])
   const [turmas, setTurmas] = useState<Turma[]>([])
-  const [questoesDisponiveis, setQuestoesDisponiveis] = useState<Questao[]>([])
-  const [habilidades, setHabilidades] = useState<HabilidadeBncc[]>([])
-  const [descritoresSaeb, setDescritoresSaeb] = useState<DescritorSaeb[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [busca, setBusca] = useState('')
   
-  // Estados do modo criação
-  const [modoEdicao, setModoEdicao] = useState(false)
-  const [editingSimulado, setEditingSimulado] = useState<Simulado | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  
-  // Estados das questões selecionadas
-  const [questoesSelecionadas, setQuestoesSelecionadas] = useState<string[]>([])
-  const [questaoExpandida, setQuestaoExpandida] = useState<string | null>(null)
-  
-  // Estados dos filtros
-  const [filtros, setFiltros] = useState({
-    ano_serie: '',
-    dificuldade: '',
-    fonte: '',
-    habilidades_ids: [] as string[],
-    busca: ''
-  })
-  const [showFiltrosAvancados, setShowFiltrosAvancados] = useState(false)
-  
-  // Estados do formulário
+  // Modal criar/editar
+  const [modalAberto, setModalAberto] = useState(false)
+  const [editando, setEditando] = useState<Simulado | null>(null)
   const [formData, setFormData] = useState({
     titulo: '',
-    descricao: '',
-    turmas_ids: [] as string[],
-    tempo_minutos: 60,
-    embaralhar_questoes: true,
-    embaralhar_alternativas: false,
+    turma_id: '',
+    data_aplicacao: '',
+    duracao_minutos: 60,
+    pontuacao_tipo: 'padrao' as 'padrao' | 'personalizada',
+    pontuacao_acerto: 1,
+    pontuacao_erro: 0,
+    pontuacao_branco: 0
   })
+  const [salvando, setSalvando] = useState(false)
   
-  // Estados de UI
-  const [showTurmasModal, setShowTurmasModal] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
-  const [exportMenuOpen, setExportMenuOpen] = useState<string | null>(null)
-  const exportMenuRef = useRef<HTMLDivElement>(null)
+  // Modal QR Code
+  const [modalQrAberto, setModalQrAberto] = useState(false)
+  const [simuladoQr, setSimuladoQr] = useState<Simulado | null>(null)
+  
+  // Modal Visualizar Respostas
+  const [modalRespostasAberto, setModalRespostasAberto] = useState(false)
+  const [simuladoRespostas, setSimuladoRespostas] = useState<Simulado | null>(null)
+  const [respostasAlunos, setRespostasAlunos] = useState<RespostaAluno[]>([])
+  const [questoesSimulado, setQuestoesSimulado] = useState<SimuladoQuestao[]>([])
+  const [loadingRespostas, setLoadingRespostas] = useState(false)
+  
+  // Expandir card
+  const [expandido, setExpandido] = useState<string | null>(null)
+  const [questoesExpandidas, setQuestoesExpandidas] = useState<SimuladoQuestao[]>([])
+  const [loadingQuestoes, setLoadingQuestoes] = useState(false)
+  
+  // Menu de ações (dropdown)
+  const [menuAberto, setMenuAberto] = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
-  // Estados para duplicar simulado
-  const [showDuplicarModal, setShowDuplicarModal] = useState(false)
-  const [simuladoParaDuplicar, setSimuladoParaDuplicar] = useState<Simulado | null>(null)
-  const [duplicarForm, setDuplicarForm] = useState({
-    titulo: '',
-    turmas_ids: [] as string[]
-  })
-  const [duplicando, setDuplicando] = useState(false)
+  // Estado para download
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
-  // Temas disponíveis
-  const temasDisponiveis = [...new Set(
-    questoesDisponiveis
-      .filter(q => q.unidade_tematica)
-      .map(q => q.unidade_tematica!)
-  )].sort()
+  // Modal confirmação de exclusão
+  const [modalExcluirAberto, setModalExcluirAberto] = useState(false)
+  const [simuladoExcluir, setSimuladoExcluir] = useState<Simulado | null>(null)
+  const [excluindo, setExcluindo] = useState(false)
 
-  // Carregar dados
-  const fetchData = useCallback(async () => {
-    if (!usuario?.id) { setLoading(false); return }
-    try {
-      const [sRes, tRes, qRes, hRes, dRes] = await Promise.all([
-        supabase.from('simulados').select('*').eq('usuario_id', usuario.id).order('created_at', { ascending: false }),
-        supabase.from('turmas').select('*').eq('usuario_id', usuario.id).eq('ativa', true),
-        supabase.from('questoes').select('*').eq('ativa', true),
-        supabase.from('habilidades_bncc').select('id, codigo, descricao').order('codigo'),
-        supabase.from('descritores_saeb').select('id, codigo, descricao').order('codigo'),
-      ])
-      setSimulados(sRes.data || [])
-      setTurmas(tRes.data || [])
-      setQuestoesDisponiveis(qRes.data || [])
-      setHabilidades(hRes.data || [])
-      setDescritoresSaeb(dRes.data || [])
-    } catch (e) {
-      console.error('Erro:', e)
-    } finally {
-      setLoading(false)
-    }
-  }, [usuario?.id, supabase])
+  // Modal Folha de Respostas
+  const [modalFolhaRespostasAberto, setModalFolhaRespostasAberto] = useState(false)
+  const [simuladoFolhaRespostas, setSimuladoFolhaRespostas] = useState<Simulado | null>(null)
 
-  useEffect(() => { fetchData() }, [fetchData])
-
-  // Click outside para fechar menu export
+  // Fechar menu ao clicar fora
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
-        setExportMenuOpen(null)
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuAberto(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Filtrar questões
-  const questoesFiltradas = questoesDisponiveis.filter(q => {
-    if (filtros.fonte !== 'TEMA' && filtros.ano_serie && q.ano_serie !== filtros.ano_serie) return false
-    if (filtros.dificuldade && q.dificuldade !== filtros.dificuldade) return false
+  const carregarDados = useCallback(async () => {
+    if (!user) return
     
-    if (filtros.fonte) {
-      if (filtros.fonte === 'TEMA') {
-        if (!q.unidade_tematica) return false
-      } else {
-        const qFonte = q.fonte || 'BNCC'
-        if (qFonte !== filtros.fonte) return false
-      }
-    }
-    
-    if (filtros.habilidades_ids.length > 0) {
-      if (filtros.fonte === 'SAEB') {
-        if (!q.descritor_codigo || !filtros.habilidades_ids.includes(q.descritor_codigo)) return false
-      } else if (filtros.fonte === 'TEMA') {
-        if (!q.unidade_tematica || !filtros.habilidades_ids.includes(q.unidade_tematica)) return false
-      } else {
-        if (!q.habilidade_bncc_id || !filtros.habilidades_ids.includes(q.habilidade_bncc_id)) return false
-      }
-    }
-    
-    if (filtros.busca) {
-      const busca = filtros.busca.toLowerCase()
-      if (!q.enunciado.toLowerCase().includes(busca)) return false
-    }
-    
-    return true
-  })
-
-  // Simulados filtrados
-  const simuladosFiltrados = simulados.filter(s => 
-    s.titulo.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  // Habilidades filtradas por ano
-  const habilidadesFiltradas = habilidades.filter(h => {
-    if (!filtros.ano_serie) return true
-    const anoNum = filtros.ano_serie.charAt(0)
-    return h.codigo.includes(anoNum)
-  })
-
-  // Iniciar criação de simulado
-  const iniciarCriacao = (simulado?: Simulado) => {
-    setSaveError(null)
-    setQuestaoExpandida(null)
-    
-    if (simulado) {
-      setEditingSimulado(simulado)
-      const config = simulado.configuracoes || {}
-      setFormData({
-        titulo: simulado.titulo,
-        descricao: simulado.descricao || '',
-        turmas_ids: config.turmas_selecionadas || (simulado.turma_id ? [simulado.turma_id] : []),
-        tempo_minutos: simulado.tempo_minutos || 60,
-        embaralhar_questoes: config.embaralhar_questoes ?? true,
-        embaralhar_alternativas: config.embaralhar_alternativas ?? false
-      })
-      setQuestoesSelecionadas(simulado.questoes_ids || [])
-    } else {
-      setEditingSimulado(null)
-      setFormData({
-        titulo: '',
-        descricao: '',
-        turmas_ids: [],
-        tempo_minutos: 60,
-        embaralhar_questoes: true,
-        embaralhar_alternativas: false
-      })
-      setQuestoesSelecionadas([])
-    }
-    
-    setFiltros({ ano_serie: '', dificuldade: '', fonte: '', habilidades_ids: [], busca: '' })
-    setModoEdicao(true)
-  }
-
-  // Cancelar criação
-  const cancelarCriacao = () => {
-    setModoEdicao(false)
-    setEditingSimulado(null)
-    setQuestoesSelecionadas([])
-    setSaveError(null)
-  }
-
-  // Salvar simulado
-  const salvarSimulado = async () => {
-    if (!usuario?.id) { setSaveError('Usuário não autenticado'); return }
-    if (!formData.titulo.trim()) { setSaveError('Digite um título para o simulado'); return }
-    if (questoesSelecionadas.length === 0) { setSaveError('Selecione pelo menos uma questão'); return }
-
-    setSaving(true)
-    setSaveError(null)
-
+    setLoading(true)
     try {
-      const dataToSave = {
-        usuario_id: usuario.id,
-        titulo: formData.titulo.trim(),
-        descricao: formData.descricao?.trim() || null,
-        turma_id: formData.turmas_ids[0] || null,
-        tempo_minutos: formData.tempo_minutos,
-        questoes_ids: questoesSelecionadas,
-        configuracoes: {
-          embaralhar_questoes: formData.embaralhar_questoes,
-          embaralhar_alternativas: formData.embaralhar_alternativas,
-          mostrar_gabarito_apos: true,
-          permitir_revisao: true,
-          turmas_selecionadas: formData.turmas_ids
-        },
-        status: 'rascunho'
-      }
-
-      let result
-      if (editingSimulado) {
-        result = await supabase.from('simulados').update(dataToSave).eq('id', editingSimulado.id).select()
-      } else {
-        result = await supabase.from('simulados').insert(dataToSave).select()
-      }
-
-      if (result.error) { setSaveError(`Erro: ${result.error.message}`); return }
+      // Carregar turmas
+      const { data: turmasData } = await supabase
+        .from('turmas')
+        .select('id, nome, ano_escolar')
+        .eq('professor_id', user.id)
+        .order('nome')
       
-      setModoEdicao(false)
-      setEditingSimulado(null)
-      setQuestoesSelecionadas([])
-      fetchData()
-    } catch (e: any) {
-      setSaveError(e.message || 'Erro desconhecido')
+      setTurmas(turmasData || [])
+      
+      // Carregar simulados com contagem de questões
+      const { data: simuladosData } = await supabase
+        .from('simulados')
+        .select(`
+          *,
+          turmas (nome, ano_escolar)
+        `)
+        .eq('professor_id', user.id)
+        .order('created_at', { ascending: false })
+      
+      if (simuladosData) {
+        // Buscar contagem de questões para cada simulado
+        const simuladosComContagem = await Promise.all(
+          simuladosData.map(async (s) => {
+            const { count: questoesCount } = await supabase
+              .from('simulado_questoes')
+              .select('*', { count: 'exact', head: true })
+              .eq('simulado_id', s.id)
+            
+            const { count: respostasCount } = await supabase
+              .from('respostas_simulado')
+              .select('*', { count: 'exact', head: true })
+              .eq('simulado_id', s.id)
+            
+            // Contar alunos únicos que responderam
+            const { data: alunosUnicos } = await supabase
+              .from('respostas_simulado')
+              .select('aluno_id')
+              .eq('simulado_id', s.id)
+            
+            const alunosSet = new Set(alunosUnicos?.map(r => r.aluno_id) || [])
+            
+            return {
+              ...s,
+              questoes_count: questoesCount || 0,
+              respostas_count: alunosSet.size
+            }
+          })
+        )
+        setSimulados(simuladosComContagem)
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error)
     } finally {
-      setSaving(false)
+      setLoading(false)
+    }
+  }, [user, supabase])
+
+  useEffect(() => {
+    carregarDados()
+  }, [carregarDados])
+
+  const abrirModalCriar = () => {
+    setEditando(null)
+    setFormData({
+      titulo: '',
+      turma_id: '',
+      data_aplicacao: '',
+      duracao_minutos: 60,
+      pontuacao_tipo: 'padrao',
+      pontuacao_acerto: 1,
+      pontuacao_erro: 0,
+      pontuacao_branco: 0
+    })
+    setModalAberto(true)
+  }
+
+  const abrirModalEditar = (simulado: Simulado) => {
+    setEditando(simulado)
+    setFormData({
+      titulo: simulado.titulo,
+      turma_id: simulado.turma_id,
+      data_aplicacao: simulado.data_aplicacao || '',
+      duracao_minutos: simulado.duracao_minutos || 60,
+      pontuacao_tipo: simulado.pontuacao_tipo || 'padrao',
+      pontuacao_acerto: simulado.pontuacao_acerto ?? 1,
+      pontuacao_erro: simulado.pontuacao_erro ?? 0,
+      pontuacao_branco: simulado.pontuacao_branco ?? 0
+    })
+    setModalAberto(true)
+    setMenuAberto(null)
+  }
+
+  const abrirQrCodeModal = (simulado: Simulado) => {
+    setSimuladoQr(simulado)
+    setModalQrAberto(true)
+    setMenuAberto(null)
+  }
+
+  const abrirFolhaRespostasModal = (simulado: Simulado) => {
+    setSimuladoFolhaRespostas(simulado)
+    setModalFolhaRespostasAberto(true)
+    setMenuAberto(null)
+  }
+
+  const abrirRespostasModal = async (simulado: Simulado) => {
+    setSimuladoRespostas(simulado)
+    setModalRespostasAberto(true)
+    setLoadingRespostas(true)
+    setMenuAberto(null)
+    
+    try {
+      // Carregar questões do simulado
+      const { data: questoes } = await supabase
+        .from('simulado_questoes')
+        .select(`
+          *,
+          questoes (
+            id, enunciado, alternativa_a, alternativa_b, 
+            alternativa_c, alternativa_d, resposta_correta,
+            nivel_dificuldade, habilidade_bncc
+          )
+        `)
+        .eq('simulado_id', simulado.id)
+        .order('ordem')
+      
+      setQuestoesSimulado(questoes || [])
+      
+      // Carregar respostas dos alunos
+      const { data: respostas } = await supabase
+        .from('respostas_simulado')
+        .select(`
+          *,
+          alunos (id, nome)
+        `)
+        .eq('simulado_id', simulado.id)
+        .order('created_at')
+      
+      setRespostasAlunos(respostas || [])
+    } catch (error) {
+      console.error('Erro ao carregar respostas:', error)
+    } finally {
+      setLoadingRespostas(false)
     }
   }
 
-  // Toggle questão selecionada
-  const toggleQuestao = (id: string) => {
-    setQuestoesSelecionadas(prev => 
-      prev.includes(id) ? prev.filter(q => q !== id) : [...prev, id]
-    )
-  }
-
-  // Toggle turma
-  const toggleTurma = (id: string) => {
-    setFormData(prev => ({
-      ...prev,
-      turmas_ids: prev.turmas_ids.includes(id) 
-        ? prev.turmas_ids.filter(t => t !== id) 
-        : [...prev.turmas_ids, id]
-    }))
-  }
-
-  // Toggle habilidade no filtro
-  const toggleHabilidade = (id: string) => {
-    setFiltros(prev => ({
-      ...prev,
-      habilidades_ids: prev.habilidades_ids.includes(id)
-        ? prev.habilidades_ids.filter(h => h !== id)
-        : [...prev.habilidades_ids, id]
-    }))
-  }
-
-  // Mover questão na ordem
-  const moverQuestao = (index: number, direcao: 'up' | 'down') => {
-    const novaOrdem = [...questoesSelecionadas]
-    const novoIndex = direcao === 'up' ? index - 1 : index + 1
-    if (novoIndex < 0 || novoIndex >= novaOrdem.length) return
-    ;[novaOrdem[index], novaOrdem[novoIndex]] = [novaOrdem[novoIndex], novaOrdem[index]]
-    setQuestoesSelecionadas(novaOrdem)
-  }
-
-  // Gerar automaticamente
-  const gerarAutomatico = (qtd: number) => {
-    const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.5)
-    const disponiveis = questoesFiltradas.filter(q => !questoesSelecionadas.includes(q.id))
+  const salvarSimulado = async () => {
+    if (!user || !formData.titulo || !formData.turma_id) return
     
-    const faceis = shuffle(disponiveis.filter(q => q.dificuldade === 'facil'))
-    const medias = shuffle(disponiveis.filter(q => q.dificuldade === 'medio'))
-    const dificeis = shuffle(disponiveis.filter(q => q.dificuldade === 'dificil'))
-    
-    const qtdFacil = Math.round(qtd * 0.3)
-    const qtdDificil = Math.round(qtd * 0.3)
-    const qtdMedio = qtd - qtdFacil - qtdDificil
-    
-    const novas = [
-      ...faceis.slice(0, qtdFacil),
-      ...medias.slice(0, qtdMedio),
-      ...dificeis.slice(0, qtdDificil)
-    ].map(q => q.id)
-    
-    setQuestoesSelecionadas(prev => [...prev, ...novas])
-  }
-
-  // Limpar filtros
-  const limparFiltros = () => {
-    setFiltros({ ano_serie: '', dificuldade: '', fonte: '', habilidades_ids: [], busca: '' })
-  }
-
-  // Handlers de ações dos simulados
-  const handleDelete = async (id: string) => {
-    if (!confirm('Excluir este simulado?')) return
-    await supabase.from('simulados').delete().eq('id', id)
-    fetchData()
-  }
-
-  const handlePublish = async (id: string) => {
-    await supabase.from('simulados').update({ status: 'publicado' }).eq('id', id)
-    fetchData()
-  }
-
-  const handleExport = async (simulado: Simulado, formato: 'word' | 'pdf') => {
-    setExportMenuOpen(null)
+    setSalvando(true)
     try {
-      const { data: questoesData } = await supabase
-        .from('questoes')
-        .select('*')
-        .in('id', simulado.questoes_ids)
-      
-      if (!questoesData) return
-      
-      const questoesOrdenadas = simulado.questoes_ids
-        .map(id => questoesData.find(q => q.id === id))
-        .filter(Boolean)
-        .map(q => ({
-          ...q!,
-          habilidade_codigo: habilidades.find(h => h.id === q!.habilidade_bncc_id)?.codigo || q!.descritor_codigo
-        }))
-      
-      const turmaNome = getTurmasNomes(simulado)
-      const config = {
-        titulo: simulado.titulo,
-        subtitulo: simulado.descricao,
-        turma: turmaNome,
-        tempo: simulado.tempo_minutos,
-        incluirGabarito: true,
-        incluirCabecalho: true,
-        questoes: questoesOrdenadas
+      const dados = {
+        titulo: formData.titulo,
+        turma_id: formData.turma_id,
+        data_aplicacao: formData.data_aplicacao || null,
+        duracao_minutos: formData.duracao_minutos,
+        professor_id: user.id,
+        pontuacao_tipo: formData.pontuacao_tipo,
+        pontuacao_acerto: formData.pontuacao_acerto,
+        pontuacao_erro: formData.pontuacao_erro,
+        pontuacao_branco: formData.pontuacao_branco
       }
       
-      if (formato === 'word') await exportToWord(config)
-      else await exportToPDF(config)
-    } catch (e) {
-      console.error('Erro ao exportar:', e)
-      alert('Erro ao exportar documento')
+      if (editando) {
+        await supabase
+          .from('simulados')
+          .update(dados)
+          .eq('id', editando.id)
+      } else {
+        await supabase
+          .from('simulados')
+          .insert(dados)
+      }
+      
+      setModalAberto(false)
+      carregarDados()
+    } catch (error) {
+      console.error('Erro ao salvar:', error)
+    } finally {
+      setSalvando(false)
     }
   }
 
-  // ============================================
-  // FUNÇÕES DE DUPLICAR SIMULADO
-  // ============================================
-  
-  // Abrir modal de duplicar
-  const abrirDuplicarModal = (simulado: Simulado) => {
-    setSimuladoParaDuplicar(simulado)
-    setDuplicarForm({
-      titulo: `${simulado.titulo} (cópia)`,
-      turmas_ids: []
-    })
-    setShowDuplicarModal(true)
+  const confirmarExclusao = (simulado: Simulado) => {
+    setSimuladoExcluir(simulado)
+    setModalExcluirAberto(true)
+    setMenuAberto(null)
   }
 
-  // Toggle turma no formulário de duplicar
-  const toggleTurmaDuplicar = (id: string) => {
-    setDuplicarForm(prev => ({
-      ...prev,
-      turmas_ids: prev.turmas_ids.includes(id)
-        ? prev.turmas_ids.filter(t => t !== id)
-        : [...prev.turmas_ids, id]
-    }))
+  const excluirSimulado = async () => {
+    if (!simuladoExcluir) return
+    
+    setExcluindo(true)
+    try {
+      // Primeiro excluir respostas
+      await supabase
+        .from('respostas_simulado')
+        .delete()
+        .eq('simulado_id', simuladoExcluir.id)
+      
+      // Depois excluir questões do simulado
+      await supabase
+        .from('simulado_questoes')
+        .delete()
+        .eq('simulado_id', simuladoExcluir.id)
+      
+      // Por fim excluir o simulado
+      await supabase
+        .from('simulados')
+        .delete()
+        .eq('id', simuladoExcluir.id)
+      
+      setModalExcluirAberto(false)
+      setSimuladoExcluir(null)
+      carregarDados()
+    } catch (error) {
+      console.error('Erro ao excluir:', error)
+    } finally {
+      setExcluindo(false)
+    }
   }
 
-  // Executar duplicação
-  const executarDuplicacao = async () => {
-    if (!usuario?.id || !simuladoParaDuplicar) return
-    if (!duplicarForm.titulo.trim()) {
-      alert('Digite um título para o simulado')
+  const alterarStatus = async (simulado: Simulado, novoStatus: 'rascunho' | 'publicado' | 'encerrado') => {
+    try {
+      await supabase
+        .from('simulados')
+        .update({ status: novoStatus })
+        .eq('id', simulado.id)
+      
+      carregarDados()
+    } catch (error) {
+      console.error('Erro ao alterar status:', error)
+    }
+    setMenuAberto(null)
+  }
+
+  const expandirSimulado = async (simuladoId: string) => {
+    if (expandido === simuladoId) {
+      setExpandido(null)
+      setQuestoesExpandidas([])
       return
     }
-
-    setDuplicando(true)
+    
+    setExpandido(simuladoId)
+    setLoadingQuestoes(true)
+    
     try {
-      const configOriginal = simuladoParaDuplicar.configuracoes || {}
+      const { data } = await supabase
+        .from('simulado_questoes')
+        .select(`
+          *,
+          questoes (
+            id, enunciado, alternativa_a, alternativa_b, 
+            alternativa_c, alternativa_d, resposta_correta,
+            nivel_dificuldade, habilidade_bncc
+          )
+        `)
+        .eq('simulado_id', simuladoId)
+        .order('ordem')
       
-      const novoSimulado = {
-        usuario_id: usuario.id,
-        titulo: duplicarForm.titulo.trim(),
-        descricao: simuladoParaDuplicar.descricao,
-        turma_id: duplicarForm.turmas_ids[0] || null,
-        tempo_minutos: simuladoParaDuplicar.tempo_minutos,
-        questoes_ids: simuladoParaDuplicar.questoes_ids,
-        configuracoes: {
-          ...configOriginal,
-          turmas_selecionadas: duplicarForm.turmas_ids
-        },
-        status: 'rascunho'
-      }
-
-      const { error } = await supabase.from('simulados').insert(novoSimulado)
-      
-      if (error) {
-        alert(`Erro ao duplicar: ${error.message}`)
-        return
-      }
-
-      setShowDuplicarModal(false)
-      setSimuladoParaDuplicar(null)
-      fetchData()
-    } catch (e: any) {
-      alert(e.message || 'Erro ao duplicar')
+      setQuestoesExpandidas(data || [])
+    } catch (error) {
+      console.error('Erro ao carregar questões:', error)
     } finally {
-      setDuplicando(false)
+      setLoadingQuestoes(false)
     }
   }
 
-  // Helpers
-  const getHabilidadeCodigo = (q: Questao) => {
-    if (q.descritor_codigo) return q.descritor_codigo
-    if (q.unidade_tematica) return q.unidade_tematica.length > 20 ? q.unidade_tematica.substring(0, 20) + '...' : q.unidade_tematica
-    if (!q.habilidade_bncc_id) return null
-    return habilidades.find(h => h.id === q.habilidade_bncc_id)?.codigo || null
+  const baixarProva = async (simulado: Simulado) => {
+    setDownloadingId(simulado.id)
+    setMenuAberto(null)
+    
+    try {
+      // Buscar questões do simulado
+      const { data: questoes } = await supabase
+        .from('simulado_questoes')
+        .select(`
+          *,
+          questoes (
+            id, enunciado, alternativa_a, alternativa_b, 
+            alternativa_c, alternativa_d, resposta_correta,
+            nivel_dificuldade, habilidade_bncc
+          )
+        `)
+        .eq('simulado_id', simulado.id)
+        .order('ordem')
+      
+      if (!questoes || questoes.length === 0) {
+        alert('Este simulado não possui questões!')
+        return
+      }
+      
+      // Gerar documento Word
+      await gerarProvaWord({
+        titulo: simulado.titulo,
+        turma: simulado.turmas?.nome || '',
+        data: simulado.data_aplicacao || '',
+        duracao: simulado.duracao_minutos || 60,
+        questoes: questoes.map(q => ({
+          enunciado: q.questoes.enunciado,
+          alternativa_a: q.questoes.alternativa_a,
+          alternativa_b: q.questoes.alternativa_b,
+          alternativa_c: q.questoes.alternativa_c,
+          alternativa_d: q.questoes.alternativa_d,
+          habilidade_bncc: q.questoes.habilidade_bncc
+        }))
+      })
+    } catch (error) {
+      console.error('Erro ao baixar prova:', error)
+      alert('Erro ao gerar documento. Tente novamente.')
+    } finally {
+      setDownloadingId(null)
+    }
   }
 
-  const getDificuldadeInfo = (d?: string) => {
-    const opt = DIFICULDADE_OPTIONS.find(o => o.value === d)
-    if (!opt || !opt.value) return { label: d || '', emoji: '', color: 'text-gray-600' }
-    return opt
-  }
-
-  const getTurmasNomes = (s: Simulado) => {
-    const config = s.configuracoes || {}
-    const ids = config.turmas_selecionadas || (s.turma_id ? [s.turma_id] : [])
-    return ids.map((id: string) => turmas.find(t => t.id === id)?.nome).filter(Boolean).join(', ')
+  const duplicarSimulado = async (simulado: Simulado) => {
+    setMenuAberto(null)
+    
+    try {
+      // Criar cópia do simulado
+      const { data: novoSimulado, error: erroSimulado } = await supabase
+        .from('simulados')
+        .insert({
+          titulo: `${simulado.titulo} (Cópia)`,
+          turma_id: simulado.turma_id,
+          data_aplicacao: null,
+          duracao_minutos: simulado.duracao_minutos,
+          status: 'rascunho',
+          professor_id: user?.id,
+          pontuacao_tipo: simulado.pontuacao_tipo,
+          pontuacao_acerto: simulado.pontuacao_acerto,
+          pontuacao_erro: simulado.pontuacao_erro,
+          pontuacao_branco: simulado.pontuacao_branco
+        })
+        .select()
+        .single()
+      
+      if (erroSimulado) throw erroSimulado
+      
+      // Copiar questões
+      const { data: questoesOriginal } = await supabase
+        .from('simulado_questoes')
+        .select('*')
+        .eq('simulado_id', simulado.id)
+        .order('ordem')
+      
+      if (questoesOriginal && questoesOriginal.length > 0) {
+        const novasQuestoes = questoesOriginal.map(q => ({
+          simulado_id: novoSimulado.id,
+          questao_id: q.questao_id,
+          ordem: q.ordem,
+          pontuacao_personalizada: q.pontuacao_personalizada
+        }))
+        
+        await supabase
+          .from('simulado_questoes')
+          .insert(novasQuestoes)
+      }
+      
+      carregarDados()
+    } catch (error) {
+      console.error('Erro ao duplicar:', error)
+      alert('Erro ao duplicar simulado. Tente novamente.')
+    }
   }
 
   const getStatusBadge = (status: string) => {
-    if (status === 'rascunho') return <Badge variant="warning">Rascunho</Badge>
-    if (status === 'publicado') return <Badge variant="success">Publicado</Badge>
-    return <Badge>Encerrado</Badge>
-  }
-
-  const getEstatisticas = () => {
-    const questoes = questoesSelecionadas.map(id => questoesDisponiveis.find(q => q.id === id)).filter(Boolean) as Questao[]
-    return {
-      total: questoes.length,
-      facil: questoes.filter(q => q.dificuldade === 'facil').length,
-      medio: questoes.filter(q => q.dificuldade === 'medio').length,
-      dificil: questoes.filter(q => q.dificuldade === 'dificil').length,
+    switch (status) {
+      case 'publicado':
+        return <Badge className="bg-green-100 text-green-800">Publicado</Badge>
+      case 'encerrado':
+        return <Badge className="bg-gray-100 text-gray-800">Encerrado</Badge>
+      default:
+        return <Badge className="bg-yellow-100 text-yellow-800">Rascunho</Badge>
     }
   }
 
-  const stats = getEstatisticas()
+  const simuladosFiltrados = simulados.filter(s =>
+    s.titulo.toLowerCase().includes(busca.toLowerCase()) ||
+    s.turmas?.nome?.toLowerCase().includes(busca.toLowerCase())
+  )
 
-  // ============================================
-  // RENDER: MODO LISTAGEM DE SIMULADOS
-  // ============================================
-  if (!modoEdicao) {
-    return (
-      <div className="p-4 lg:p-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Simulados</h1>
-            <p className="text-gray-600">Crie e gerencie seus simulados</p>
-          </div>
-          <Button onClick={() => iniciarCriacao()}>
-            <Plus className="w-5 h-5 mr-2" />
-            Novo Simulado
-          </Button>
-        </div>
-
-        {/* Busca */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <Input 
-                placeholder="Buscar simulados..." 
-                value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value)} 
-                className="pl-10" 
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-gray-900">{simulados.length}</p>
-            <p className="text-sm text-gray-600">Total</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-600">{simulados.filter(s => s.status === 'rascunho').length}</p>
-            <p className="text-sm text-gray-600">Rascunhos</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">{simulados.filter(s => s.status === 'publicado').length}</p>
-            <p className="text-sm text-gray-600">Publicados</p>
-          </CardContent></Card>
-          <Card><CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-gray-500">{simulados.filter(s => s.status === 'encerrado').length}</p>
-            <p className="text-sm text-gray-600">Encerrados</p>
-          </CardContent></Card>
-        </div>
-
-        {/* Lista de simulados */}
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
-          </div>
-        ) : simuladosFiltrados.length === 0 ? (
-          <Card>
-            <CardContent className="p-12 text-center">
-              <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {searchTerm ? 'Nenhum simulado encontrado' : 'Nenhum simulado criado'}
-              </h3>
-              <p className="text-gray-500 mb-6">Crie seu primeiro simulado agora!</p>
-              <Button onClick={() => iniciarCriacao()}>
-                <Plus className="w-5 h-5 mr-2" />
-                Criar Simulado
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {simuladosFiltrados.map(s => (
-              <Card key={s.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <h3 className="font-semibold text-gray-900">{s.titulo}</h3>
-                        {getStatusBadge(s.status)}
-                      </div>
-                      {s.descricao && <p className="text-gray-600 text-sm mb-2">{s.descricao}</p>}
-                      <div className="flex flex-wrap gap-3 text-sm text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <BookOpen className="w-4 h-4" />
-                          {s.questoes_ids?.length || 0} questões
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          {s.tempo_minutos} min
-                        </span>
-                        {getTurmasNomes(s) && (
-                          <span className="flex items-center gap-1">
-                            <Users className="w-4 h-4" />
-                            {getTurmasNomes(s)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Ações */}
-                    <div className="flex flex-wrap gap-1">
-                      {s.status === 'rascunho' && (
-                        <Button variant="ghost" size="sm" onClick={() => handlePublish(s.id)} title="Publicar">
-                          <Play className="w-4 h-4 text-green-600" />
-                        </Button>
-                      )}
-                      <Link href={`/simulados/${s.id}`}>
-                        <Button variant="ghost" size="sm" title="Ver">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                      <Link href={`/simulados/${s.id}/resultados`}>
-                        <Button variant="ghost" size="sm" title="Resultados">
-                          <BarChart3 className="w-4 h-4 text-indigo-600" />
-                        </Button>
-                      </Link>
-                      <div className="relative" ref={exportMenuRef}>
-                        <Button variant="ghost" size="sm" onClick={() => setExportMenuOpen(exportMenuOpen === s.id ? null : s.id)} title="Exportar">
-                          <Download className="w-4 h-4 text-green-600" />
-                        </Button>
-                        {exportMenuOpen === s.id && (
-                          <div className="absolute right-0 top-full mt-1 bg-white border rounded-lg shadow-lg z-10 min-w-[140px]">
-                            <button onClick={() => handleExport(s, 'word')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                              <FileDown className="w-4 h-4 text-blue-600" />Word
-                            </button>
-                            <button onClick={() => handleExport(s, 'pdf')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                              <FileDown className="w-4 h-4 text-red-600" />PDF
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <Link href={`/simulados/${s.id}/gabarito`}>
-                        <Button variant="ghost" size="sm" title="Gabarito QR">
-                          <QrCode className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                      <Button variant="ghost" size="sm" onClick={() => iniciarCriacao(s)} title="Editar">
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => abrirDuplicarModal(s)} title="Duplicar">
-                        <Copy className="w-4 h-4 text-blue-600" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(s.id)} title="Excluir">
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* ============================================ */}
-        {/* MODAL: DUPLICAR SIMULADO */}
-        {/* ============================================ */}
-        <Modal 
-          isOpen={showDuplicarModal} 
-          onClose={() => setShowDuplicarModal(false)} 
-          title="Duplicar Simulado" 
-          size="md"
-        >
-          {simuladoParaDuplicar && (
-            <div className="space-y-4">
-              {/* Info do simulado original */}
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="text-sm text-gray-500">Duplicando:</p>
-                <p className="font-medium text-gray-900">{simuladoParaDuplicar.titulo}</p>
-                <p className="text-sm text-gray-600">
-                  {simuladoParaDuplicar.questoes_ids?.length || 0} questões • {simuladoParaDuplicar.tempo_minutos} min
-                </p>
-              </div>
-
-              {/* Novo título */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Título do novo simulado *
-                </label>
-                <Input
-                  value={duplicarForm.titulo}
-                  onChange={(e) => setDuplicarForm({ ...duplicarForm, titulo: e.target.value })}
-                  placeholder="Digite o título..."
-                />
-              </div>
-
-              {/* Selecionar turmas */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Aplicar para quais turmas?
-                </label>
-                <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
-                  {turmas.length === 0 ? (
-                    <p className="text-center text-gray-500 py-2 text-sm">Nenhuma turma cadastrada</p>
-                  ) : (
-                    turmas.map(turma => (
-                      <label 
-                        key={turma.id} 
-                        className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={duplicarForm.turmas_ids.includes(turma.id)}
-                          onChange={() => toggleTurmaDuplicar(turma.id)}
-                          className="rounded text-indigo-600"
-                        />
-                        <div>
-                          <p className="font-medium text-gray-900 text-sm">{turma.nome}</p>
-                          <p className="text-xs text-gray-500">{turma.ano_serie}</p>
-                        </div>
-                      </label>
-                    ))
-                  )}
-                </div>
-                {duplicarForm.turmas_ids.length > 0 && (
-                  <p className="text-xs text-indigo-600 mt-1">
-                    {duplicarForm.turmas_ids.length} turma(s) selecionada(s)
-                  </p>
-                )}
-              </div>
-
-              {/* Ações */}
-              <div className="flex gap-3 pt-4 border-t">
-                <Button 
-                  variant="outline" 
-                  className="flex-1" 
-                  onClick={() => setShowDuplicarModal(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button 
-                  className="flex-1" 
-                  onClick={executarDuplicacao}
-                  loading={duplicando}
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Duplicar
-                </Button>
-              </div>
-            </div>
-          )}
-        </Modal>
-      </div>
-    )
-  }
-
-  // ============================================
-  // RENDER: MODO CRIAÇÃO/EDIÇÃO DE SIMULADO
-  // ============================================
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header fixo */}
-      <div className="sticky top-0 z-30 bg-white border-b shadow-sm">
-        <div className="p-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" onClick={cancelarCriacao}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">
-                {editingSimulado ? 'Editar Simulado' : 'Novo Simulado'}
-              </h1>
-              <p className="text-sm text-gray-500 hidden sm:block">
-                {questoesSelecionadas.length} questões selecionadas
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setShowPreview(true)} className="hidden sm:flex">
-              <Eye className="w-4 h-4 mr-2" />
-              Revisar
-            </Button>
-            <Button onClick={salvarSimulado} loading={saving}>
-              <Check className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">{editingSimulado ? 'Salvar' : 'Criar'}</span>
-              <span className="sm:hidden">OK</span>
-            </Button>
-          </div>
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Simulados</h1>
+          <p className="text-gray-600">Gerencie seus simulados e avaliações</p>
         </div>
-        
-        {/* Barra de progresso */}
-        <div className="h-1 bg-gray-200">
-          <div 
-            className={`h-1 transition-all ${questoesSelecionadas.length > 0 ? 'bg-indigo-600' : 'bg-gray-300'}`}
-            style={{ width: `${Math.min(questoesSelecionadas.length * 10, 100)}%` }}
+        <Button onClick={abrirModalCriar}>
+          <Plus className="w-4 h-4 mr-2" />
+          Novo Simulado
+        </Button>
+      </div>
+
+      {/* Busca */}
+      <div className="mb-6">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <Input
+            placeholder="Buscar simulados..."
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="pl-10"
           />
         </div>
       </div>
 
-      {/* Erro */}
-      {saveError && (
-        <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-600">{saveError}</p>
-          <button onClick={() => setSaveError(null)} className="ml-auto">
-            <X className="w-4 h-4 text-red-400" />
-          </button>
+      {/* Lista de Simulados */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Carregando simulados...</p>
         </div>
-      )}
-
-      <div className="flex flex-col lg:flex-row">
-        {/* ============================================ */}
-        {/* COLUNA ESQUERDA: FILTROS E CONFIGURAÇÕES */}
-        {/* ============================================ */}
-        <div className="lg:w-80 lg:min-h-screen lg:border-r bg-white p-4 space-y-4">
-          {/* Dados do Simulado */}
-          <div className="space-y-3">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              Dados do Simulado
+      ) : simuladosFiltrados.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-12">
+            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {busca ? 'Nenhum simulado encontrado' : 'Nenhum simulado criado'}
             </h3>
-            
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Título *</label>
-              <Input
-                placeholder="Ex: Prova Bimestral - 6º Ano"
-                value={formData.titulo}
-                onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Descrição</label>
-              <textarea
-                className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm resize-none"
-                rows={2}
-                placeholder="Descrição opcional..."
-                value={formData.descricao}
-                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Tempo (min)</label>
-                <Input
-                  type="number"
-                  min={10}
-                  value={formData.tempo_minutos}
-                  onChange={(e) => setFormData({ ...formData, tempo_minutos: parseInt(e.target.value) || 60 })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Turmas</label>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-between text-sm"
-                  onClick={() => setShowTurmasModal(true)}
-                >
-                  <span>{formData.turmas_ids.length || 'Selecionar'}</span>
-                  <Users className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-            
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.embaralhar_questoes}
-                  onChange={(e) => setFormData({ ...formData, embaralhar_questoes: e.target.checked })}
-                  className="rounded text-indigo-600"
-                />
-                <span className="text-sm text-gray-700">Embaralhar questões</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.embaralhar_alternativas}
-                  onChange={(e) => setFormData({ ...formData, embaralhar_alternativas: e.target.checked })}
-                  className="rounded text-indigo-600"
-                />
-                <span className="text-sm text-gray-700">Embaralhar alternativas</span>
-              </label>
-            </div>
-          </div>
-
-          <hr />
-
-          {/* Filtros */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <Filter className="w-4 h-4" />
-                Filtros
-              </h3>
-              {(filtros.ano_serie || filtros.dificuldade || filtros.fonte || filtros.habilidades_ids.length > 0) && (
-                <button onClick={limparFiltros} className="text-xs text-indigo-600 hover:underline">
-                  Limpar
-                </button>
-              )}
-            </div>
-            
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Ano/Série</label>
-              <select
-                className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
-                value={filtros.ano_serie}
-                onChange={(e) => setFiltros({ ...filtros, ano_serie: e.target.value, habilidades_ids: [] })}
-                disabled={filtros.fonte === 'TEMA'}
-              >
-                {ANO_SERIE_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Dificuldade</label>
-              <select
-                className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
-                value={filtros.dificuldade}
-                onChange={(e) => setFiltros({ ...filtros, dificuldade: e.target.value })}
-              >
-                {DIFICULDADE_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.emoji} {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Fonte</label>
-              <select
-                className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
-                value={filtros.fonte}
-                onChange={(e) => setFiltros({ ...filtros, fonte: e.target.value, habilidades_ids: [] })}
-              >
-                {FONTE_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Filtro avançado: Habilidades/Descritores/Temas */}
-            <div>
-              <button
-                onClick={() => setShowFiltrosAvancados(!showFiltrosAvancados)}
-                className="flex items-center justify-between w-full text-sm text-gray-700 hover:text-indigo-600"
-              >
-                <span className="flex items-center gap-2">
-                  <Target className="w-4 h-4" />
-                  {filtros.fonte === 'SAEB' ? 'Descritores' : filtros.fonte === 'TEMA' ? 'Temas' : 'Habilidades BNCC'}
-                  {filtros.habilidades_ids.length > 0 && (
-                    <Badge variant="info" className="text-xs">{filtros.habilidades_ids.length}</Badge>
-                  )}
-                </span>
-                {showFiltrosAvancados ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-              
-              {showFiltrosAvancados && (
-                <div className="mt-2 max-h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50">
-                  {filtros.fonte === 'SAEB' ? (
-                    descritoresSaeb.map(d => (
-                      <label key={d.codigo} className="flex items-start gap-2 p-1.5 hover:bg-white rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={filtros.habilidades_ids.includes(d.codigo)}
-                          onChange={() => toggleHabilidade(d.codigo)}
-                          className="rounded mt-0.5"
-                        />
-                        <span className="text-xs text-gray-900">
-                          <strong>{d.codigo}</strong> - {d.descricao.substring(0, 50)}...
-                        </span>
-                      </label>
-                    ))
-                  ) : filtros.fonte === 'TEMA' ? (
-                    temasDisponiveis.length > 0 ? temasDisponiveis.map(tema => (
-                      <label key={tema} className="flex items-center gap-2 p-1.5 hover:bg-white rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={filtros.habilidades_ids.includes(tema)}
-                          onChange={() => toggleHabilidade(tema)}
-                          className="rounded"
-                        />
-                        <span className="text-xs text-gray-900">{tema}</span>
-                      </label>
-                    )) : (
-                      <p className="text-xs text-gray-500 text-center py-2">Nenhum tema disponível</p>
-                    )
-                  ) : (
-                    habilidadesFiltradas.map(h => (
-                      <label key={h.id} className="flex items-start gap-2 p-1.5 hover:bg-white rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={filtros.habilidades_ids.includes(h.id)}
-                          onChange={() => toggleHabilidade(h.id)}
-                          className="rounded mt-0.5"
-                        />
-                        <span className="text-xs text-gray-900">
-                          <strong>{h.codigo}</strong>
-                        </span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Buscar no enunciado</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Palavra-chave..."
-                  value={filtros.busca}
-                  onChange={(e) => setFiltros({ ...filtros, busca: e.target.value })}
-                  className="pl-9 text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          <hr />
-
-          {/* Ações rápidas */}
-          <div className="space-y-3">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Wand2 className="w-4 h-4" />
-              Ações Rápidas
-            </h3>
-            
-            <div className="grid grid-cols-3 gap-2">
-              <Button variant="outline" size="sm" onClick={() => gerarAutomatico(5)} className="text-xs">
-                +5
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => gerarAutomatico(10)} className="text-xs">
-                +10
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => gerarAutomatico(15)} className="text-xs">
-                +15
-              </Button>
-            </div>
-            
-            <p className="text-xs text-gray-500">
-              Adiciona questões aleatórias dos filtros atuais (30% fácil, 40% médio, 30% difícil)
+            <p className="text-gray-600 mb-4">
+              {busca ? 'Tente outra busca' : 'Crie seu primeiro simulado para começar'}
             </p>
-            
-            {questoesSelecionadas.length > 0 && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full text-red-600 hover:bg-red-50"
-                onClick={() => setQuestoesSelecionadas([])}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Limpar seleção ({questoesSelecionadas.length})
+            {!busca && (
+              <Button onClick={abrirModalCriar}>
+                <Plus className="w-4 h-4 mr-2" />
+                Criar Simulado
               </Button>
             )}
-          </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {simuladosFiltrados.map((s) => (
+            <Card key={s.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="font-semibold text-lg text-gray-900">{s.titulo}</h3>
+                      {getStatusBadge(s.status)}
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                      <span className="flex items-center gap-1">
+                        <Users className="w-4 h-4" />
+                        {s.turmas?.nome || 'Sem turma'}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-4 h-4" />
+                        {s.questoes_count} questões
+                      </span>
+                      {s.data_aplicacao && (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          {new Date(s.data_aplicacao).toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
+                      {s.duracao_minutos && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-4 h-4" />
+                          {s.duracao_minutos} min
+                        </span>
+                      )}
+                      {(s.respostas_count ?? 0) > 0 && (
+                        <span className="flex items-center gap-1 text-green-600">
+                          <CheckCircle className="w-4 h-4" />
+                          {s.respostas_count} respostas
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-          {/* Estatísticas das selecionadas */}
-          {questoesSelecionadas.length > 0 && (
-            <>
-              <hr />
-              <div className="p-3 bg-indigo-50 rounded-lg">
-                <h4 className="font-medium text-indigo-900 mb-2">Selecionadas: {stats.total}</h4>
-                <div className="flex gap-3 text-sm">
-                  <span className="text-green-700">🟢 {stats.facil}</span>
-                  <span className="text-yellow-700">🟡 {stats.medio}</span>
-                  <span className="text-red-700">🔴 {stats.dificil}</span>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+                  {/* Botões de Ação */}
+                  <div className="flex items-center gap-1">
+                    <Link href={`/simulados/${s.id}`}>
+                      <Button variant="ghost" size="sm" title="Ver/Editar Questões">
+                        <Eye className="w-4 h-4 text-gray-600" />
+                      </Button>
+                    </Link>
+                    
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => baixarProva(s)}
+                      disabled={downloadingId === s.id}
+                      title="Download Word"
+                    >
+                      <Download className={`w-4 h-4 text-blue-600 ${downloadingId === s.id ? 'animate-pulse' : ''}`} />
+                    </Button>
 
-        {/* ============================================ */}
-        {/* COLUNA DIREITA: LISTA DE QUESTÕES */}
-        {/* ============================================ */}
-        <div className="flex-1 p-4">
-          {/* Info */}
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-gray-600">
-              <strong>{questoesFiltradas.length}</strong> questões encontradas
-            </p>
-            <Button variant="ghost" size="sm" onClick={() => setFiltros({ ...filtros })}>
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-          </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => abrirFolhaRespostasModal(s)}
+                      title="Folhas de Respostas"
+                    >
+                      <ClipboardList className="w-4 h-4 text-purple-600" />
+                    </Button>
+                    
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => abrirQrCodeModal(s)}
+                      title="QR Code"
+                    >
+                      <QrCode className="w-4 h-4 text-green-600" />
+                    </Button>
 
-          {/* Lista de questões */}
-          <div className="space-y-3">
-            {questoesFiltradas.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                  <h3 className="font-medium text-gray-900 mb-2">Nenhuma questão encontrada</h3>
-                  <p className="text-sm text-gray-500">Tente ajustar os filtros</p>
-                </CardContent>
-              </Card>
-            ) : (
-              questoesFiltradas.map((q, idx) => {
-                const selecionada = questoesSelecionadas.includes(q.id)
-                const expandida = questaoExpandida === q.id
-                const dif = getDificuldadeInfo(q.dificuldade)
-                const hab = getHabilidadeCodigo(q)
-                const indexNaSelecao = questoesSelecionadas.indexOf(q.id)
-                
-                return (
-                  <Card 
-                    key={q.id} 
-                    className={`transition-all ${selecionada ? 'ring-2 ring-indigo-500 bg-indigo-50/50' : 'hover:shadow-md'}`}
-                  >
-                    <CardContent className="p-0">
-                      {/* Header do card */}
-                      <div 
-                        className="p-4 cursor-pointer"
-                        onClick={() => toggleQuestao(q.id)}
+                    {/* Menu Dropdown */}
+                    <div className="relative" ref={menuAberto === s.id ? menuRef : null}>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => setMenuAberto(menuAberto === s.id ? null : s.id)}
                       >
-                        <div className="flex items-start gap-3">
-                          {/* Checkbox */}
-                          <div className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${
-                            selecionada ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 hover:border-indigo-400'
-                          }`}>
-                            {selecionada && <Check className="w-4 h-4 text-white" />}
-                          </div>
-                          
-                          {/* Conteúdo */}
-                          <div className="flex-1 min-w-0">
-                            {/* Badges */}
-                            <div className="flex flex-wrap gap-1.5 mb-2">
-                              <Badge variant="info" className="text-xs">{q.ano_serie}</Badge>
-                              <Badge variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'} className="text-xs">
-                                {dif.emoji} {dif.label}
-                              </Badge>
-                              {hab && <Badge className="text-xs">{hab}</Badge>}
-                              {selecionada && (
-                                <Badge variant="info" className="text-xs">
-                                  #{indexNaSelecao + 1}
-                                </Badge>
-                              )}
-                            </div>
-                            
-                            {/* Enunciado */}
-                            <p className={`text-gray-900 ${expandida ? '' : 'line-clamp-3'}`}>
-                              {q.enunciado}
-                            </p>
-                          </div>
-                          
-                          {/* Botão expandir */}
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                      
+                      {menuAberto === s.id && (
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border z-50">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setQuestaoExpandida(expandida ? null : q.id)
-                            }}
-                            className="p-1 hover:bg-gray-100 rounded flex-shrink-0"
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                            onClick={() => abrirModalEditar(s)}
                           >
-                            {expandida ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                            <Edit className="w-4 h-4" />
+                            Editar
+                          </button>
+                          
+                          <button
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                            onClick={() => duplicarSimulado(s)}
+                          >
+                            <Copy className="w-4 h-4" />
+                            Duplicar
+                          </button>
+                          
+                          <button
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                            onClick={() => abrirRespostasModal(s)}
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Ver Respostas
+                          </button>
+                          
+                          <hr className="my-1" />
+                          
+                          {s.status === 'rascunho' && (
+                            <button
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600"
+                              onClick={() => alterarStatus(s, 'publicado')}
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              Publicar
+                            </button>
+                          )}
+                          
+                          {s.status === 'publicado' && (
+                            <button
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-orange-600"
+                              onClick={() => alterarStatus(s, 'encerrado')}
+                            >
+                              <XCircle className="w-4 h-4" />
+                              Encerrar
+                            </button>
+                          )}
+                          
+                          {s.status === 'encerrado' && (
+                            <button
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-blue-600"
+                              onClick={() => alterarStatus(s, 'rascunho')}
+                            >
+                              <Edit className="w-4 h-4" />
+                              Reabrir como Rascunho
+                            </button>
+                          )}
+                          
+                          <hr className="my-1" />
+                          
+                          <button
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 flex items-center gap-2 text-red-600"
+                            onClick={() => confirmarExclusao(s)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Excluir
                           </button>
                         </div>
-                      </div>
-                      
-                      {/* Alternativas (expandido) */}
-                      {expandida && (
-                        <div className="px-4 pb-4 pt-0 border-t bg-gray-50/50">
-                          <div className="mt-3 space-y-2">
-                            {['A', 'B', 'C', 'D', 'E'].map(letra => {
-                              const alt = q[`alternativa_${letra.toLowerCase()}` as keyof Questao] as string | undefined
-                              if (!alt) return null
-                              const correta = q.resposta_correta === letra
-                              
-                              return (
-                                <div 
-                                  key={letra}
-                                  className={`flex items-start gap-2 p-2 rounded-lg ${
-                                    correta ? 'bg-green-100 border border-green-300' : 'bg-white border border-gray-200'
-                                  }`}
-                                >
-                                  <span className={`font-bold text-sm ${correta ? 'text-green-700' : 'text-gray-500'}`}>
-                                    {letra})
-                                  </span>
-                                  <span className={`text-sm flex-1 ${correta ? 'text-green-800' : 'text-gray-700'}`}>
-                                    {alt}
-                                  </span>
-                                  {correta && <Check className="w-4 h-4 text-green-600 flex-shrink-0" />}
-                                </div>
-                              )
-                            })}
-                          </div>
-                          
-                          {/* Ações quando selecionada */}
-                          {selecionada && (
-                            <div className="mt-3 pt-3 border-t flex items-center justify-between">
-                              <span className="text-sm text-gray-500">
-                                Posição: {indexNaSelecao + 1} de {questoesSelecionadas.length}
+                      )}
+                    </div>
+
+                    {/* Expandir */}
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => expandirSimulado(s.id)}
+                    >
+                      {expandido === s.id ? (
+                        <ChevronUp className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Questões Expandidas */}
+                {expandido === s.id && (
+                  <div className="mt-4 pt-4 border-t">
+                    {loadingQuestoes ? (
+                      <p className="text-gray-500 text-center py-4">Carregando questões...</p>
+                    ) : questoesExpandidas.length === 0 ? (
+                      <p className="text-gray-500 text-center py-4">
+                        Nenhuma questão adicionada.{' '}
+                        <Link href={`/simulados/${s.id}`} className="text-indigo-600 hover:underline">
+                          Adicionar questões
+                        </Link>
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {questoesExpandidas.map((q, idx) => (
+                          <div key={q.id} className="bg-gray-50 rounded-lg p-3">
+                            <div className="flex items-start gap-3">
+                              <span className="bg-indigo-100 text-indigo-800 text-xs font-medium px-2 py-1 rounded">
+                                {idx + 1}
                               </span>
-                              <div className="flex gap-1">
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={(e) => { e.stopPropagation(); moverQuestao(indexNaSelecao, 'up') }}
-                                  disabled={indexNaSelecao === 0}
-                                >
-                                  <ArrowUp className="w-4 h-4" />
-                                </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={(e) => { e.stopPropagation(); moverQuestao(indexNaSelecao, 'down') }}
-                                  disabled={indexNaSelecao === questoesSelecionadas.length - 1}
-                                >
-                                  <ArrowDown className="w-4 h-4" />
-                                </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={(e) => { e.stopPropagation(); toggleQuestao(q.id) }}
-                                  className="text-red-600 hover:bg-red-50"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+                              <div className="flex-1">
+                                <p className="text-sm text-gray-700 line-clamp-2">
+                                  {q.questoes.enunciado}
+                                </p>
+                                <div className="flex gap-2 mt-1">
+                                  <span className="text-xs text-gray-500">
+                                    {q.questoes.habilidade_bncc}
+                                  </span>
+                                  <span className={`text-xs px-1.5 rounded ${
+                                    q.questoes.nivel_dificuldade === 'facil' ? 'bg-green-100 text-green-700' :
+                                    q.questoes.nivel_dificuldade === 'medio' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>
+                                    {q.questoes.nivel_dificuldade}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )
-              })
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ============================================ */}
-      {/* BARRA FLUTUANTE MOBILE */}
-      {/* ============================================ */}
-      {questoesSelecionadas.length > 0 && (
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 z-40">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-bold text-gray-900">{questoesSelecionadas.length} selecionadas</p>
-              <p className="text-xs text-gray-500">
-                🟢 {stats.facil} | 🟡 {stats.medio} | 🔴 {stats.dificil}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowPreview(true)}>
-                <Eye className="w-4 h-4" />
-              </Button>
-              <Button size="sm" onClick={salvarSimulado} loading={saving}>
-                <Check className="w-4 h-4 mr-1" />
-                Salvar
-              </Button>
-            </div>
-          </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 
-      {/* ============================================ */}
-      {/* MODAL: SELECIONAR TURMAS */}
-      {/* ============================================ */}
-      <Modal isOpen={showTurmasModal} onClose={() => setShowTurmasModal(false)} title="Selecionar Turmas" size="sm">
-        <div className="space-y-2 max-h-60 overflow-y-auto">
-          {turmas.length === 0 ? (
-            <p className="text-center text-gray-500 py-4">Nenhuma turma cadastrada</p>
-          ) : (
-            turmas.map(turma => (
-              <label 
-                key={turma.id} 
-                className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer border"
-              >
-                <input
-                  type="checkbox"
-                  checked={formData.turmas_ids.includes(turma.id)}
-                  onChange={() => toggleTurma(turma.id)}
-                  className="rounded text-indigo-600"
-                />
-                <div>
-                  <p className="font-medium text-gray-900">{turma.nome}</p>
-                  <p className="text-sm text-gray-500">{turma.ano_serie}</p>
-                </div>
+      {/* Modal Folha de Respostas */}
+      {simuladoFolhaRespostas && (
+        <ModalFolhaRespostas
+          isOpen={modalFolhaRespostasAberto}
+          onClose={() => {
+            setModalFolhaRespostasAberto(false)
+            setSimuladoFolhaRespostas(null)
+          }}
+          simulado={simuladoFolhaRespostas}
+        />
+      )}
+
+      {/* Modal Criar/Editar */}
+      <Modal
+        isOpen={modalAberto}
+        onClose={() => setModalAberto(false)}
+        title={editando ? 'Editar Simulado' : 'Novo Simulado'}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Título *
+            </label>
+            <Input
+              value={formData.titulo}
+              onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+              placeholder="Ex: Simulado SAEB - 9º Ano"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Turma *
+            </label>
+            <select
+              value={formData.turma_id}
+              onChange={(e) => setFormData({ ...formData, turma_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="">Selecione uma turma</option>
+              {turmas.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nome} - {t.ano_escolar}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Data de Aplicação
               </label>
-            ))
-          )}
-        </div>
-        <div className="mt-4 pt-4 border-t">
-          <Button className="w-full" onClick={() => setShowTurmasModal(false)}>
-            Confirmar ({formData.turmas_ids.length} selecionadas)
-          </Button>
+              <Input
+                type="date"
+                value={formData.data_aplicacao}
+                onChange={(e) => setFormData({ ...formData, data_aplicacao: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Duração (minutos)
+              </label>
+              <Input
+                type="number"
+                value={formData.duracao_minutos}
+                onChange={(e) => setFormData({ ...formData, duracao_minutos: parseInt(e.target.value) || 60 })}
+                min={10}
+                max={300}
+              />
+            </div>
+          </div>
+
+          {/* Configuração de Pontuação */}
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tipo de Pontuação
+            </label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="pontuacao_tipo"
+                  value="padrao"
+                  checked={formData.pontuacao_tipo === 'padrao'}
+                  onChange={() => setFormData({ ...formData, pontuacao_tipo: 'padrao' })}
+                />
+                <span className="text-sm">Padrão (1 ponto por acerto)</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="pontuacao_tipo"
+                  value="personalizada"
+                  checked={formData.pontuacao_tipo === 'personalizada'}
+                  onChange={() => setFormData({ ...formData, pontuacao_tipo: 'personalizada' })}
+                />
+                <span className="text-sm">Personalizada</span>
+              </label>
+            </div>
+
+            {formData.pontuacao_tipo === 'personalizada' && (
+              <div className="grid grid-cols-3 gap-4 mt-3">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Acerto</label>
+                  <Input
+                    type="number"
+                    value={formData.pontuacao_acerto}
+                    onChange={(e) => setFormData({ ...formData, pontuacao_acerto: parseFloat(e.target.value) || 0 })}
+                    step="0.1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Erro</label>
+                  <Input
+                    type="number"
+                    value={formData.pontuacao_erro}
+                    onChange={(e) => setFormData({ ...formData, pontuacao_erro: parseFloat(e.target.value) || 0 })}
+                    step="0.1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Em Branco</label>
+                  <Input
+                    type="number"
+                    value={formData.pontuacao_branco}
+                    onChange={(e) => setFormData({ ...formData, pontuacao_branco: parseFloat(e.target.value) || 0 })}
+                    step="0.1"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="outline" onClick={() => setModalAberto(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={salvarSimulado} disabled={salvando || !formData.titulo || !formData.turma_id}>
+              {salvando ? 'Salvando...' : editando ? 'Salvar' : 'Criar'}
+            </Button>
+          </div>
         </div>
       </Modal>
 
-      {/* ============================================ */}
-      {/* MODAL: PREVIEW DO SIMULADO */}
-      {/* ============================================ */}
-      <Modal isOpen={showPreview} onClose={() => setShowPreview(false)} title="Revisar Simulado" size="xl">
+      {/* Modal Confirmar Exclusão */}
+      <Modal
+        isOpen={modalExcluirAberto}
+        onClose={() => {
+          setModalExcluirAberto(false)
+          setSimuladoExcluir(null)
+        }}
+        title="Confirmar Exclusão"
+      >
         <div className="space-y-4">
-          {/* Info geral */}
-          <div className="bg-indigo-50 p-4 rounded-lg">
-            <h3 className="font-bold text-lg text-gray-900">{formData.titulo || 'Sem título'}</h3>
-            {formData.descricao && <p className="text-gray-600 text-sm mt-1">{formData.descricao}</p>}
-            <div className="grid grid-cols-4 gap-2 mt-3">
-              <div className="bg-white p-2 rounded text-center">
-                <p className="text-xs text-gray-500">Questões</p>
-                <p className="font-bold text-gray-900">{questoesSelecionadas.length}</p>
-              </div>
-              <div className="bg-white p-2 rounded text-center">
-                <p className="text-xs text-gray-500">Tempo</p>
-                <p className="font-bold text-gray-900">{formData.tempo_minutos}min</p>
-              </div>
-              <div className="bg-white p-2 rounded text-center">
-                <p className="text-xs text-gray-500">Turmas</p>
-                <p className="font-bold text-gray-900">{formData.turmas_ids.length || '-'}</p>
-              </div>
-              <div className="bg-white p-2 rounded text-center">
-                <p className="text-xs text-gray-500">Média/questão</p>
-                <p className="font-bold text-gray-900">
-                  {questoesSelecionadas.length > 0 ? Math.round(formData.tempo_minutos / questoesSelecionadas.length) : 0}min
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-4 mt-2 text-sm">
-              <span className="text-green-700">🟢 {stats.facil} fáceis</span>
-              <span className="text-yellow-700">🟡 {stats.medio} médias</span>
-              <span className="text-red-700">🔴 {stats.dificil} difíceis</span>
-            </div>
-          </div>
-          
-          {/* Lista de questões */}
-          <div>
-            <h4 className="font-medium text-gray-900 mb-2">Ordem das Questões</h4>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {questoesSelecionadas.map((id, idx) => {
-                const q = questoesDisponiveis.find(x => x.id === id)
-                if (!q) return null
-                const dif = getDificuldadeInfo(q.dificuldade)
-                
-                return (
-                  <div key={id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg border">
-                    <div className="flex flex-col gap-0.5">
-                      <button 
-                        onClick={() => moverQuestao(idx, 'up')} 
-                        disabled={idx === 0}
-                        className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"
-                      >
-                        <ArrowUp className="w-3 h-3" />
-                      </button>
-                      <button 
-                        onClick={() => moverQuestao(idx, 'down')} 
-                        disabled={idx === questoesSelecionadas.length - 1}
-                        className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"
-                      >
-                        <ArrowDown className="w-3 h-3" />
-                      </button>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <span className="font-bold text-gray-900 text-sm">Q{idx + 1}</span>
-                        <Badge variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'} className="text-xs">
-                          {dif.emoji}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-700 line-clamp-1">{q.enunciado}</p>
-                    </div>
-                    <button 
-                      onClick={() => toggleQuestao(id)}
-                      className="p-1 hover:bg-red-100 rounded"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-          
-          {/* Ações */}
-          <div className="flex gap-3 pt-4 border-t">
-            <Button variant="outline" className="flex-1" onClick={() => setShowPreview(false)}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Voltar
+          <p className="text-gray-600">
+            Tem certeza que deseja excluir o simulado <strong>{simuladoExcluir?.titulo}</strong>?
+          </p>
+          <p className="text-sm text-red-600">
+            Esta ação não pode ser desfeita. Todas as questões e respostas associadas serão removidas.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setModalExcluirAberto(false)}>
+              Cancelar
             </Button>
-            <Button className="flex-1" onClick={salvarSimulado} loading={saving}>
-              <CheckCircle className="w-4 h-4 mr-2" />
-              {editingSimulado ? 'Salvar Alterações' : 'Criar Simulado'}
+            <Button 
+              onClick={excluirSimulado} 
+              disabled={excluindo}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {excluindo ? 'Excluindo...' : 'Excluir'}
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Modal QR Code */}
+      <Modal
+        isOpen={modalQrAberto}
+        onClose={() => {
+          setModalQrAberto(false)
+          setSimuladoQr(null)
+        }}
+        title="QR Code do Simulado"
+      >
+        {simuladoQr && (
+          <div className="text-center space-y-4">
+            <p className="text-gray-600">{simuladoQr.titulo}</p>
+            <div className="bg-white p-4 rounded-lg inline-block border">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                  `${window.location.origin}/responder/${simuladoQr.id}`
+                )}`}
+                alt="QR Code"
+                className="w-48 h-48"
+              />
+            </div>
+            <p className="text-sm text-gray-500">
+              Alunos podem escanear para responder o simulado
+            </p>
+            <Button
+              onClick={() => {
+                navigator.clipboard.writeText(`${window.location.origin}/responder/${simuladoQr.id}`)
+                alert('Link copiado!')
+              }}
+            >
+              Copiar Link
+            </Button>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal Respostas */}
+      <Modal
+        isOpen={modalRespostasAberto}
+        onClose={() => {
+          setModalRespostasAberto(false)
+          setSimuladoRespostas(null)
+          setRespostasAlunos([])
+          setQuestoesSimulado([])
+        }}
+        title={`Respostas - ${simuladoRespostas?.titulo || ''}`}
+      >
+        {loadingRespostas ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Carregando respostas...</p>
+          </div>
+        ) : respostasAlunos.length === 0 ? (
+          <div className="text-center py-8">
+            <XCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">Nenhuma resposta registrada ainda.</p>
+          </div>
+        ) : (
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            {/* Agrupar respostas por aluno */}
+            {Array.from(new Set(respostasAlunos.map(r => r.aluno_id))).map(alunoId => {
+              const respostasAluno = respostasAlunos.filter(r => r.aluno_id === alunoId)
+              const aluno = respostasAluno[0]?.alunos
+              const acertos = respostasAluno.filter(r => r.correta).length
+              const total = respostasAluno.length
+              
+              return (
+                <div key={alunoId} className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium">{aluno?.nome || 'Aluno'}</span>
+                    <span className={`text-sm font-medium ${
+                      acertos / total >= 0.7 ? 'text-green-600' :
+                      acertos / total >= 0.5 ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {acertos}/{total} ({Math.round(acertos / total * 100)}%)
+                    </span>
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
+                    {questoesSimulado.map((q, idx) => {
+                      const resposta = respostasAluno.find(r => r.questao_id === q.questao_id)
+                      return (
+                        <span
+                          key={q.id}
+                          className={`w-6 h-6 flex items-center justify-center text-xs rounded ${
+                            resposta?.correta 
+                              ? 'bg-green-100 text-green-700' 
+                              : resposta 
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-gray-200 text-gray-500'
+                          }`}
+                          title={`Questão ${idx + 1}: ${resposta?.resposta || 'Não respondida'}`}
+                        >
+                          {idx + 1}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Modal>
     </div>
   )
