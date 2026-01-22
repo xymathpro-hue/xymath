@@ -21,7 +21,8 @@ export default function NovoSimuladoPage() {
   const [questoesDisponiveis, setQuestoesDisponiveis] = useState<Questao[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [step, setStep] = useState(1) // 1: Info, 2: Questões, 3: Revisão
+  // Se está editando, começa no step 2 (questões), senão step 1 (info)
+  const [step, setStep] = useState(editId ? 2 : 1)
 
   // Form data
   const [formData, setFormData] = useState({
@@ -75,6 +76,11 @@ export default function NovoSimuladoPage() {
             cabecalho_endereco: simulado.configuracoes?.cabecalho_endereco || '',
           })
           setQuestoesSelecionadas(simulado.questoes_ids || [])
+          
+          // Se veio do modal de criação (simulado recém-criado sem questões), vai direto pro step 2
+          if (!simulado.questoes_ids || simulado.questoes_ids.length === 0) {
+            setStep(2)
+          }
         }
       }
     } catch (e) {
@@ -167,6 +173,9 @@ export default function NovoSimuladoPage() {
           <ArrowLeft className="w-4 h-4" /> Voltar
         </Link>
         <h1 className="text-2xl font-bold">{editId ? 'Editar Simulado' : 'Novo Simulado'}</h1>
+        {editId && formData.titulo && (
+          <p className="text-gray-600 mt-1">{formData.titulo}</p>
+        )}
       </div>
 
       {/* Steps */}
@@ -337,34 +346,41 @@ export default function NovoSimuladoPage() {
 
               {/* Lista */}
               <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                {questoesFiltradas.map(q => {
-                  const isSelected = questoesSelecionadas.includes(q.id)
-                  return (
-                    <div
-                      key={q.id}
-                      onClick={() => toggleQuestao(q.id)}
-                      className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                        isSelected ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' : 'hover:bg-gray-50 border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className={`w-5 h-5 rounded border flex-shrink-0 flex items-center justify-center mt-0.5 ${
-                          isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'
-                        }`}>
-                          {isSelected && <Check className="w-3 h-3 text-white" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex gap-1 mb-1 flex-wrap">
-                            <Badge variant="info" className="text-xs">{q.ano_serie}</Badge>
-                            <Badge className="text-xs">{q.dificuldade}</Badge>
-                            {(q as any).habilidade_codigo && <Badge variant="default" className="text-xs">{(q as any).habilidade_codigo}</Badge>}
+                {questoesFiltradas.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <p>Nenhuma questão encontrada</p>
+                    <p className="text-sm mt-1">Ajuste os filtros ou cadastre questões no banco</p>
+                  </div>
+                ) : (
+                  questoesFiltradas.map(q => {
+                    const isSelected = questoesSelecionadas.includes(q.id)
+                    return (
+                      <div
+                        key={q.id}
+                        onClick={() => toggleQuestao(q.id)}
+                        className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                          isSelected ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' : 'hover:bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className={`w-5 h-5 rounded border flex-shrink-0 flex items-center justify-center mt-0.5 ${
+                            isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'
+                          }`}>
+                            {isSelected && <Check className="w-3 h-3 text-white" />}
                           </div>
-                          <p className="text-sm text-gray-700 line-clamp-2">{q.enunciado}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex gap-1 mb-1 flex-wrap">
+                              <Badge variant="info" className="text-xs">{q.ano_serie}</Badge>
+                              <Badge className="text-xs">{q.dificuldade}</Badge>
+                              {(q as any).habilidade_codigo && <Badge variant="default" className="text-xs">{(q as any).habilidade_codigo}</Badge>}
+                            </div>
+                            <p className="text-sm text-gray-700 line-clamp-2">{q.enunciado}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })
+                )}
               </div>
             </CardContent>
           </Card>
