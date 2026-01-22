@@ -19,8 +19,9 @@ import {
   FileUp,
   PieChart,
   Shield,
-  Calculator,
-  Upload
+  Bell,
+  FileSpreadsheet,
+  Calculator
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -33,16 +34,17 @@ const menuItems = [
   { href: '/alunos', label: 'Alunos', icon: GraduationCap },
   { href: '/atividades', label: 'Atividades', icon: ClipboardList },
   { href: '/notas', label: 'Notas', icon: Calculator },
+  { href: '/alertas', label: 'Alertas', icon: Bell },
   { href: '/questoes', label: 'Banco de Questões', icon: BookOpen },
   { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
   { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
   { href: '/simulados', label: 'Simulados', icon: FileText },
-  { href: '/avaliacoes-rede', label: 'Avaliações de Rede', icon: Upload },
   { href: '/resultados', label: 'Resultados', icon: BarChart3 },
+  { href: '/avaliacoes-rede', label: 'Avaliações de Rede', icon: FileSpreadsheet },
   { href: '/gestao-horarios', label: 'Gestão de Horários', icon: Clock },
   { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
   { href: '/relatorios', label: 'Relatórios', icon: PieChart },
-  { href: '/importar-plano', label: 'Importar Plano', icon: FileUp },
+  { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
 ]
 
 export function Sidebar() {
@@ -120,25 +122,21 @@ export function Sidebar() {
         )}
       </nav>
 
-      <div className="px-4 py-4 border-t border-gray-200">
-        <div className="flex items-center gap-3 px-4 py-2">
+      <div className="p-4 border-t border-gray-200">
+        <div className="flex items-center gap-3 px-4 py-3 mb-2">
           <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
             <span className="text-indigo-600 font-semibold">
               {usuario?.nome?.charAt(0).toUpperCase() || 'U'}
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">
-              {usuario?.nome || 'Usuário'}
-            </p>
-            <p className="text-xs text-gray-500 truncate">
-              {usuario?.email}
-            </p>
+            <p className="font-medium text-gray-900 truncate">{usuario?.nome || 'Usuário'}</p>
+            <p className="text-sm text-gray-500 truncate">{usuario?.email}</p>
           </div>
         </div>
         <button
           onClick={handleSignOut}
-          className="w-full mt-2 flex items-center gap-3 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          className="flex items-center gap-3 w-full px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <LogOut className="w-5 h-5" />
           <span className="font-medium">Sair</span>
@@ -149,25 +147,22 @@ export function Sidebar() {
 
   return (
     <>
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-30 flex items-center justify-between px-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold">xy</span>
-          </div>
-          <span className="text-lg font-bold text-gray-900">xyMath</span>
-        </Link>
+      {/* Mobile menu button */}
+      <div className="lg:hidden fixed top-4 left-4 z-50">
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 rounded-lg hover:bg-gray-100"
+          className="p-2 bg-white rounded-lg shadow-md"
         >
           {mobileMenuOpen ? <X className="w-6 h-6 text-gray-600" /> : <Menu className="w-6 h-6 text-gray-600" />}
         </button>
       </div>
 
+      {/* Mobile menu overlay */}
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileMenuOpen(false)} />
       )}
 
+      {/* Mobile sidebar */}
       <aside className={clsx(
         'lg:hidden fixed top-0 left-0 h-full w-72 bg-white z-50 transform transition-transform duration-200',
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
@@ -177,6 +172,7 @@ export function Sidebar() {
         </div>
       </aside>
 
+      {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:fixed lg:inset-y-0 lg:left-0 bg-white border-r border-gray-200">
         <NavContent />
       </aside>
