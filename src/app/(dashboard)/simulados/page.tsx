@@ -148,7 +148,7 @@ export default function SimuladosPage() {
       const { data: turmasData } = await supabase
         .from('turmas')
         .select('id, nome, ano_escolar')
-        .eq('professor_id', user.id)
+        .eq('usuario_id', user.id)
         .order('nome')
       
       setTurmas(turmasData || [])
@@ -160,7 +160,7 @@ export default function SimuladosPage() {
           *,
           turmas (nome, ano_escolar)
         `)
-        .eq('professor_id', user.id)
+        .eq('usuario_id', user.id)
         .order('created_at', { ascending: false })
       
       if (simuladosData) {
@@ -299,7 +299,7 @@ export default function SimuladosPage() {
         turma_id: formData.turma_id,
         data_aplicacao: formData.data_aplicacao || null,
         duracao_minutos: formData.duracao_minutos,
-        professor_id: user.id,
+        usuario_id: user.id,
         pontuacao_tipo: formData.pontuacao_tipo,
         pontuacao_acerto: formData.pontuacao_acerto,
         pontuacao_erro: formData.pontuacao_erro,
@@ -471,7 +471,7 @@ export default function SimuladosPage() {
           data_aplicacao: null,
           duracao_minutos: simulado.duracao_minutos,
           status: 'rascunho',
-          professor_id: user?.id,
+          usuario_id: user?.id,
           pontuacao_tipo: simulado.pontuacao_tipo,
           pontuacao_acerto: simulado.pontuacao_acerto,
           pontuacao_erro: simulado.pontuacao_erro,
