@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase-server'
 import { notFound } from 'next/navigation'
+import { createClient } from '@/lib/supabase-server'
 import GabaritoVisual from '@/components/simulados/GabaritoVisual'
 import { calcularPontuacao } from '@/utils/pontuacao'
 
@@ -16,7 +16,8 @@ interface PageProps {
 }
 
 export default async function SimuladoPage({ params }: PageProps) {
-  const supabase = createClient()
+  // 🔴 AQUI ESTÁ A CORREÇÃO PRINCIPAL
+  const supabase = await createClient()
 
   /* =======================
      BUSCAR SIMULADO
@@ -53,7 +54,7 @@ export default async function SimuladoPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6 p-6">
-      
+
       {/* TÍTULO */}
       <div>
         <h1 className="text-2xl font-bold">{simulado.titulo}</h1>
@@ -74,7 +75,7 @@ export default async function SimuladoPage({ params }: PageProps) {
         </p>
       </div>
 
-      {/* LISTA DE QUESTÕES (RESUMO) */}
+      {/* QUESTÕES (RESUMO) */}
       <div className="rounded-md border p-4">
         <h2 className="mb-3 text-lg font-semibold">
           Questões do simulado
@@ -90,14 +91,13 @@ export default async function SimuladoPage({ params }: PageProps) {
         </ul>
       </div>
 
-      {/* GABARITO VISUAL (SOMENTE VISUALIZAÇÃO) */}
+      {/* GABARITO VISUAL */}
       <GabaritoVisual
         titulo={simulado.titulo}
         turma={simulado.turma}
         questoes={questoes}
         valorTotal={valorTotal}
       />
-
     </div>
   )
 }
