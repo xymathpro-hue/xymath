@@ -9,9 +9,10 @@ import { createClient } from '@/lib/supabase-browser'
 import { 
   Plus, Search, FileText, Users, Calendar, Download, Trash2, Edit, 
   Eye, QrCode, MoreVertical, ChevronDown, ChevronUp, CheckCircle, XCircle,
-  ClipboardList, Copy, Check
+  ClipboardList, Copy, Check, Printer
 } from 'lucide-react'
 import { gerarProvaWord } from '@/lib/gerar-prova-word'
+import { exportGabaritoPDF } from '@/lib/export-document'
 import { ModalFolhaRespostas } from '@/components/ModalFolhaRespostas'
 
 interface SimuladoTurma {
@@ -54,6 +55,7 @@ interface SimuladoQuestao {
     alternativa_b: string
     alternativa_c: string
     alternativa_d: string
+    alternativa_e?: string
     resposta_correta: string
     nivel_dificuldade: string
     habilidade_bncc: string
@@ -122,6 +124,7 @@ export default function SimuladosPage() {
 
   // Estado para download
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [downloadingGabaritoId, setDownloadingGabaritoId] = useState<string | null>(null)
 
   // Modal confirmação de exclusão
   const [modalExcluirAberto, setModalExcluirAberto] = useState(false)
@@ -275,14 +278,14 @@ export default function SimuladosPage() {
     setMenuAberto(null)
     
     try {
-      // Carregar questões do simulado
+      // Carregar questões do simulado COM resposta_correta
       const { data: questoes } = await supabase
         .from('simulado_questoes')
         .select(`
           *,
           questoes (
             id, enunciado, alternativa_a, alternativa_b, 
-            alternativa_c, alternativa_d, resposta_correta,
+            alternativa_c, alternativa_d, alternativa_e, resposta_correta,
             nivel_dificuldade, habilidade_bncc
           )
         `)
@@ -479,7 +482,7 @@ export default function SimuladosPage() {
           *,
           questoes (
             id, enunciado, alternativa_a, alternativa_b, 
-            alternativa_c, alternativa_d, resposta_correta,
+            alternativa_c, alternativa_d, alternativa_e, resposta_correta,
             nivel_dificuldade, habilidade_bncc
           )
         `)
@@ -494,19 +497,22 @@ export default function SimuladosPage() {
     }
   }
 
+  // =============================================
+  // FUNÇÃO CORRIGIDA - BAIXAR PROVA COM RESPOSTA_CORRETA
+  // =============================================
   const baixarProva = async (simulado: Simulado) => {
     setDownloadingId(simulado.id)
     setMenuAberto(null)
     
     try {
-      // Buscar questões do simulado
+      // Buscar questões do simulado COM alternativa_e e resposta_correta
       const { data: questoes } = await supabase
         .from('simulado_questoes')
         .select(`
           *,
           questoes (
             id, enunciado, alternativa_a, alternativa_b, 
-            alternativa_c, alternativa_d, resposta_correta,
+            alternativa_c, alternativa_d, alternativa_e, resposta_correta,
             nivel_dificuldade, habilidade_bncc
           )
         `)
@@ -518,18 +524,21 @@ export default function SimuladosPage() {
         return
       }
       
-      // Gerar documento Word
+      // Gerar documento Word COM resposta_correta e alternativa_e
       await gerarProvaWord({
         titulo: simulado.titulo,
         turma: getTurmasNomes(simulado),
         data: simulado.data_aplicacao || '',
-        duracao: 60,
+        duracao: simulado.tempo_minutos || 60,
+        valorTotal: 10, // Sempre 10 pontos
         questoes: questoes.map(q => ({
           enunciado: q.questoes.enunciado,
           alternativa_a: q.questoes.alternativa_a,
           alternativa_b: q.questoes.alternativa_b,
           alternativa_c: q.questoes.alternativa_c,
           alternativa_d: q.questoes.alternativa_d,
+          alternativa_e: q.questoes.alternativa_e || '', // Inclui alternativa E
+          resposta_correta: q.questoes.resposta_correta, // ✅ INCLUÍDO!
           habilidade_bncc: q.questoes.habilidade_bncc
         }))
       })
@@ -538,6 +547,48 @@ export default function SimuladosPage() {
       alert('Erro ao gerar documento. Tente novamente.')
     } finally {
       setDownloadingId(null)
+    }
+  }
+
+  // =============================================
+  // NOVA FUNÇÃO - BAIXAR GABARITO SEPARADO
+  // =============================================
+  const baixarGabarito = async (simulado: Simulado) => {
+    setDownloadingGabaritoId(simulado.id)
+    setMenuAberto(null)
+    
+    try {
+      // Buscar questões do simulado COM resposta_correta
+      const { data: questoes } = await supabase
+        .from('simulado_questoes')
+        .select(`
+          *,
+          questoes (
+            id, resposta_correta
+          )
+        `)
+        .eq('simulado_id', simulado.id)
+        .order('ordem')
+      
+      if (!questoes || questoes.length === 0) {
+        alert('Este simulado não possui questões!')
+        return
+      }
+      
+      // Gerar gabarito PDF
+      await exportGabaritoPDF({
+        titulo: simulado.titulo,
+        turma: getTurmasNomes(simulado),
+        questoes: questoes.map(q => ({
+          id: q.questoes.id,
+          resposta_correta: q.questoes.resposta_correta // ✅ INCLUÍDO!
+        }))
+      })
+    } catch (error) {
+      console.error('Erro ao baixar gabarito:', error)
+      alert('Erro ao gerar gabarito. Tente novamente.')
+    } finally {
+      setDownloadingGabaritoId(null)
     }
   }
 
@@ -716,9 +767,19 @@ export default function SimuladosPage() {
                       size="sm" 
                       onClick={() => baixarProva(s)}
                       disabled={downloadingId === s.id}
-                      title="Download Word"
+                      title="Download Prova (Word)"
                     >
                       <Download className={`w-4 h-4 text-blue-600 ${downloadingId === s.id ? 'animate-pulse' : ''}`} />
+                    </Button>
+
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => baixarGabarito(s)}
+                      disabled={downloadingGabaritoId === s.id}
+                      title="Download Gabarito (PDF)"
+                    >
+                      <Printer className={`w-4 h-4 text-orange-600 ${downloadingGabaritoId === s.id ? 'animate-pulse' : ''}`} />
                     </Button>
 
                     <Button 
@@ -869,6 +930,9 @@ export default function SimuladosPage() {
                                     'bg-red-100 text-red-700'
                                   }`}>
                                     {q.questoes.nivel_dificuldade}
+                                  </span>
+                                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 rounded">
+                                    Resp: {q.questoes.resposta_correta}
                                   </span>
                                 </div>
                               </div>
