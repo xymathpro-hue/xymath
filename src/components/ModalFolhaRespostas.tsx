@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { Modal, Button } from '@/components/ui'
 import { createClient } from '@/lib/supabase-browser'
-import { Download, Users, FileText } from 'lucide-react'
-import { gerarFolhasRespostas } from '@/lib/gerar-folha-respostas'
+import { Download, Users, FileText, LayoutGrid, Square } from 'lucide-react'
+import { gerarFolhasRespostas, gerarFolhasRespostasGrande } from '@/lib/gerar-folha-respostas'
 
 interface Aluno {
   id: string
@@ -51,6 +51,7 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
   const [totalQuestoes, setTotalQuestoes] = useState(0)
   const [loading, setLoading] = useState(true)
   const [gerando, setGerando] = useState(false)
+  const [layout, setLayout] = useState<'2-por-pagina' | '1-por-pagina'>('2-por-pagina')
 
   // Carregar turmas e questões
   useEffect(() => {
@@ -78,6 +79,11 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
         // Se tem turma definida, carregar alunos
         if (simulado.turma_id) {
           setTurmaSelecionada(simulado.turma_id)
+        }
+
+        // Auto-selecionar layout baseado no número de questões
+        if ((count || 0) > 25) {
+          setLayout('1-por-pagina')
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error)
@@ -118,7 +124,7 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
     try {
       const turma = turmas.find(t => t.id === turmaSelecionada)
       
-      await gerarFolhasRespostas({
+      const dados = {
         simulado: {
           id: simulado.id,
           titulo: simulado.titulo,
@@ -139,7 +145,14 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
           numero: a.numero
         })),
         totalQuestoes
-      })
+      }
+
+      // Escolher função baseado no layout
+      if (layout === '2-por-pagina') {
+        await gerarFolhasRespostas(dados)
+      } else {
+        await gerarFolhasRespostasGrande(dados)
+      }
 
       onClose()
     } catch (error) {
@@ -148,6 +161,13 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
     } finally {
       setGerando(false)
     }
+  }
+
+  const calcularPaginas = () => {
+    if (layout === '2-por-pagina') {
+      return Math.ceil(alunos.length / 2)
+    }
+    return alunos.length
   }
 
   return (
@@ -194,6 +214,48 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
               </select>
             </div>
 
+            {/* Seleção de Layout */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Layout da Folha
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setLayout('2-por-pagina')}
+                  className={`flex flex-col items-center p-3 rounded-lg border-2 transition-all ${
+                    layout === '2-por-pagina' 
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <LayoutGrid className="w-8 h-8 mb-1" />
+                  <span className="text-sm font-medium">2 por página</span>
+                  <span className="text-xs text-gray-500">Até 25 questões</span>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setLayout('1-por-pagina')}
+                  className={`flex flex-col items-center p-3 rounded-lg border-2 transition-all ${
+                    layout === '1-por-pagina' 
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <Square className="w-8 h-8 mb-1" />
+                  <span className="text-sm font-medium">1 por página</span>
+                  <span className="text-xs text-gray-500">Provas maiores</span>
+                </button>
+              </div>
+              
+              {totalQuestoes > 25 && layout === '2-por-pagina' && (
+                <p className="mt-2 text-xs text-amber-600">
+                  ⚠️ Com {totalQuestoes} questões, recomendamos usar 1 por página para melhor legibilidade.
+                </p>
+              )}
+            </div>
+
             {/* Info dos Alunos */}
             {turmaSelecionada && (
               <div className="bg-blue-50 rounded-lg p-4">
@@ -204,9 +266,11 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
                   </span>
                 </div>
                 {alunos.length > 0 && (
-                  <p className="text-sm text-blue-600 mt-1">
-                    Será gerada uma folha de respostas para cada aluno com QR Code único.
-                  </p>
+                  <div className="text-sm text-blue-600 mt-1 space-y-1">
+                    <p>✓ QR Code único para cada aluno</p>
+                    <p>✓ Marcadores de canto para correção automática</p>
+                    <p>✓ {calcularPaginas()} {calcularPaginas() === 1 ? 'página' : 'páginas'} no total</p>
+                  </div>
                 )}
               </div>
             )}
@@ -244,7 +308,7 @@ export function ModalFolhaRespostas({ isOpen, onClose, simulado }: ModalFolhaRes
                 ) : (
                   <>
                     <Download className="w-4 h-4 mr-2" />
-                    Gerar PDF ({alunos.length} folhas)
+                    Gerar PDF ({calcularPaginas()} {calcularPaginas() === 1 ? 'página' : 'páginas'})
                   </>
                 )}
               </Button>
