@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf'
-import { Document, Packer, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx'
+import { Document, Packer, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType } from 'docx'
 import { saveAs } from 'file-saver'
 
 interface Questao {
@@ -26,6 +26,7 @@ export async function exportToWord(config: {
   incluirGabarito?: boolean
   incluirCabecalho?: boolean
   instituicao?: string
+  valorTotal?: number
 }) {
   const { 
     titulo, 
@@ -34,11 +35,10 @@ export async function exportToWord(config: {
     turma, 
     incluirGabarito = true, 
     incluirCabecalho = true,
-    instituicao = 'xyMath - Plataforma de Matemática' 
+    instituicao = 'xyMath - Plataforma de Matemática',
+    valorTotal = 10
   } = config
 
-  // Valor total sempre = 10
-  const valorTotal = 10
   const valorQuestao = valorTotal / questoes.length
 
   const children: Paragraph[] = []
@@ -281,6 +281,7 @@ export async function exportToPDF(config: {
   incluirGabarito?: boolean
   incluirCabecalho?: boolean
   instituicao?: string
+  valorTotal?: number
 }) {
   const { 
     titulo, 
@@ -289,7 +290,8 @@ export async function exportToPDF(config: {
     turma, 
     incluirGabarito = true, 
     incluirCabecalho = true,
-    instituicao = 'xyMath - Plataforma de Matemática' 
+    instituicao = 'xyMath - Plataforma de Matemática',
+    valorTotal = 10
   } = config
 
   const doc = new jsPDF()
@@ -299,8 +301,6 @@ export async function exportToPDF(config: {
   const contentWidth = pageWidth - margin * 2
   let y = margin
 
-  // Valor total sempre = 10
-  const valorTotal = 10
   const valorQuestao = valorTotal / questoes.length
 
   // Cabeçalho
@@ -401,80 +401,14 @@ export async function exportToPDF(config: {
   // Gabarito
   if (incluirGabarito) {
     doc.addPage()
-    y = margin
-
-    // Marcadores de canto para OpenCV
-    const markerSize = 8
-    const markerMargin = 10
-    doc.setFillColor(0, 0, 0)
-    doc.rect(markerMargin, markerMargin, markerSize, markerSize, 'F')
-    doc.rect(pageWidth - markerMargin - markerSize, markerMargin, markerSize, markerSize, 'F')
-    doc.rect(markerMargin, pageHeight - markerMargin - markerSize, markerSize, markerSize, 'F')
-    doc.rect(pageWidth - markerMargin - markerSize, pageHeight - markerMargin - markerSize, markerSize, markerSize, 'F')
-
-    y = 30
-
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.text(instituicao, pageWidth / 2, y, { align: 'center' })
-    y += 10
-
-    doc.setFontSize(16)
-    doc.setFont('helvetica', 'bold')
-    doc.text('GABARITO OFICIAL', pageWidth / 2, y, { align: 'center' })
-    y += 8
-
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'normal')
-    doc.text(titulo, pageWidth / 2, y, { align: 'center' })
-    y += 7
-
-    doc.setFontSize(11)
-    doc.text(`Turma: ${turma || ''}`, pageWidth / 2, y, { align: 'center' })
-    y += 6
-    doc.text(`Valor total: ${valorTotal.toFixed(1)} pontos`, pageWidth / 2, y, { align: 'center' })
-    y += 15
-
-    // Tabela do gabarito
-    doc.setFontSize(10)
-    const questoesPorLinha = 10
-    const cellWidth = contentWidth / questoesPorLinha
-    const cellHeight = 12
-
-    for (let i = 0; i < questoes.length; i += questoesPorLinha) {
-      const questoesLinha = questoes.slice(i, i + questoesPorLinha)
-      const numCells = questoesLinha.length
-      const startX = margin + (contentWidth - numCells * cellWidth) / 2
-
-      // Linha com números (fundo cinza)
-      doc.setFillColor(232, 232, 232)
-      questoesLinha.forEach((_, idx) => {
-        const x = startX + idx * cellWidth
-        doc.rect(x, y, cellWidth, cellHeight, 'FD')
-        doc.setFont('helvetica', 'bold')
-        doc.text(`${i + idx + 1}`, x + cellWidth / 2, y + 8, { align: 'center' })
-      })
-      y += cellHeight
-
-      // Linha com respostas corretas
-      doc.setFontSize(14)
-      questoesLinha.forEach((q, idx) => {
-        const x = startX + idx * cellWidth
-        doc.rect(x, y, cellWidth, cellHeight)
-        doc.setFont('helvetica', 'bold')
-        // Pega a resposta correta da questão
-        const resposta = q.resposta_correta?.toUpperCase() || '-'
-        doc.text(resposta, x + cellWidth / 2, y + 9, { align: 'center' })
-      })
-      doc.setFontSize(10)
-      y += cellHeight + 8
-    }
-
-    // Rodapé
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'italic')
-    doc.setTextColor(100)
-    doc.text('Documento exclusivo do professor - Não divulgar aos alunos', pageWidth / 2, pageHeight - 15, { align: 'center' })
+    
+    const gabaritoY = gerarPaginaGabarito(doc, {
+      titulo,
+      turma,
+      questoes,
+      instituicao,
+      valorTotal
+    })
   }
 
   const fileName = `${titulo.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
@@ -488,35 +422,69 @@ export async function exportGabaritoPDF(config: {
   questoes: Questao[]
   turma?: string
   instituicao?: string
+  valorTotal?: number
 }) {
-  const { titulo, questoes, turma, instituicao = 'xyMath - Plataforma de Matemática' } = config
+  const { 
+    titulo, 
+    questoes, 
+    turma, 
+    instituicao = 'xyMath - Plataforma de Matemática',
+    valorTotal = 10
+  } = config
 
   const doc = new jsPDF()
+  
+  gerarPaginaGabarito(doc, {
+    titulo,
+    turma,
+    questoes,
+    instituicao,
+    valorTotal
+  })
+
+  const fileName = `Gabarito_${titulo.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+  doc.save(fileName)
+}
+
+// ==================== FUNÇÃO AUXILIAR - PÁGINA DO GABARITO ====================
+
+function gerarPaginaGabarito(doc: jsPDF, config: {
+  titulo: string
+  turma?: string
+  questoes: Questao[]
+  instituicao: string
+  valorTotal: number
+}) {
+  const { titulo, turma, questoes, instituicao, valorTotal } = config
+  
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const margin = 20
   const contentWidth = pageWidth - margin * 2
-  let y = margin
 
-  // Valor total sempre = 10
-  const valorTotal = 10
-
-  // Marcadores de canto para OpenCV
-  const markerSize = 8
-  const markerMargin = 10
+  // ========== MARCADORES DE CANTO PARA OPENCV ==========
+  // Quadrados pequenos (5mm) nos 4 cantos, afastados 5mm da borda
+  const markerSize = 5
+  const markerOffset = 5
+  
   doc.setFillColor(0, 0, 0)
-  doc.rect(markerMargin, markerMargin, markerSize, markerSize, 'F')
-  doc.rect(pageWidth - markerMargin - markerSize, markerMargin, markerSize, markerSize, 'F')
-  doc.rect(markerMargin, pageHeight - markerMargin - markerSize, markerSize, markerSize, 'F')
-  doc.rect(pageWidth - markerMargin - markerSize, pageHeight - markerMargin - markerSize, markerSize, markerSize, 'F')
+  // Superior esquerdo
+  doc.rect(markerOffset, markerOffset, markerSize, markerSize, 'F')
+  // Superior direito
+  doc.rect(pageWidth - markerOffset - markerSize, markerOffset, markerSize, markerSize, 'F')
+  // Inferior esquerdo
+  doc.rect(markerOffset, pageHeight - markerOffset - markerSize, markerSize, markerSize, 'F')
+  // Inferior direito
+  doc.rect(pageWidth - markerOffset - markerSize, pageHeight - markerOffset - markerSize, markerSize, markerSize, 'F')
 
-  y = 30
+  let y = 25
 
   // Cabeçalho
-  doc.setFontSize(14)
+  doc.setFontSize(12)
   doc.setFont('helvetica', 'bold')
+  doc.setTextColor(0, 0, 0)
   doc.text(instituicao, pageWidth / 2, y, { align: 'center' })
-  y += 10
+  y += 8
 
   doc.setFontSize(16)
   doc.setFont('helvetica', 'bold')
@@ -526,22 +494,22 @@ export async function exportGabaritoPDF(config: {
   doc.setFontSize(12)
   doc.setFont('helvetica', 'normal')
   doc.text(titulo, pageWidth / 2, y, { align: 'center' })
-  y += 7
+  y += 6
 
   if (turma) {
-    doc.setFontSize(11)
+    doc.setFontSize(10)
     doc.text(`Turma: ${turma}`, pageWidth / 2, y, { align: 'center' })
-    y += 6
+    y += 5
   }
 
+  doc.setFontSize(10)
   doc.text(`Valor total: ${valorTotal.toFixed(1)} pontos`, pageWidth / 2, y, { align: 'center' })
-  y += 15
+  y += 12
 
   // Tabela do gabarito
-  doc.setFontSize(10)
   const questoesPorLinha = 10
-  const cellWidth = contentWidth / questoesPorLinha
-  const cellHeight = 12
+  const cellWidth = (contentWidth - 10) / questoesPorLinha
+  const cellHeight = 10
 
   for (let i = 0; i < questoes.length; i += questoesPorLinha) {
     const questoesLinha = questoes.slice(i, i + questoesPorLinha)
@@ -550,34 +518,37 @@ export async function exportGabaritoPDF(config: {
 
     // Linha com números (fundo cinza)
     doc.setFillColor(232, 232, 232)
+    doc.setDrawColor(100, 100, 100)
+    doc.setFontSize(9)
+    
     questoesLinha.forEach((_, idx) => {
       const x = startX + idx * cellWidth
       doc.rect(x, y, cellWidth, cellHeight, 'FD')
       doc.setFont('helvetica', 'bold')
-      doc.text(`${i + idx + 1}`, x + cellWidth / 2, y + 8, { align: 'center' })
+      doc.setTextColor(0, 0, 0)
+      doc.text(`${i + idx + 1}`, x + cellWidth / 2, y + 7, { align: 'center' })
     })
     y += cellHeight
 
-    // Linha com respostas corretas
-    doc.setFontSize(14)
+    // Linha com respostas
+    doc.setFontSize(12)
     questoesLinha.forEach((q, idx) => {
       const x = startX + idx * cellWidth
-      doc.rect(x, y, cellWidth, cellHeight)
+      doc.setFillColor(255, 255, 255)
+      doc.rect(x, y, cellWidth, cellHeight, 'FD')
       doc.setFont('helvetica', 'bold')
-      // Pega a resposta correta da questão
+      doc.setTextColor(0, 0, 0)
       const resposta = q.resposta_correta?.toUpperCase() || '-'
-      doc.text(resposta, x + cellWidth / 2, y + 9, { align: 'center' })
+      doc.text(resposta, x + cellWidth / 2, y + 7, { align: 'center' })
     })
-    doc.setFontSize(10)
-    y += cellHeight + 8
+    y += cellHeight + 5
   }
 
   // Rodapé
-  doc.setFontSize(8)
+  doc.setFontSize(7)
   doc.setFont('helvetica', 'italic')
-  doc.setTextColor(100)
-  doc.text('Documento exclusivo do professor - Não divulgar aos alunos', pageWidth / 2, pageHeight - 15, { align: 'center' })
+  doc.setTextColor(128, 128, 128)
+  doc.text('Documento exclusivo do professor - Não divulgar aos alunos', pageWidth / 2, pageHeight - 12, { align: 'center' })
 
-  const fileName = `Gabarito_${titulo.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
-  doc.save(fileName)
+  return y
 }
