@@ -52,7 +52,7 @@ interface QuestaoExpandida {
   alternativa_e?: string
   resposta_correta: string
   nivel_dificuldade: string
-  habilidade_bncc: string
+  habilidade_bncc_id: string
 }
 
 interface Turma {
@@ -272,7 +272,7 @@ export default function SimuladosPage() {
       if (simulado.questoes_ids && simulado.questoes_ids.length > 0) {
         const { data: questoes } = await supabase
           .from('questoes')
-          .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, nivel_dificuldade, habilidade_bncc')
+          .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, nivel_dificuldade, habilidade_bncc_id')
           .in('id', simulado.questoes_ids)
         
         // Ordenar na mesma ordem do questoes_ids
@@ -470,7 +470,7 @@ export default function SimuladosPage() {
         // =============================================
         const { data: questoes } = await supabase
           .from('questoes')
-          .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, nivel_dificuldade, habilidade_bncc')
+          .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, nivel_dificuldade, habilidade_bncc_id')
           .in('id', simulado.questoes_ids)
         
         // Ordenar na mesma ordem do questoes_ids
@@ -508,7 +508,7 @@ export default function SimuladosPage() {
       // =============================================
       const { data: questoes, error } = await supabase
         .from('questoes')
-        .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, habilidade_bncc')
+        .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, habilidade_bncc_id')
         .in('id', simulado.questoes_ids)
       
       if (error) throw error
@@ -537,7 +537,7 @@ export default function SimuladosPage() {
           alternativa_d: q!.alternativa_d,
           alternativa_e: q!.alternativa_e || '',
           resposta_correta: q!.resposta_correta,
-          habilidade_bncc: q!.habilidade_bncc
+          habilidade_bncc_id: q!.habilidade_bncc_id
         }))
       })
     } catch (error) {
@@ -913,7 +913,7 @@ export default function SimuladosPage() {
                                 </p>
                                 <div className="flex gap-2 mt-1">
                                   <span className="text-xs text-gray-500">
-                                    {q.habilidade_bncc}
+                                    {q.habilidade_bncc_id}
                                   </span>
                                   <span className={`text-xs px-1.5 rounded ${
                                     q.nivel_dificuldade === 'facil' ? 'bg-green-100 text-green-700' :
