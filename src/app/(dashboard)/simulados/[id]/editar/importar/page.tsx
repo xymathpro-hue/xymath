@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect, notFound } from 'next/navigation'
-import mammoth from 'mammoth'
 
 interface PageProps {
   params: {
@@ -31,34 +30,7 @@ export default async function ImportarPage({ params }: PageProps) {
       throw new Error('Arquivo não enviado')
     }
 
-    let textoExtraido = ''
-
-    // ======================
-    // WORD (.docx)
-    // ======================
-    if (file.name.endsWith('.docx')) {
-      const buffer = Buffer.from(await file.arrayBuffer())
-      const result = await mammoth.extractRawText({ buffer })
-      textoExtraido = result.value
-    }
-
-    // ======================
-    // PDF (texto selecionável)
-    // ======================
-    if (file.name.endsWith('.pdf')) {
-      throw new Error(
-        'Importação de PDF será habilitada na próxima etapa'
-      )
-    }
-
-    // Quebra por linhas
-    const linhas = textoExtraido
-      .split('\n')
-      .map(l => l.trim())
-      .filter(Boolean)
-
-    // Importação simples: 1 questão = bloco
-    let ordemAtual = 0
+    // Buscar última ordem
     const { data: ultima } = await supabase
       .from('simulado_questoes')
       .select('ordem')
@@ -67,24 +39,22 @@ export default async function ImportarPage({ params }: PageProps) {
       .limit(1)
       .single()
 
-    ordemAtual = ultima?.ordem ?? 0
+    const novaOrdem = (ultima?.ordem ?? 0) + 1
 
-    for (const linha of linhas) {
-      ordemAtual++
-
-      await supabase.from('simulado_questoes').insert({
-        simulado_id: params.id,
-        origem: 'IMPORTADA',
-        enunciado: linha,
-        alternativa_a: 'A',
-        alternativa_b: 'B',
-        alternativa_c: 'C',
-        alternativa_d: 'D',
-        alternativa_e: null,
-        resposta_correta: 'A',
-        ordem: ordemAtual
-      })
-    }
+    // Cria uma questão placeholder para revisão
+    await supabase.from('simulado_questoes').insert({
+      simulado_id: params.id,
+      origem: 'IMPORTADA',
+      questao_banco_id: null,
+      enunciado: `QUESTÃO IMPORTADA DE ARQUIVO (${file.name}) – editar conteúdo`,
+      alternativa_a: 'A',
+      alternativa_b: 'B',
+      alternativa_c: 'C',
+      alternativa_d: 'D',
+      alternativa_e: null,
+      resposta_correta: 'A',
+      ordem: novaOrdem
+    })
 
     redirect(`/simulados/${params.id}/editar`)
   }
@@ -92,11 +62,12 @@ export default async function ImportarPage({ params }: PageProps) {
   return (
     <div className="p-6 max-w-xl space-y-6">
       <h1 className="text-2xl font-bold">
-        Importar questões (Word / PDF)
+        Importar simulado (Word / PDF)
       </h1>
 
       <p className="text-gray-600">
-        O conteúdo importado poderá ser revisado antes do uso.
+        Nesta versão, o arquivo será associado ao simulado e as questões
+        poderão ser editadas manualmente em seguida.
       </p>
 
       <form action={importar} className="space-y-4">
@@ -126,4 +97,3 @@ export default async function ImportarPage({ params }: PageProps) {
     </div>
   )
 }
-
