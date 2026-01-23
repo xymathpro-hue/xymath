@@ -558,13 +558,13 @@ export default function SimuladosPage() {
     setMenuAberto(null)
     
     try {
-      // Buscar questões do simulado COM resposta_correta
+      // Buscar questões do simulado COM resposta_correta e enunciado
       const { data: questoes } = await supabase
         .from('simulado_questoes')
         .select(`
           *,
           questoes (
-            id, resposta_correta
+            id, enunciado, resposta_correta
           )
         `)
         .eq('simulado_id', simulado.id)
@@ -581,7 +581,8 @@ export default function SimuladosPage() {
         turma: getTurmasNomes(simulado),
         questoes: questoes.map(q => ({
           id: q.questoes.id,
-          resposta_correta: q.questoes.resposta_correta // ✅ INCLUÍDO!
+          enunciado: q.questoes.enunciado,
+          resposta_correta: q.questoes.resposta_correta
         }))
       })
     } catch (error) {
