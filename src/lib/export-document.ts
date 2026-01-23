@@ -1,4 +1,6 @@
 import jsPDF from 'jspdf'
+import { Document, Packer, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx'
+import { saveAs } from 'file-saver'
 
 interface Questao {
   id: string
@@ -12,6 +14,239 @@ interface Questao {
   dificuldade?: string
   habilidade_id?: string
   ano_serie?: string
+}
+
+// ==================== EXPORTAR PARA WORD ====================
+
+export async function exportToWord(config: {
+  titulo: string
+  questoes: Questao[]
+  turma?: string
+  incluirGabarito?: boolean
+  instituicao?: string
+}) {
+  const { titulo, questoes, turma, incluirGabarito = true, instituicao = 'xyMath - Plataforma de Matemática' } = config
+
+  // Valor total sempre = 10
+  const valorTotal = 10
+  const valorQuestao = valorTotal / questoes.length
+
+  const children: Paragraph[] = []
+
+  // Cabeçalho
+  children.push(
+    new Paragraph({
+      children: [new TextRun({ text: instituicao, bold: true, size: 28 })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 }
+    })
+  )
+
+  children.push(
+    new Paragraph({
+      children: [new TextRun({ text: titulo, bold: true, size: 32 })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 100 }
+    })
+  )
+
+  if (turma) {
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: `Turma: ${turma}`, size: 22 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 100 }
+      })
+    )
+  }
+
+  // Informações de valor
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: `Total de questões: ${questoes.length}`, size: 20 }),
+        new TextRun({ text: `     Valor: ${valorTotal.toFixed(1)} pontos`, size: 20 }),
+        new TextRun({ text: `     Cada questão: ${valorQuestao.toFixed(2)} pts`, size: 20 })
+      ],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 }
+    })
+  )
+
+  // Linha separadora
+  children.push(
+    new Paragraph({
+      children: [new TextRun({ text: '─'.repeat(80), size: 20, color: 'CCCCCC' })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 }
+    })
+  )
+
+  // Campo nome/data
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({ text: 'Nome: _________________________________________________', size: 22 }),
+        new TextRun({ text: '     Data: ___/___/______', size: 22 })
+      ],
+      spacing: { after: 400 }
+    })
+  )
+
+  // Questões
+  questoes.forEach((questao, index) => {
+    // Número e enunciado
+    const enunciadoLimpo = questao.enunciado?.replace(/<[^>]*>/g, '') || ''
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: `${index + 1}. `, bold: true, size: 22 }),
+          new TextRun({ text: enunciadoLimpo, size: 22 })
+        ],
+        spacing: { before: 300, after: 100 }
+      })
+    )
+
+    // Alternativas
+    const alternativas = [
+      { letra: 'A', texto: questao.alternativa_a },
+      { letra: 'B', texto: questao.alternativa_b },
+      { letra: 'C', texto: questao.alternativa_c },
+      { letra: 'D', texto: questao.alternativa_d },
+    ]
+
+    if (questao.alternativa_e) {
+      alternativas.push({ letra: 'E', texto: questao.alternativa_e })
+    }
+
+    alternativas.forEach(alt => {
+      if (alt.texto) {
+        const textoLimpo = alt.texto.replace(/<[^>]*>/g, '')
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `(${alt.letra}) `, size: 22 }),
+              new TextRun({ text: textoLimpo, size: 22 })
+            ],
+            indent: { left: 400 },
+            spacing: { after: 50 }
+          })
+        )
+      }
+    })
+  })
+
+  // Gabarito
+  if (incluirGabarito) {
+    children.push(
+      new Paragraph({
+        children: [],
+        pageBreakBefore: true
+      })
+    )
+
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: 'GABARITO OFICIAL', bold: true, size: 32 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 100 }
+      })
+    )
+
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: titulo, size: 24 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 50 }
+      })
+    )
+
+    if (turma) {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: `Turma: ${turma}`, size: 22 })],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 50 }
+        })
+      )
+    }
+
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: `Valor total: ${valorTotal.toFixed(1)} pontos`, size: 22 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 300 }
+      })
+    )
+
+    // Tabela do gabarito
+    const questoesPorLinha = 10
+    const tableRows: TableRow[] = []
+
+    for (let i = 0; i < questoes.length; i += questoesPorLinha) {
+      const questoesLinha = questoes.slice(i, i + questoesPorLinha)
+
+      // Linha com números
+      const numCells = questoesLinha.map((_, idx) =>
+        new TableCell({
+          children: [new Paragraph({
+            children: [new TextRun({ text: `${i + idx + 1}`, bold: true, size: 20 })],
+            alignment: AlignmentType.CENTER
+          })],
+          shading: { fill: 'E8E8E8' },
+          width: { size: 800, type: WidthType.DXA }
+        })
+      )
+
+      // Linha com respostas
+      const respCells = questoesLinha.map(q =>
+        new TableCell({
+          children: [new Paragraph({
+            children: [new TextRun({ text: q.resposta_correta?.toUpperCase() || '-', bold: true, size: 24 })],
+            alignment: AlignmentType.CENTER
+          })],
+          width: { size: 800, type: WidthType.DXA }
+        })
+      )
+
+      tableRows.push(new TableRow({ children: numCells }))
+      tableRows.push(new TableRow({ children: respCells }))
+    }
+
+    const table = new Table({
+      rows: tableRows,
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      alignment: AlignmentType.CENTER
+    })
+
+    children.push(new Paragraph({ children: [] }))
+    children.push(table as any)
+
+    // Rodapé
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ 
+          text: 'Documento exclusivo do professor - Não divulgar aos alunos', 
+          italics: true, 
+          size: 18, 
+          color: '888888' 
+        })],
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 400 }
+      })
+    )
+  }
+
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children
+    }]
+  })
+
+  const blob = await Packer.toBlob(doc)
+  const fileName = `${titulo.replace(/[^a-zA-Z0-9]/g, '_')}.docx`
+  saveAs(blob, fileName)
 }
 
 // ==================== PROVA PDF ====================
