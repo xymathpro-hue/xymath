@@ -20,13 +20,22 @@ interface DadosProva {
   duracao: number
   questoes: QuestaoProva[]
   valorTotal?: number // Se não informado, será 10
+  incluirGabarito?: boolean // Se não informado, será true
 }
 
 export async function gerarProvaWord(dados: DadosProva): Promise<void> {
-  const { titulo, turma, data, duracao, questoes, valorTotal = 10 } = dados
+  const { 
+    titulo, 
+    turma, 
+    data, 
+    duracao, 
+    questoes, 
+    valorTotal = 10,
+    incluirGabarito = true 
+  } = dados
 
   // Calcular valor de cada questão (total sempre = valorTotal, padrão 10)
-  const valorPorQuestao = questoes.length > 0 ? (valorTotal / questoes.length).toFixed(1) : '1'
+  const valorPorQuestao = questoes.length > 0 ? (valorTotal / questoes.length).toFixed(2) : '1'
   const valorTotalFormatado = valorTotal.toFixed(1)
 
   // Cabeçalho
@@ -255,6 +264,135 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
     )
   })
 
+  // =============================================
+  // GABARITO - PÁGINA SEPARADA
+  // =============================================
+  const gabaritoParagraphs: Paragraph[] = []
+
+  if (incluirGabarito) {
+    // Quebra de página
+    gabaritoParagraphs.push(
+      new Paragraph({
+        children: [],
+        pageBreakBefore: true,
+      })
+    )
+
+    // Cabeçalho do gabarito
+    gabaritoParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({ text: '[NOME DA ESCOLA]', bold: true, size: 28 }),
+        ],
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({ text: 'GABARITO OFICIAL', bold: true, size: 36 }),
+        ],
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({ text: titulo, size: 28 }),
+        ],
+        spacing: { after: 100 },
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({ text: `Turma: ${turma}`, size: 24 }),
+        ],
+        spacing: { after: 300 },
+      })
+    )
+
+    // Criar tabela do gabarito (10 questões por linha)
+    const questoesPorLinha = 10
+    const gabaritoRows: TableRow[] = []
+
+    for (let i = 0; i < questoes.length; i += questoesPorLinha) {
+      const questoesLinha = questoes.slice(i, i + questoesPorLinha)
+
+      // Linha com números das questões (fundo cinza)
+      gabaritoRows.push(
+        new TableRow({
+          children: questoesLinha.map((_, idx) =>
+            new TableCell({
+              children: [new Paragraph({
+                children: [new TextRun({ text: `${i + idx + 1}`, bold: true, size: 22 })],
+                alignment: AlignmentType.CENTER
+              })],
+              width: { size: 900, type: WidthType.DXA },
+              shading: { fill: 'E8E8E8' }
+            })
+          )
+        })
+      )
+
+      // Linha com respostas corretas
+      gabaritoRows.push(
+        new TableRow({
+          children: questoesLinha.map(q =>
+            new TableCell({
+              children: [new Paragraph({
+                children: [new TextRun({ 
+                  text: q.resposta_correta?.toUpperCase() || '-', 
+                  bold: true, 
+                  size: 28 
+                })],
+                alignment: AlignmentType.CENTER
+              })],
+              width: { size: 900, type: WidthType.DXA }
+            })
+          )
+        })
+      )
+
+      // Espaçamento entre linhas de gabarito
+      if (i + questoesPorLinha < questoes.length) {
+        gabaritoRows.push(
+          new TableRow({
+            children: [
+              new TableCell({
+                children: [new Paragraph({ children: [] })],
+                columnSpan: questoesPorLinha,
+                borders: noBorders()
+              })
+            ]
+          })
+        )
+      }
+    }
+
+    const gabaritoTable = new Table({
+      rows: gabaritoRows,
+      width: { size: 100, type: WidthType.PERCENTAGE }
+    })
+
+    // @ts-ignore
+    gabaritoParagraphs.push(gabaritoTable)
+
+    // Rodapé do gabarito
+    gabaritoParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({ 
+            text: 'Documento exclusivo do professor - Não divulgar aos alunos', 
+            italics: true, 
+            size: 18, 
+            color: '888888' 
+          }),
+        ],
+        spacing: { before: 400 },
+      })
+    )
+  }
+
   // Criar documento
   const doc = new Document({
     sections: [{
@@ -271,6 +409,7 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
       children: [
         ...headerParagraphs,
         ...questoesParagraphs,
+        ...gabaritoParagraphs,
       ],
     }],
   })
