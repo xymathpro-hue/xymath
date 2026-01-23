@@ -20,12 +20,22 @@ interface Questao {
 
 export async function exportToWord(config: {
   titulo: string
+  subtitulo?: string
   questoes: Questao[]
   turma?: string
   incluirGabarito?: boolean
+  incluirCabecalho?: boolean
   instituicao?: string
 }) {
-  const { titulo, questoes, turma, incluirGabarito = true, instituicao = 'xyMath - Plataforma de Matemática' } = config
+  const { 
+    titulo, 
+    subtitulo,
+    questoes, 
+    turma, 
+    incluirGabarito = true, 
+    incluirCabecalho = true,
+    instituicao = 'xyMath - Plataforma de Matemática' 
+  } = config
 
   // Valor total sempre = 10
   const valorTotal = 10
@@ -33,14 +43,16 @@ export async function exportToWord(config: {
 
   const children: Paragraph[] = []
 
-  // Cabeçalho
-  children.push(
-    new Paragraph({
-      children: [new TextRun({ text: instituicao, bold: true, size: 28 })],
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 200 }
-    })
-  )
+  // Cabeçalho (se incluirCabecalho = true)
+  if (incluirCabecalho) {
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: instituicao, bold: true, size: 28 })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 }
+      })
+    )
+  }
 
   children.push(
     new Paragraph({
@@ -49,6 +61,16 @@ export async function exportToWord(config: {
       spacing: { after: 100 }
     })
   )
+
+  if (subtitulo) {
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: subtitulo, size: 22, italics: true })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 100 }
+      })
+    )
+  }
 
   if (turma) {
     children.push(
@@ -253,12 +275,22 @@ export async function exportToWord(config: {
 
 export async function exportToPDF(config: {
   titulo: string
+  subtitulo?: string
   questoes: Questao[]
   turma?: string
   incluirGabarito?: boolean
+  incluirCabecalho?: boolean
   instituicao?: string
 }) {
-  const { titulo, questoes, turma, incluirGabarito = true, instituicao = 'xyMath - Plataforma de Matemática' } = config
+  const { 
+    titulo, 
+    subtitulo,
+    questoes, 
+    turma, 
+    incluirGabarito = true, 
+    incluirCabecalho = true,
+    instituicao = 'xyMath - Plataforma de Matemática' 
+  } = config
 
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -272,15 +304,24 @@ export async function exportToPDF(config: {
   const valorQuestao = valorTotal / questoes.length
 
   // Cabeçalho
-  doc.setFontSize(14)
-  doc.setFont('helvetica', 'bold')
-  doc.text(instituicao, pageWidth / 2, y, { align: 'center' })
-  y += 10
+  if (incluirCabecalho) {
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text(instituicao, pageWidth / 2, y, { align: 'center' })
+    y += 10
+  }
 
   doc.setFontSize(16)
   doc.setFont('helvetica', 'bold')
   doc.text(titulo, pageWidth / 2, y, { align: 'center' })
   y += 8
+
+  if (subtitulo) {
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'italic')
+    doc.text(subtitulo, pageWidth / 2, y, { align: 'center' })
+    y += 8
+  }
 
   if (turma) {
     doc.setFontSize(11)
