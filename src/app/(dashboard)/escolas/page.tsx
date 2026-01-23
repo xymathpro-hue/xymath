@@ -1,15 +1,19 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { Card, CardContent, Button, Input, Modal, Badge } from '@/components/ui'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Card, CardContent, Button, Input, Modal, Badge, Select } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase-browser'
-import { Plus, Search, Building2, Edit, Trash2, School } from 'lucide-react'
+import { Plus, Search, Building2, Edit, Trash2, School, Upload, X, Image } from 'lucide-react'
 
 interface Escola {
   id: string
   nome: string
   rede: string
+  municipio?: string
+  estado?: string
+  inep?: string
+  logo_url?: string
   created_at: string
   turmas_count?: number
 }
@@ -21,9 +25,40 @@ const REDES = [
   { value: 'privada', label: 'Privada', color: 'bg-orange-100 text-orange-800' },
 ]
 
+const ESTADOS = [
+  { value: 'AC', label: 'Acre' },
+  { value: 'AL', label: 'Alagoas' },
+  { value: 'AP', label: 'Amapá' },
+  { value: 'AM', label: 'Amazonas' },
+  { value: 'BA', label: 'Bahia' },
+  { value: 'CE', label: 'Ceará' },
+  { value: 'DF', label: 'Distrito Federal' },
+  { value: 'ES', label: 'Espírito Santo' },
+  { value: 'GO', label: 'Goiás' },
+  { value: 'MA', label: 'Maranhão' },
+  { value: 'MT', label: 'Mato Grosso' },
+  { value: 'MS', label: 'Mato Grosso do Sul' },
+  { value: 'MG', label: 'Minas Gerais' },
+  { value: 'PA', label: 'Pará' },
+  { value: 'PB', label: 'Paraíba' },
+  { value: 'PR', label: 'Paraná' },
+  { value: 'PE', label: 'Pernambuco' },
+  { value: 'PI', label: 'Piauí' },
+  { value: 'RJ', label: 'Rio de Janeiro' },
+  { value: 'RN', label: 'Rio Grande do Norte' },
+  { value: 'RS', label: 'Rio Grande do Sul' },
+  { value: 'RO', label: 'Rondônia' },
+  { value: 'RR', label: 'Roraima' },
+  { value: 'SC', label: 'Santa Catarina' },
+  { value: 'SP', label: 'São Paulo' },
+  { value: 'SE', label: 'Sergipe' },
+  { value: 'TO', label: 'Tocantins' },
+]
+
 export default function EscolasPage() {
   const { user } = useAuth()
   const supabase = createClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   const [escolas, setEscolas] = useState<Escola[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,9 +69,15 @@ export default function EscolasPage() {
   const [editando, setEditando] = useState<Escola | null>(null)
   const [formData, setFormData] = useState({
     nome: '',
-    rede: 'municipal'
+    rede: 'municipal',
+    municipio: '',
+    estado: 'PI',
+    inep: '',
+    logo_url: ''
   })
   const [salvando, setSalvando] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
   
   // Modal confirmação de exclusão
   const [modalExcluirAberto, setModalExcluirAberto] = useState(false)
@@ -84,7 +125,15 @@ export default function EscolasPage() {
 
   const abrirModalCriar = () => {
     setEditando(null)
-    setFormData({ nome: '', rede: 'municipal' })
+    setFormData({ 
+      nome: '', 
+      rede: 'municipal',
+      municipio: '',
+      estado: 'PI',
+      inep: '',
+      logo_url: ''
+    })
+    setLogoPreview(null)
     setModalAberto(true)
   }
 
@@ -92,9 +141,66 @@ export default function EscolasPage() {
     setEditando(escola)
     setFormData({
       nome: escola.nome,
-      rede: escola.rede
+      rede: escola.rede,
+      municipio: escola.municipio || '',
+      estado: escola.estado || 'PI',
+      inep: escola.inep || '',
+      logo_url: escola.logo_url || ''
     })
+    setLogoPreview(escola.logo_url || null)
     setModalAberto(true)
+  }
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+
+    // Validar tipo
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione uma imagem.')
+      return
+    }
+
+    // Validar tamanho (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('A imagem deve ter no máximo 2MB.')
+      return
+    }
+
+    setUploadingLogo(true)
+    try {
+      // Criar nome único para o arquivo
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`
+
+      // Fazer upload
+      const { error: uploadError } = await supabase.storage
+        .from('logos')
+        .upload(fileName, file)
+
+      if (uploadError) throw uploadError
+
+      // Pegar URL pública
+      const { data: { publicUrl } } = supabase.storage
+        .from('logos')
+        .getPublicUrl(fileName)
+
+      setFormData(prev => ({ ...prev, logo_url: publicUrl }))
+      setLogoPreview(publicUrl)
+    } catch (error) {
+      console.error('Erro ao fazer upload:', error)
+      alert('Erro ao fazer upload da imagem. Tente novamente.')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  const removerLogo = () => {
+    setFormData(prev => ({ ...prev, logo_url: '' }))
+    setLogoPreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const salvarEscola = async () => {
@@ -102,20 +208,25 @@ export default function EscolasPage() {
     
     setSalvando(true)
     try {
+      const dadosEscola = {
+        nome: formData.nome.trim(),
+        rede: formData.rede,
+        municipio: formData.municipio.trim() || null,
+        estado: formData.estado || null,
+        inep: formData.inep.trim() || null,
+        logo_url: formData.logo_url || null
+      }
+
       if (editando) {
         await supabase
           .from('escolas')
-          .update({
-            nome: formData.nome.trim(),
-            rede: formData.rede
-          })
+          .update(dadosEscola)
           .eq('id', editando.id)
       } else {
         await supabase
           .from('escolas')
           .insert({
-            nome: formData.nome.trim(),
-            rede: formData.rede,
+            ...dadosEscola,
             usuario_id: user.id
           })
       }
@@ -174,7 +285,8 @@ export default function EscolasPage() {
 
   const escolasFiltradas = escolas.filter(e =>
     e.nome.toLowerCase().includes(busca.toLowerCase()) ||
-    e.rede.toLowerCase().includes(busca.toLowerCase())
+    e.rede.toLowerCase().includes(busca.toLowerCase()) ||
+    e.municipio?.toLowerCase().includes(busca.toLowerCase())
   )
 
   return (
@@ -233,19 +345,39 @@ export default function EscolasPage() {
           {escolasFiltradas.map((escola) => (
             <Card key={escola.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3 mb-3">
+                  {/* Logo ou ícone */}
+                  {escola.logo_url ? (
+                    <img 
+                      src={escola.logo_url} 
+                      alt={escola.nome}
+                      className="w-12 h-12 rounded-lg object-cover border"
+                    />
+                  ) : (
                     <div className="p-2 bg-indigo-100 rounded-lg">
-                      <School className="w-5 h-5 text-indigo-600" />
+                      <School className="w-8 h-8 text-indigo-600" />
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{escola.nome}</h3>
+                  )}
+                  
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 truncate">{escola.nome}</h3>
+                    <div className="flex items-center gap-2 mt-1">
                       {getRedeBadge(escola.rede)}
                     </div>
                   </div>
                 </div>
+
+                {/* Informações adicionais */}
+                <div className="text-sm text-gray-500 space-y-1 mb-3">
+                  {escola.municipio && (
+                    <p>{escola.municipio}{escola.estado ? ` - ${escola.estado}` : ''}</p>
+                  )}
+                  {escola.inep && (
+                    <p className="font-mono text-xs">INEP: {escola.inep}</p>
+                  )}
+                </div>
                 
-                <div className="flex items-center justify-between mt-4 pt-3 border-t">
+                <div className="flex items-center justify-between pt-3 border-t">
                   <span className="text-sm text-gray-500">
                     {escola.turmas_count} {escola.turmas_count === 1 ? 'turma' : 'turmas'}
                   </span>
@@ -282,6 +414,63 @@ export default function EscolasPage() {
         title={editando ? 'Editar Escola' : 'Nova Escola'}
       >
         <div className="space-y-4">
+          {/* Logo */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Logo da Escola (opcional)
+            </label>
+            <div className="flex items-center gap-4">
+              {logoPreview ? (
+                <div className="relative">
+                  <img 
+                    src={logoPreview} 
+                    alt="Logo" 
+                    className="w-20 h-20 rounded-lg object-cover border"
+                  />
+                  <button
+                    type="button"
+                    onClick={removerLogo}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                  <Image className="w-8 h-8 text-gray-400" />
+                </div>
+              )}
+              
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingLogo}
+                >
+                  {uploadingLogo ? (
+                    'Enviando...'
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      {logoPreview ? 'Trocar' : 'Upload'}
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-gray-500 mt-1">PNG, JPG até 2MB</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Nome */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Nome da Escola *
@@ -293,6 +482,7 @@ export default function EscolasPage() {
             />
           </div>
 
+          {/* Rede */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Rede de Ensino *
@@ -315,6 +505,46 @@ export default function EscolasPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Município e Estado */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Município
+              </label>
+              <Input
+                value={formData.municipio}
+                onChange={(e) => setFormData({ ...formData, municipio: e.target.value })}
+                placeholder="Ex: Teresina"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Estado
+              </label>
+              <Select
+                options={ESTADOS.map(e => ({ value: e.value, label: e.value }))}
+                value={formData.estado}
+                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* INEP */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Código INEP (opcional)
+            </label>
+            <Input
+              value={formData.inep}
+              onChange={(e) => setFormData({ ...formData, inep: e.target.value })}
+              placeholder="Ex: 22001234"
+              maxLength={8}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Código de 8 dígitos do INEP/MEC
+            </p>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
