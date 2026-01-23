@@ -42,24 +42,17 @@ interface Simulado {
   questoes_ids?: string[]
 }
 
-interface SimuladoQuestao {
+interface QuestaoExpandida {
   id: string
-  simulado_id: string
-  questao_id: string
-  ordem: number
-  pontuacao_personalizada?: number
-  questoes: {
-    id: string
-    enunciado: string
-    alternativa_a: string
-    alternativa_b: string
-    alternativa_c: string
-    alternativa_d: string
-    alternativa_e?: string
-    resposta_correta: string
-    nivel_dificuldade: string
-    habilidade_bncc: string
-  }
+  enunciado: string
+  alternativa_a: string
+  alternativa_b: string
+  alternativa_c: string
+  alternativa_d: string
+  alternativa_e?: string
+  resposta_correta: string
+  nivel_dificuldade: string
+  habilidade_bncc: string
 }
 
 interface Turma {
@@ -110,12 +103,12 @@ export default function SimuladosPage() {
   const [modalRespostasAberto, setModalRespostasAberto] = useState(false)
   const [simuladoRespostas, setSimuladoRespostas] = useState<Simulado | null>(null)
   const [respostasAlunos, setRespostasAlunos] = useState<RespostaAluno[]>([])
-  const [questoesSimulado, setQuestoesSimulado] = useState<SimuladoQuestao[]>([])
+  const [questoesSimulado, setQuestoesSimulado] = useState<QuestaoExpandida[]>([])
   const [loadingRespostas, setLoadingRespostas] = useState(false)
   
   // Expandir card
   const [expandido, setExpandido] = useState<string | null>(null)
-  const [questoesExpandidas, setQuestoesExpandidas] = useState<SimuladoQuestao[]>([])
+  const [questoesExpandidas, setQuestoesExpandidas] = useState<QuestaoExpandida[]>([])
   const [loadingQuestoes, setLoadingQuestoes] = useState(false)
   
   // Menu de ações (dropdown)
@@ -175,14 +168,9 @@ export default function SimuladosPage() {
         .order('created_at', { ascending: false })
       
       if (simuladosData) {
-        // Buscar contagem de questões para cada simulado
+        // Calcular contagem de questões baseado no questoes_ids
         const simuladosComContagem = await Promise.all(
           simuladosData.map(async (s) => {
-            const { count: questoesCount } = await supabase
-              .from('simulado_questoes')
-              .select('*', { count: 'exact', head: true })
-              .eq('simulado_id', s.id)
-            
             // Contar alunos únicos que responderam
             const { data: alunosUnicos } = await supabase
               .from('respostas_simulado')
@@ -193,7 +181,7 @@ export default function SimuladosPage() {
             
             return {
               ...s,
-              questoes_count: s.questoes_ids?.length || questoesCount || 0,
+              questoes_count: s.questoes_ids?.length || 0,
               respostas_count: alunosSet.size
             }
           })
@@ -278,21 +266,24 @@ export default function SimuladosPage() {
     setMenuAberto(null)
     
     try {
-      // Carregar questões do simulado COM resposta_correta
-      const { data: questoes } = await supabase
-        .from('simulado_questoes')
-        .select(`
-          *,
-          questoes (
-            id, enunciado, alternativa_a, alternativa_b, 
-            alternativa_c, alternativa_d, alternativa_e, resposta_correta,
-            nivel_dificuldade, habilidade_bncc
-          )
-        `)
-        .eq('simulado_id', simulado.id)
-        .order('ordem')
-      
-      setQuestoesSimulado(questoes || [])
+      // =============================================
+      // CORRIGIDO: Buscar questões pelo questoes_ids
+      // =============================================
+      if (simulado.questoes_ids && simulado.questoes_ids.length > 0) {
+        const { data: questoes } = await supabase
+          .from('questoes')
+          .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, nivel_dificuldade, habilidade_bncc')
+          .in('id', simulado.questoes_ids)
+        
+        // Ordenar na mesma ordem do questoes_ids
+        const questoesOrdenadas = simulado.questoes_ids
+          .map(id => questoes?.find(q => q.id === id))
+          .filter(Boolean) as QuestaoExpandida[]
+        
+        setQuestoesSimulado(questoesOrdenadas)
+      } else {
+        setQuestoesSimulado([])
+      }
       
       // Carregar respostas dos alunos
       const { data: respostas } = await supabase
@@ -429,12 +420,6 @@ export default function SimuladosPage() {
         .delete()
         .eq('simulado_id', simuladoExcluir.id)
       
-      // Excluir questões do simulado
-      await supabase
-        .from('simulado_questoes')
-        .delete()
-        .eq('simulado_id', simuladoExcluir.id)
-      
       // Por fim excluir o simulado
       await supabase
         .from('simulados')
@@ -476,20 +461,27 @@ export default function SimuladosPage() {
     setLoadingQuestoes(true)
     
     try {
-      const { data } = await supabase
-        .from('simulado_questoes')
-        .select(`
-          *,
-          questoes (
-            id, enunciado, alternativa_a, alternativa_b, 
-            alternativa_c, alternativa_d, alternativa_e, resposta_correta,
-            nivel_dificuldade, habilidade_bncc
-          )
-        `)
-        .eq('simulado_id', simuladoId)
-        .order('ordem')
+      // Encontrar o simulado
+      const simulado = simulados.find(s => s.id === simuladoId)
       
-      setQuestoesExpandidas(data || [])
+      if (simulado?.questoes_ids && simulado.questoes_ids.length > 0) {
+        // =============================================
+        // CORRIGIDO: Buscar questões pelo questoes_ids
+        // =============================================
+        const { data: questoes } = await supabase
+          .from('questoes')
+          .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, nivel_dificuldade, habilidade_bncc')
+          .in('id', simulado.questoes_ids)
+        
+        // Ordenar na mesma ordem do questoes_ids
+        const questoesOrdenadas = simulado.questoes_ids
+          .map(id => questoes?.find(q => q.id === id))
+          .filter(Boolean) as QuestaoExpandida[]
+        
+        setQuestoesExpandidas(questoesOrdenadas)
+      } else {
+        setQuestoesExpandidas([])
+      }
     } catch (error) {
       console.error('Erro ao carregar questões:', error)
     } finally {
@@ -498,47 +490,54 @@ export default function SimuladosPage() {
   }
 
   // =============================================
-  // FUNÇÃO - BAIXAR PROVA (WORD)
+  // FUNÇÃO CORRIGIDA - BAIXAR PROVA (WORD)
   // =============================================
   const baixarProva = async (simulado: Simulado) => {
     setDownloadingId(simulado.id)
     setMenuAberto(null)
     
     try {
-      // Buscar questões do simulado
-      const { data: questoes } = await supabase
-        .from('simulado_questoes')
-        .select(`
-          *,
-          questoes (
-            id, enunciado, alternativa_a, alternativa_b, 
-            alternativa_c, alternativa_d, alternativa_e, resposta_correta,
-            nivel_dificuldade, habilidade_bncc
-          )
-        `)
-        .eq('simulado_id', simulado.id)
-        .order('ordem')
-      
-      if (!questoes || questoes.length === 0) {
+      // Verificar se tem questões
+      if (!simulado.questoes_ids || simulado.questoes_ids.length === 0) {
         alert('Este simulado não possui questões!')
         return
       }
       
-      // Gerar documento Word (valor = 10 pontos é fixo no arquivo)
+      // =============================================
+      // CORRIGIDO: Buscar questões pelo questoes_ids
+      // =============================================
+      const { data: questoes, error } = await supabase
+        .from('questoes')
+        .select('id, enunciado, alternativa_a, alternativa_b, alternativa_c, alternativa_d, alternativa_e, resposta_correta, habilidade_bncc')
+        .in('id', simulado.questoes_ids)
+      
+      if (error) throw error
+      
+      if (!questoes || questoes.length === 0) {
+        alert('Não foi possível carregar as questões!')
+        return
+      }
+      
+      // Ordenar na mesma ordem do questoes_ids
+      const questoesOrdenadas = simulado.questoes_ids
+        .map(id => questoes.find(q => q.id === id))
+        .filter(Boolean)
+      
+      // Gerar documento Word
       await gerarProvaWord({
         titulo: simulado.titulo,
         turma: getTurmasNomes(simulado),
         data: simulado.data_aplicacao || '',
         duracao: simulado.tempo_minutos || 60,
-        questoes: questoes.map(q => ({
-          enunciado: q.questoes.enunciado,
-          alternativa_a: q.questoes.alternativa_a,
-          alternativa_b: q.questoes.alternativa_b,
-          alternativa_c: q.questoes.alternativa_c,
-          alternativa_d: q.questoes.alternativa_d,
-          alternativa_e: q.questoes.alternativa_e || '',
-          resposta_correta: q.questoes.resposta_correta,
-          habilidade_bncc: q.questoes.habilidade_bncc
+        questoes: questoesOrdenadas.map(q => ({
+          enunciado: q!.enunciado,
+          alternativa_a: q!.alternativa_a,
+          alternativa_b: q!.alternativa_b,
+          alternativa_c: q!.alternativa_c,
+          alternativa_d: q!.alternativa_d,
+          alternativa_e: q!.alternativa_e || '',
+          resposta_correta: q!.resposta_correta,
+          habilidade_bncc: q!.habilidade_bncc
         }))
       })
     } catch (error) {
@@ -550,38 +549,49 @@ export default function SimuladosPage() {
   }
 
   // =============================================
-  // FUNÇÃO - BAIXAR GABARITO (PDF)
+  // FUNÇÃO CORRIGIDA - BAIXAR GABARITO (PDF)
   // =============================================
   const baixarGabarito = async (simulado: Simulado) => {
     setDownloadingGabaritoId(simulado.id)
     setMenuAberto(null)
     
     try {
-      // Buscar questões do simulado COM resposta_correta
-      const { data: questoes } = await supabase
-        .from('simulado_questoes')
-        .select(`
-          *,
-          questoes (
-            id, enunciado, resposta_correta
-          )
-        `)
-        .eq('simulado_id', simulado.id)
-        .order('ordem')
-      
-      if (!questoes || questoes.length === 0) {
+      // Verificar se tem questões
+      if (!simulado.questoes_ids || simulado.questoes_ids.length === 0) {
         alert('Este simulado não possui questões!')
         return
       }
+      
+      // =============================================
+      // CORRIGIDO: Buscar questões pelo questoes_ids
+      // =============================================
+      const { data: questoes, error } = await supabase
+        .from('questoes')
+        .select('id, enunciado, resposta_correta')
+        .in('id', simulado.questoes_ids)
+      
+      if (error) throw error
+      
+      if (!questoes || questoes.length === 0) {
+        alert('Não foi possível carregar as questões!')
+        return
+      }
+      
+      // Ordenar na mesma ordem do questoes_ids
+      const questoesOrdenadas = simulado.questoes_ids
+        .map(id => questoes.find(q => q.id === id))
+        .filter(Boolean)
+      
+      console.log('Questões para gabarito:', questoesOrdenadas) // Debug
       
       // Gerar gabarito PDF
       await exportGabaritoPDF({
         titulo: simulado.titulo,
         turma: getTurmasNomes(simulado),
-        questoes: questoes.map(q => ({
-          id: q.questoes.id,
-          enunciado: q.questoes.enunciado,
-          resposta_correta: q.questoes.resposta_correta
+        questoes: questoesOrdenadas.map(q => ({
+          id: q!.id,
+          enunciado: q!.enunciado,
+          resposta_correta: q!.resposta_correta
         }))
       })
     } catch (error) {
@@ -623,25 +633,6 @@ export default function SimuladosPage() {
               turma_id: turmaId
             }))
           )
-      }
-      
-      // Copiar questões da tabela simulado_questoes
-      const { data: questoesOriginal } = await supabase
-        .from('simulado_questoes')
-        .select('*')
-        .eq('simulado_id', simulado.id)
-        .order('ordem')
-      
-      if (questoesOriginal && questoesOriginal.length > 0) {
-        const novasQuestoes = questoesOriginal.map(q => ({
-          simulado_id: novoSimulado.id,
-          questao_id: q.questao_id,
-          ordem: q.ordem
-        }))
-        
-        await supabase
-          .from('simulado_questoes')
-          .insert(novasQuestoes)
       }
       
       carregarDados()
@@ -918,21 +909,21 @@ export default function SimuladosPage() {
                               </span>
                               <div className="flex-1">
                                 <p className="text-sm text-gray-700 line-clamp-2">
-                                  {q.questoes.enunciado}
+                                  {q.enunciado}
                                 </p>
                                 <div className="flex gap-2 mt-1">
                                   <span className="text-xs text-gray-500">
-                                    {q.questoes.habilidade_bncc}
+                                    {q.habilidade_bncc}
                                   </span>
                                   <span className={`text-xs px-1.5 rounded ${
-                                    q.questoes.nivel_dificuldade === 'facil' ? 'bg-green-100 text-green-700' :
-                                    q.questoes.nivel_dificuldade === 'medio' ? 'bg-yellow-100 text-yellow-700' :
+                                    q.nivel_dificuldade === 'facil' ? 'bg-green-100 text-green-700' :
+                                    q.nivel_dificuldade === 'medio' ? 'bg-yellow-100 text-yellow-700' :
                                     'bg-red-100 text-red-700'
                                   }`}>
-                                    {q.questoes.nivel_dificuldade}
+                                    {q.nivel_dificuldade}
                                   </span>
                                   <span className="text-xs bg-blue-100 text-blue-700 px-1.5 rounded">
-                                    Resp: {q.questoes.resposta_correta}
+                                    Resp: {q.resposta_correta}
                                   </span>
                                 </div>
                               </div>
@@ -1068,7 +1059,7 @@ export default function SimuladosPage() {
             Tem certeza que deseja excluir o simulado <strong>{simuladoExcluir?.titulo}</strong>?
           </p>
           <p className="text-sm text-red-600">
-            Esta ação não pode ser desfeita. Todas as questões e respostas associadas serão removidas.
+            Esta ação não pode ser desfeita. Todas as respostas associadas serão removidas.
           </p>
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setModalExcluirAberto(false)}>
@@ -1164,7 +1155,7 @@ export default function SimuladosPage() {
                   </div>
                   <div className="flex gap-1 flex-wrap">
                     {questoesSimulado.map((q, idx) => {
-                      const resposta = respostasAluno.find(r => r.questao_id === q.questao_id)
+                      const resposta = respostasAluno.find(r => r.questao_id === q.id)
                       return (
                         <span
                           key={q.id}
