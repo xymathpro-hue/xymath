@@ -31,7 +31,7 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
   }
 
   /* =========================
-     BUSCAR QUESTÕES
+     BUSCAR QUESTÕES DO SIMULADO
   ========================== */
   const { data: questoes, error: questoesError } = await supabase
     .from('simulado_questoes')
@@ -51,22 +51,11 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
     const supabase = await createClient()
     const questaoId = String(formData.get('questao_id'))
 
-    // Buscar questão
-    const { data: questao } = await supabase
-      .from('simulado_questoes')
-      .select('ordem')
-      .eq('id', questaoId)
-      .single()
-
-    if (!questao) return
-
-    // Remover
     await supabase
       .from('simulado_questoes')
       .delete()
       .eq('id', questaoId)
 
-    // Ajustar ordem das seguintes
     await supabase.rpc('reordenar_simulado_questoes', {
       p_simulado_id: params.id
     })
@@ -101,7 +90,6 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
 
     if (!outra) return
 
-    // Trocar ordens
     await supabase
       .from('simulado_questoes')
       .update({ ordem: atual.ordem })
@@ -118,6 +106,7 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
   return (
     <div className="p-6 space-y-6">
 
+      {/* Cabeçalho */}
       <div>
         <h1 className="text-2xl font-bold">
           Editar Simulado
@@ -127,8 +116,8 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
         </p>
       </div>
 
-      {/* Ações */}
-      <div className="flex gap-3">
+      {/* Botões principais */}
+      <div className="flex flex-wrap gap-3">
         <a
           href={`/simulados/${params.id}/editar/adicionar-banco`}
           className="rounded bg-blue-600 px-4 py-2 text-white"
@@ -142,17 +131,31 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
         >
           + Criar questão
         </a>
+
+        <a
+          href={`/simulados/${params.id}/editar/importar`}
+          className="rounded bg-purple-600 px-4 py-2 text-white"
+        >
+          Importar Word / PDF
+        </a>
+
+        <a
+          href={`/simulados/${params.id}/gabarito`}
+          className="rounded bg-gray-800 px-4 py-2 text-white"
+        >
+          Ver gabarito
+        </a>
       </div>
 
-      {/* Lista */}
+      {/* Lista de questões */}
       <div className="rounded border bg-white">
         <div className="border-b p-4 font-semibold">
-          Questões do simulado
+          Questões do simulado ({questoes.length})
         </div>
 
         {questoes.length === 0 && (
           <p className="p-4 text-gray-500">
-            Nenhuma questão adicionada.
+            Nenhuma questão adicionada ainda.
           </p>
         )}
 
@@ -164,14 +167,14 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
             >
               <div>
                 <p className="text-xs text-gray-500">
-                  #{q.ordem} · {q.origem}
+                  #{q.ordem} · Origem: {q.origem}
                 </p>
                 <p className="font-medium">
                   {q.enunciado.replace(/<[^>]*>/g, '').slice(0, 160)}…
                 </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
 
                 {/* SUBIR */}
                 <form action={moverQuestao}>
@@ -179,7 +182,7 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
                   <input type="hidden" name="direcao" value="up" />
                   <button
                     disabled={index === 0}
-                    className="text-sm px-2 py-1 border rounded disabled:opacity-30"
+                    className="px-2 py-1 border rounded disabled:opacity-30"
                   >
                     ↑
                   </button>
@@ -191,7 +194,7 @@ export default async function EditarSimuladoPage({ params }: PageProps) {
                   <input type="hidden" name="direcao" value="down" />
                   <button
                     disabled={index === questoes.length - 1}
-                    className="text-sm px-2 py-1 border rounded disabled:opacity-30"
+                    className="px-2 py-1 border rounded disabled:opacity-30"
                   >
                     ↓
                   </button>
