@@ -8,9 +8,18 @@ export interface Usuario {
   created_at: string;
 }
 
+export interface Escola {
+  id: string;
+  usuario_id: string;
+  nome: string;
+  rede: 'municipal' | 'estadual' | 'federal' | 'privada';
+  created_at: string;
+}
+
 export interface Turma {
   id: string;
   usuario_id: string;
+  escola_id?: string;
   nome: string;
   ano_serie: string;
   turno: 'matutino' | 'vespertino' | 'noturno';
