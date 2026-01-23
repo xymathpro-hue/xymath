@@ -1,5 +1,8 @@
-import { notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase-server'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase-browser'
 
 interface PageProps {
   params: {
@@ -7,80 +10,91 @@ interface PageProps {
   }
 }
 
-export default async function SimuladoPage({ params }: PageProps) {
-  const supabase = await createClient()
+export default function EditarSimuladoPage({ params }: PageProps) {
+  const supabase = createClient()
+  const router = useRouter()
 
-  /* =========================
-     BUSCAR SIMULADO
-  ========================== */
-  const { data: simulado, error } = await supabase
-    .from('simulados')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  const [loading, setLoading] = useState(true)
+  const [salvando, setSalvando] = useState(false)
+  const [simulado, setSimulado] = useState<any>(null)
 
-  if (error || !simulado) {
-    notFound()
+  // =========================
+  // CARREGAR SIMULADO
+  // =========================
+  useEffect(() => {
+    const carregar = async () => {
+      const { data, error } = await supabase
+        .from('simulados')
+        .select('*')
+        .eq('id', params.id)
+        .single()
+
+      if (error || !data) {
+        alert('Simulado não encontrado')
+        router.push('/simulados')
+        return
+      }
+
+      setSimulado(data)
+      setLoading(false)
+    }
+
+    carregar()
+  }, [params.id])
+
+  // =========================
+  // PUBLICAR SIMULADO
+  // =========================
+  const publicarSimulado = async () => {
+    setSalvando(true)
+
+    const { error } = await supabase
+      .from('simulados')
+      .update({ status: 'publicado' })
+      .eq('id', params.id)
+
+    setSalvando(false)
+
+    if (error) {
+      alert('Erro ao publicar simulado')
+      return
+    }
+
+    alert('Simulado publicado com sucesso!')
+    // 👉 redirect seguro
+    router.push(`/simulados/${params.id}`)
+  }
+
+  if (loading) {
+    return <div className="p-6">Carregando...</div>
   }
 
   return (
     <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Editar Simulado</h1>
 
-      {/* Cabeçalho */}
-      <div>
-        <h1 className="text-2xl font-bold">
-          {simulado.titulo}
-        </h1>
-        <p className="text-gray-600">
-          Status:{' '}
-          <span className="font-semibold">
-            {simulado.status}
-          </span>
-        </p>
-      </div>
-
-      {/* Ações */}
-      <div className="flex flex-wrap gap-3">
-        <a
-          href={`/simulados/${params.id}/editar`}
-          className="rounded bg-blue-600 px-4 py-2 text-white"
-        >
-          Editar simulado
-        </a>
-
-        <a
-          href={`/simulados/${params.id}/gabarito`}
-          className="rounded bg-gray-800 px-4 py-2 text-white"
-        >
-          Ver gabarito
-        </a>
-
-        <a
-          href={`/simulados/${params.id}/folha-respostas`}
-          className="rounded bg-purple-600 px-4 py-2 text-white"
-        >
-          Folha de respostas
-        </a>
-      </div>
-
-      {/* Informações */}
       <div className="rounded border bg-white p-4 space-y-2">
-        <p>
-          <strong>Tipo de pontuação:</strong>{' '}
-          {simulado.tipo_pontuacao ?? 'Padrão'}
-        </p>
-
-        <p>
-          <strong>Valor total:</strong>{' '}
-          {simulado.valor_total ?? 10} pontos
-        </p>
-
-        <p>
-          <strong>Duração:</strong>{' '}
-          {simulado.tempo_minutos ?? '--'} minutos
-        </p>
+        <p><strong>Título:</strong> {simulado.titulo}</p>
+        <p><strong>Status:</strong> {simulado.status}</p>
+        <p><strong>Valor total:</strong> {simulado.valor_total ?? 10} pontos</p>
       </div>
 
+      <div className="flex gap-3">
+        <button
+          onClick={publicarSimulado}
+          disabled={salvando}
+          className="rounded bg-green-600 px-4 py-2 text-white disabled:opacity-50"
+        >
+          {salvando ? 'Publicando...' : 'Publicar simulado'}
+        </button>
+
+        <button
+          onClick={() => router.push('/simulados')}
+          className="rounded bg-gray-500 px-4 py-2 text-white"
+        >
+          Voltar
+        </button>
+      </div>
     </div>
   )
 }
