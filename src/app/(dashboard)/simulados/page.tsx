@@ -498,14 +498,14 @@ export default function SimuladosPage() {
   }
 
   // =============================================
-  // FUNÇÃO CORRIGIDA - BAIXAR PROVA COM RESPOSTA_CORRETA
+  // FUNÇÃO - BAIXAR PROVA (WORD)
   // =============================================
   const baixarProva = async (simulado: Simulado) => {
     setDownloadingId(simulado.id)
     setMenuAberto(null)
     
     try {
-      // Buscar questões do simulado COM alternativa_e e resposta_correta
+      // Buscar questões do simulado
       const { data: questoes } = await supabase
         .from('simulado_questoes')
         .select(`
@@ -524,21 +524,20 @@ export default function SimuladosPage() {
         return
       }
       
-      // Gerar documento Word COM resposta_correta e alternativa_e
+      // Gerar documento Word (valor = 10 pontos é fixo no arquivo)
       await gerarProvaWord({
         titulo: simulado.titulo,
         turma: getTurmasNomes(simulado),
         data: simulado.data_aplicacao || '',
         duracao: simulado.tempo_minutos || 60,
-        valorTotal: 10, // Sempre 10 pontos
         questoes: questoes.map(q => ({
           enunciado: q.questoes.enunciado,
           alternativa_a: q.questoes.alternativa_a,
           alternativa_b: q.questoes.alternativa_b,
           alternativa_c: q.questoes.alternativa_c,
           alternativa_d: q.questoes.alternativa_d,
-          alternativa_e: q.questoes.alternativa_e || '', // Inclui alternativa E
-          resposta_correta: q.questoes.resposta_correta, // ✅ INCLUÍDO!
+          alternativa_e: q.questoes.alternativa_e || '',
+          resposta_correta: q.questoes.resposta_correta,
           habilidade_bncc: q.questoes.habilidade_bncc
         }))
       })
@@ -551,14 +550,14 @@ export default function SimuladosPage() {
   }
 
   // =============================================
-  // NOVA FUNÇÃO - BAIXAR GABARITO SEPARADO
+  // FUNÇÃO - BAIXAR GABARITO (PDF)
   // =============================================
   const baixarGabarito = async (simulado: Simulado) => {
     setDownloadingGabaritoId(simulado.id)
     setMenuAberto(null)
     
     try {
-      // Buscar questões do simulado COM resposta_correta e enunciado
+      // Buscar questões do simulado COM resposta_correta
       const { data: questoes } = await supabase
         .from('simulado_questoes')
         .select(`
