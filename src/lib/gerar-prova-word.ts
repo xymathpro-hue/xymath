@@ -10,7 +10,6 @@ interface QuestaoProva {
   alternativa_e?: string
   resposta_correta?: string
   habilidade_bncc?: string
-  imagem_url?: string
 }
 
 interface DadosProva {
@@ -19,39 +18,43 @@ interface DadosProva {
   data?: string
   duracao: number
   questoes: QuestaoProva[]
-  valorTotal?: number // Se não informado, será 10
-  incluirGabarito?: boolean // Se não informado, será true
+  escola?: {
+    nome: string
+    municipio?: string
+    estado?: string
+    rede?: string
+  }
 }
 
 export async function gerarProvaWord(dados: DadosProva): Promise<void> {
-  const { 
-    titulo, 
-    turma, 
-    data, 
-    duracao, 
-    questoes, 
-    valorTotal = 10,
-    incluirGabarito = true 
-  } = dados
+  const { titulo, turma, data, duracao, questoes, escola } = dados
 
-  // Calcular valor de cada questão (total sempre = valorTotal, padrão 10)
-  const valorPorQuestao = questoes.length > 0 ? (valorTotal / questoes.length).toFixed(2) : '1'
-  const valorTotalFormatado = valorTotal.toFixed(1)
+  // VALOR TOTAL SEMPRE = 10 PONTOS
+  const valorTotal = 10
+  const valorPorQuestao = questoes.length > 0 ? (valorTotal / questoes.length) : 1
+  const valorPorQuestaoFormatado = valorPorQuestao.toFixed(2).replace('.', ',')
 
-  // Cabeçalho
-  const headerParagraphs = [
-    // Nome da escola (placeholder)
+  // Nome da escola
+  const nomeEscola = escola?.nome || '[NOME DA ESCOLA]'
+  const subtituloEscola = escola?.municipio && escola?.estado 
+    ? `${escola.rede ? escola.rede.charAt(0).toUpperCase() + escola.rede.slice(1) + ' - ' : ''}${escola.municipio} - ${escola.estado}`
+    : '[Endereço da escola]'
+
+  const children: any[] = []
+
+  // ========== CABEÇALHO ==========
+  children.push(
     new Paragraph({
       alignment: AlignmentType.CENTER,
       children: [
-        new TextRun({ text: '[NOME DA ESCOLA]', bold: true, size: 28 }),
+        new TextRun({ text: nomeEscola, bold: true, size: 28 }),
       ],
       spacing: { after: 50 },
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
       children: [
-        new TextRun({ text: '[Endereço da escola]', size: 20, italics: true, color: '666666' }),
+        new TextRun({ text: subtituloEscola, size: 20, italics: true, color: '666666' }),
       ],
       spacing: { after: 150 },
     }),
@@ -68,10 +71,10 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
         new TextRun({ text: titulo, bold: true, size: 32 }),
       ],
       spacing: { after: 200 },
-    }),
-  ]
+    })
+  )
 
-  // Tabela de informações
+  // ========== TABELA DE INFORMAÇÕES ==========
   const infoTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
@@ -106,7 +109,7 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
             children: [new Paragraph({
               children: [
                 new TextRun({ text: 'Professor(a): ', bold: true }),
-                new TextRun({ text: '________________' }),
+                new TextRun({ text: '________________________________' }),
               ]
             })],
             borders: noBorders(),
@@ -129,7 +132,7 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
             children: [new Paragraph({
               children: [
                 new TextRun({ text: 'Aluno(a): ', bold: true }),
-                new TextRun({ text: '________________________________________________' }),
+                new TextRun({ text: '________________________________________________________________' }),
               ]
             })],
             borders: noBorders(),
@@ -142,7 +145,9 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
           new TableCell({
             children: [new Paragraph({
               children: [
-                new TextRun({ text: 'Tempo: ', bold: true }),
+                new TextRun({ text: 'Nº: ', bold: true }),
+                new TextRun({ text: '_______' }),
+                new TextRun({ text: '          Tempo: ', bold: true }),
                 new TextRun({ text: `${duracao} minutos` }),
               ]
             })],
@@ -152,7 +157,9 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
             children: [new Paragraph({
               children: [
                 new TextRun({ text: 'Valor: ', bold: true }),
-                new TextRun({ text: `${valorTotalFormatado} pontos` }),
+                new TextRun({ text: '10,0 pontos' }),
+                new TextRun({ text: '     Nota: ', bold: true }),
+                new TextRun({ text: '_______' }),
               ],
               alignment: AlignmentType.RIGHT,
             })],
@@ -163,15 +170,15 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
     ],
   })
 
-  headerParagraphs.push(
+  children.push(
     new Paragraph({ children: [], spacing: { after: 100 } }),
     // @ts-ignore
     infoTable,
-    new Paragraph({ children: [], spacing: { after: 150 } }),
+    new Paragraph({ children: [], spacing: { after: 150 } })
   )
 
-  // Instruções
-  headerParagraphs.push(
+  // ========== INSTRUÇÕES ==========
+  children.push(
     new Paragraph({
       children: [new TextRun({ text: 'INSTRUÇÕES:', bold: true, size: 22 })],
       spacing: { after: 80 },
@@ -186,6 +193,10 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
     }),
     new Paragraph({
       children: [new TextRun({ text: '• Utilize caneta azul ou preta.', size: 20 })],
+      spacing: { after: 50 },
+    }),
+    new Paragraph({
+      children: [new TextRun({ text: '• Não é permitido o uso de calculadora, salvo indicação contrária.', size: 20 })],
       spacing: { after: 150 },
     }),
     // Linha divisória
@@ -193,46 +204,44 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
       children: [new TextRun({ text: '─'.repeat(70) })],
       alignment: AlignmentType.CENTER,
       spacing: { after: 200 },
-    }),
+    })
   )
 
-  // Questões
-  const questoesParagraphs: Paragraph[] = []
-
+  // ========== QUESTÕES ==========
   questoes.forEach((q, idx) => {
     // Número da questão com valor
-    questoesParagraphs.push(
+    children.push(
       new Paragraph({
         children: [
           new TextRun({ text: `Questão ${idx + 1}`, bold: true, size: 24 }),
-          new TextRun({ text: ` (${valorPorQuestao} ${parseFloat(valorPorQuestao) === 1 ? 'ponto' : 'pontos'})`, size: 20 }),
+          new TextRun({ text: ` (${valorPorQuestaoFormatado} ${valorPorQuestao === 1 ? 'ponto' : 'pontos'})`, size: 20 }),
         ],
         spacing: { before: 300, after: 100 },
       })
     )
 
-    // Habilidade BNCC (se houver)
+    // Habilidade BNCC (se houver) + Enunciado
     if (q.habilidade_bncc) {
-      questoesParagraphs.push(
+      children.push(
         new Paragraph({
           children: [
-            new TextRun({ text: `[TEMA: ${q.habilidade_bncc}] `, italics: true, size: 18, color: '666666' }),
-            new TextRun({ text: q.enunciado, size: 22 }),
+            new TextRun({ text: `[${q.habilidade_bncc}] `, italics: true, size: 18, color: '666666' }),
           ],
-          spacing: { after: 150 },
-        })
-      )
-    } else {
-      // Enunciado sem habilidade
-      questoesParagraphs.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: q.enunciado, size: 22 }),
-          ],
-          spacing: { after: 150 },
+          spacing: { after: 50 },
         })
       )
     }
+
+    // Enunciado
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({ text: q.enunciado, size: 22 }),
+        ],
+        spacing: { after: 150 },
+        alignment: AlignmentType.JUSTIFIED,
+      })
+    )
 
     // Alternativas
     const alternativas = [
@@ -244,10 +253,10 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
     ].filter(alt => alt.texto)
 
     alternativas.forEach(alt => {
-      questoesParagraphs.push(
+      children.push(
         new Paragraph({
           children: [
-            new TextRun({ text: `( ) ${alt.letra}) `, bold: true, size: 22 }),
+            new TextRun({ text: `(   ) ${alt.letra}) `, bold: true, size: 22 }),
             new TextRun({ text: alt.texto || '', size: 22 }),
           ],
           spacing: { after: 80 },
@@ -256,7 +265,7 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
     })
 
     // Espaçamento entre questões
-    questoesParagraphs.push(
+    children.push(
       new Paragraph({
         children: [],
         spacing: { after: 200 },
@@ -264,153 +273,20 @@ export async function gerarProvaWord(dados: DadosProva): Promise<void> {
     )
   })
 
-  // =============================================
-  // GABARITO - PÁGINA SEPARADA
-  // =============================================
-  const gabaritoParagraphs: Paragraph[] = []
-
-  if (incluirGabarito) {
-    // Quebra de página
-    gabaritoParagraphs.push(
-      new Paragraph({
-        children: [],
-        pageBreakBefore: true,
-      })
-    )
-
-    // Cabeçalho do gabarito
-    gabaritoParagraphs.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [
-          new TextRun({ text: '[NOME DA ESCOLA]', bold: true, size: 28 }),
-        ],
-        spacing: { after: 100 },
-      }),
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [
-          new TextRun({ text: 'GABARITO OFICIAL', bold: true, size: 36 }),
-        ],
-        spacing: { after: 100 },
-      }),
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [
-          new TextRun({ text: titulo, size: 28 }),
-        ],
-        spacing: { after: 100 },
-      }),
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [
-          new TextRun({ text: `Turma: ${turma}`, size: 24 }),
-        ],
-        spacing: { after: 300 },
-      })
-    )
-
-    // Criar tabela do gabarito (10 questões por linha)
-    const questoesPorLinha = 10
-    const gabaritoRows: TableRow[] = []
-
-    for (let i = 0; i < questoes.length; i += questoesPorLinha) {
-      const questoesLinha = questoes.slice(i, i + questoesPorLinha)
-
-      // Linha com números das questões (fundo cinza)
-      gabaritoRows.push(
-        new TableRow({
-          children: questoesLinha.map((_, idx) =>
-            new TableCell({
-              children: [new Paragraph({
-                children: [new TextRun({ text: `${i + idx + 1}`, bold: true, size: 22 })],
-                alignment: AlignmentType.CENTER
-              })],
-              width: { size: 900, type: WidthType.DXA },
-              shading: { fill: 'E8E8E8' }
-            })
-          )
-        })
-      )
-
-      // Linha com respostas corretas
-      gabaritoRows.push(
-        new TableRow({
-          children: questoesLinha.map(q =>
-            new TableCell({
-              children: [new Paragraph({
-                children: [new TextRun({ 
-                  text: q.resposta_correta?.toUpperCase() || '-', 
-                  bold: true, 
-                  size: 28 
-                })],
-                alignment: AlignmentType.CENTER
-              })],
-              width: { size: 900, type: WidthType.DXA }
-            })
-          )
-        })
-      )
-
-      // Espaçamento entre linhas de gabarito
-      if (i + questoesPorLinha < questoes.length) {
-        gabaritoRows.push(
-          new TableRow({
-            children: [
-              new TableCell({
-                children: [new Paragraph({ children: [] })],
-                columnSpan: questoesPorLinha,
-                borders: noBorders()
-              })
-            ]
-          })
-        )
-      }
-    }
-
-    const gabaritoTable = new Table({
-      rows: gabaritoRows,
-      width: { size: 100, type: WidthType.PERCENTAGE }
-    })
-
-    // @ts-ignore
-    gabaritoParagraphs.push(gabaritoTable)
-
-    // Rodapé do gabarito
-    gabaritoParagraphs.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [
-          new TextRun({ 
-            text: 'Documento exclusivo do professor - Não divulgar aos alunos', 
-            italics: true, 
-            size: 18, 
-            color: '888888' 
-          }),
-        ],
-        spacing: { before: 400 },
-      })
-    )
-  }
-
-  // Criar documento
+  // ========== CRIAR DOCUMENTO ==========
   const doc = new Document({
     sections: [{
       properties: {
         page: {
           margin: {
-            top: 720, // 0.5 inch
-            right: 720,
-            bottom: 720,
+            top: 567,    // ~0.4 inch = 1cm
+            right: 720,  // 0.5 inch
+            bottom: 567,
             left: 720,
           },
         },
       },
-      children: [
-        ...headerParagraphs,
-        ...questoesParagraphs,
-        ...gabaritoParagraphs,
-      ],
+      children
     }],
   })
 
