@@ -40,9 +40,11 @@ export default function CorrigirSimuladoPage() {
       await leitor.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
+
+        // ✅ sucesso
         async (texto) => {
           try {
-            leitor.stop()
+            await leitor.stop()
             setLendo(false)
 
             const payload = JSON.parse(texto) as QRPayload
@@ -53,15 +55,20 @@ export default function CorrigirSimuladoPage() {
 
             // Aqui futuramente entra OCR / captura
             setSucesso(`QR lido com sucesso - Matrícula ${payload.m}`)
-
-          } catch (e) {
+          } catch {
             setErro('QR Code inválido ou mal formatado')
           }
+        },
+
+        // ✅ erro (OBRIGATÓRIO)
+        (errorMessage) => {
+          // erros de leitura contínuos não precisam travar a UI
+          console.debug('Erro leitura QR:', errorMessage)
         }
       )
 
       setLendo(true)
-    } catch (e) {
+    } catch {
       setErro('Não foi possível acessar a câmera')
     }
   }
