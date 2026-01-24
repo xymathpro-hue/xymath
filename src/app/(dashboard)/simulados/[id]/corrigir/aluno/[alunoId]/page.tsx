@@ -1,104 +1,114 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
-import { ArrowLeft, User, FileText } from 'lucide-react'
+import { Html5Qrcode } from 'html5-qrcode'
+import { ArrowLeft, Camera, CheckCircle, XCircle } from 'lucide-react'
 
-interface Aluno {
-  id: string
-  nome: string
-  matricula: string
+interface QRPayload {
+  s: string // simulado
+  a: string // aluno
+  t?: string // turma
+  m?: string // matricula
 }
 
-interface Simulado {
-  id: string
-  titulo: string
-}
-
-export default function CorrigirAlunoPage() {
-  const params = useParams<{ id: string; alunoId: string }>()
+export default function CorrigirSimuladoPage() {
   const router = useRouter()
+  const params = useParams<{ id: string }>()
   const supabase = createClient()
 
-  const [aluno, setAluno] = useState<Aluno | null>(null)
-  const [simulado, setSimulado] = useState<Simulado | null>(null)
-  const [loading, setLoading] = useState(true)
+  const scannerRef = useRef<Html5Qrcode | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const [sucesso, setSucesso] = useState<string | null>(null)
+  const [lendo, setLendo] = useState(false)
 
   useEffect(() => {
-    const carregarDados = async () => {
-      try {
-        const { data: alunoData } = await supabase
-          .from('alunos')
-          .select('id, nome, matricula')
-          .eq('id', params.alunoId)
-          .single()
-
-        if (!alunoData) throw new Error('Aluno não encontrado')
-
-        const { data: simuladoData } = await supabase
-          .from('simulados')
-          .select('id, titulo')
-          .eq('id', params.id)
-          .single()
-
-        if (!simuladoData) throw new Error('Simulado não encontrado')
-
-        setAluno(alunoData)
-        setSimulado(simuladoData)
-      } catch (e) {
-        setErro('Erro ao carregar dados do aluno ou do simulado')
-      } finally {
-        setLoading(false)
-      }
+    return () => {
+      scannerRef.current?.stop().catch(() => {})
     }
+  }, [])
 
-    carregarDados()
-  }, [params.alunoId, params.id])
+  const iniciarLeitura = async () => {
+    setErro(null)
+    setSucesso(null)
 
-  if (loading) {
-    return <div className="p-6">Carregando...</div>
-  }
+    const leitor = new Html5Qrcode('qr-reader')
+    scannerRef.current = leitor
 
-  if (erro) {
-    return (
-      <div className="p-6 text-red-600">
-        {erro}
-      </div>
-    )
+    try {
+      await leitor.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 250 },
+        async (texto) => {
+          try {
+            await leitor.stop()
+            setLendo(false)
+
+            const payload = JSON.parse(texto) as QRPayload
+
+            if (!payload.s || !payload.a) {
+              throw new Error('QR inválido')
+            }
+
+            setSucesso(
+              `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
+            )
+
+            // 🔜 Próximo passo: redirecionar para correção do aluno
+            // router.push(`/simulados/${params.id}/corrigir/aluno/${payload.a}`)
+          } catch {
+            setErro('QR Code inválido ou mal formatado')
+          }
+        },
+        () => {
+          // callback de erro obrigatório (pode ficar vazio)
+        }
+      )
+
+      setLendo(true)
+    } catch {
+      setErro('Não foi possível acessar a câmera')
+    }
   }
 
   return (
     <div className="p-6 space-y-6">
       <button
-        onClick={() => router.push(`/simulados/${params.id}/corrigir`)}
+        onClick={() => router.push(`/simulados/${params.id}`)}
         className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
       >
         <ArrowLeft className="w-4 h-4" />
         Voltar
       </button>
 
-      <h1 className="text-2xl font-bold">Correção do Aluno</h1>
+      <h1 className="text-2xl font-bold">Correção Automática</h1>
 
-      <div className="rounded border bg-white p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <User className="w-4 h-4 text-gray-500" />
-          <strong>Aluno:</strong> {aluno?.nome}
-        </div>
+      <div className="rounded border p-4 bg-white space-y-4">
+        <button
+          onClick={iniciarLeitura}
+          disabled={lendo}
+          className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 text-white disabled:opacity-50"
+        >
+          <Camera className="w-4 h-4" />
+          {lendo ? 'Lendo QR...' : 'Ler QR Code'}
+        </button>
 
-        <div className="flex items-center gap-2">
-          <FileText className="w-4 h-4 text-gray-500" />
-          <strong>Simulado:</strong> {simulado?.titulo}
-        </div>
+        <div id="qr-reader" className="w-full max-w-sm" />
 
-        <p className="text-sm text-gray-500">
-          Matrícula: {aluno?.matricula}
-        </p>
-      </div>
+        {erro && (
+          <div className="flex items-center gap-2 text-red-600">
+            <XCircle className="w-4 h-4" />
+            {erro}
+          </div>
+        )}
 
-      <div className="rounded border border-dashed p-6 text-gray-500 text-center">
-        📌 Próxima etapa: leitura das respostas e correção automática
+        {sucesso && (
+          <div className="flex items-center gap-2 text-green-600">
+            <CheckCircle className="w-4 h-4" />
+            {sucesso}
+          </div>
+        )}
       </div>
     </div>
   )
