@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
-import { ArrowLeft } from 'lucide-react'
 
 interface PageProps {
   params: {
@@ -11,7 +10,7 @@ interface PageProps {
   }
 }
 
-export default function SimuladoPage({ params }: PageProps) {
+export default function EditarSimuladoPage({ params }: PageProps) {
   const supabase = createClient()
   const router = useRouter()
 
@@ -62,8 +61,7 @@ export default function SimuladoPage({ params }: PageProps) {
     }
 
     alert('Simulado publicado com sucesso!')
-
-    // ✅ SEMPRE VOLTA PARA A PÁGINA DO SIMULADO
+    // 🔑 REDIRECIONA PARA A PÁGINA DO SIMULADO (NÃO PARA CORREÇÃO)
     router.push(`/simulados/${params.id}`)
   }
 
@@ -73,37 +71,28 @@ export default function SimuladoPage({ params }: PageProps) {
 
   return (
     <div className="p-6 space-y-6">
-      <button
-        onClick={() => router.back()}
-        className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Voltar
-      </button>
-
-      <h1 className="text-2xl font-bold">{simulado.titulo}</h1>
+      <h1 className="text-2xl font-bold">Editar Simulado</h1>
 
       <div className="rounded border bg-white p-4 space-y-2">
+        <p><strong>Título:</strong> {simulado.titulo}</p>
         <p><strong>Status:</strong> {simulado.status}</p>
         <p><strong>Valor total:</strong> {simulado.valor_total ?? 10} pontos</p>
       </div>
 
       <div className="flex gap-3">
-        {simulado.status !== 'publicado' && (
-          <button
-            onClick={publicarSimulado}
-            disabled={salvando}
-            className="rounded bg-green-600 px-4 py-2 text-white disabled:opacity-50"
-          >
-            {salvando ? 'Publicando...' : 'Publicar simulado'}
-          </button>
-        )}
+        <button
+          onClick={publicarSimulado}
+          disabled={salvando}
+          className="rounded bg-green-600 px-4 py-2 text-white disabled:opacity-50"
+        >
+          {salvando ? 'Publicando...' : 'Publicar simulado'}
+        </button>
 
         <button
-          onClick={() => router.push('/simulados')}
+          onClick={() => router.push(`/simulados/${params.id}`)}
           className="rounded bg-gray-500 px-4 py-2 text-white"
         >
-          Voltar para lista
+          Voltar
         </button>
       </div>
     </div>
