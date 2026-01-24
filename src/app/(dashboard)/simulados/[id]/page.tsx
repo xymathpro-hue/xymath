@@ -3,12 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
-import {
-  FileText,
-  Edit,
-  CheckCircle,
-  ClipboardCheck,
-} from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 export default function SimuladoDetalhePage() {
   const router = useRouter()
@@ -17,6 +12,7 @@ export default function SimuladoDetalhePage() {
 
   const [simulado, setSimulado] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [publicando, setPublicando] = useState(false)
 
   useEffect(() => {
     const carregar = async () => {
@@ -37,7 +33,26 @@ export default function SimuladoDetalhePage() {
     }
 
     carregar()
-  }, [params.id])
+  }, [params.id, router, supabase])
+
+  const publicarSimulado = async () => {
+    setPublicando(true)
+
+    const { error } = await supabase
+      .from('simulados')
+      .update({ status: 'publicado' })
+      .eq('id', params.id)
+
+    setPublicando(false)
+
+    if (error) {
+      alert('Erro ao publicar simulado')
+      return
+    }
+
+    alert('Simulado publicado com sucesso')
+    router.refresh() // 🔒 FICA NA PÁGINA DO SIMULADO
+  }
 
   if (loading) {
     return <div className="p-6">Carregando...</div>
@@ -45,72 +60,45 @@ export default function SimuladoDetalhePage() {
 
   return (
     <div className="p-6 space-y-6">
+      <button
+        onClick={() => router.push('/simulados')}
+        className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Voltar
+      </button>
+
       <h1 className="text-2xl font-bold">{simulado.titulo}</h1>
 
       <div className="rounded border bg-white p-4 space-y-2">
-        <p>
-          <strong>Status:</strong>{' '}
-          {simulado.status === 'publicado' ? 'Publicado' : 'Rascunho'}
-        </p>
-        <p>
-          <strong>Valor total:</strong> {simulado.valor_total ?? 10} pontos
-        </p>
+        <p><strong>Status:</strong> {simulado.status}</p>
+        <p><strong>Valor total:</strong> {simulado.valor_total ?? 10} pontos</p>
       </div>
 
-      {/* AÇÕES */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <button
-          onClick={() =>
-            router.push(`/simulados/${params.id}/editar`)
-          }
-          className="flex items-center gap-2 rounded bg-gray-700 px-4 py-3 text-white"
-        >
-          <Edit className="w-4 h-4" />
-          Editar simulado
-        </button>
+      <div className="flex gap-3 flex-wrap">
+        {simulado.status === 'rascunho' && (
+          <button
+            onClick={publicarSimulado}
+            disabled={publicando}
+            className="rounded bg-green-600 px-4 py-2 text-white disabled:opacity-50"
+          >
+            {publicando ? 'Publicando...' : 'Publicar simulado'}
+          </button>
+        )}
 
         <button
-          onClick={() =>
-            router.push(`/simulados/${params.id}/folha-respostas`)
-          }
-          className="flex items-center gap-2 rounded bg-gray-800 px-4 py-3 text-white"
+          onClick={() => alert('Folha de respostas — próximo passo')}
+          className="rounded bg-gray-700 px-4 py-2 text-white"
         >
-          <FileText className="w-4 h-4" />
           Folha de respostas
         </button>
 
         <button
-          onClick={() =>
-            router.push(`/simulados/${params.id}/corrigir`)
-          }
-          className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-3 text-white"
+          onClick={() => alert('Correção automática — próximo passo')}
+          className="rounded bg-indigo-600 px-4 py-2 text-white"
         >
-          <ClipboardCheck className="w-4 h-4" />
           Correção automática
         </button>
-
-        {simulado.status !== 'publicado' && (
-          <button
-            onClick={async () => {
-              const { error } = await supabase
-                .from('simulados')
-                .update({ status: 'publicado' })
-                .eq('id', params.id)
-
-              if (error) {
-                alert('Erro ao publicar')
-                return
-              }
-
-              alert('Simulado publicado')
-              window.location.reload()
-            }}
-            className="flex items-center gap-2 rounded bg-green-600 px-4 py-3 text-white"
-          >
-            <CheckCircle className="w-4 h-4" />
-            Publicar
-          </button>
-        )}
       </div>
     </div>
   )
