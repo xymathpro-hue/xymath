@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
+import { ArrowLeft } from 'lucide-react'
 
 interface PageProps {
   params: {
@@ -18,9 +19,7 @@ export default function EditarSimuladoPage({ params }: PageProps) {
   const [salvando, setSalvando] = useState(false)
   const [simulado, setSimulado] = useState<any>(null)
 
-  // =========================
-  // CARREGAR SIMULADO
-  // =========================
+  // 🔹 carregar simulado
   useEffect(() => {
     const carregar = async () => {
       const { data, error } = await supabase
@@ -40,11 +39,9 @@ export default function EditarSimuladoPage({ params }: PageProps) {
     }
 
     carregar()
-  }, [params.id, router, supabase])
+  }, [params.id])
 
-  // =========================
-  // PUBLICAR SIMULADO
-  // =========================
+  // 🔹 publicar sem redirecionar para correção
   const publicarSimulado = async () => {
     setSalvando(true)
 
@@ -56,12 +53,12 @@ export default function EditarSimuladoPage({ params }: PageProps) {
     setSalvando(false)
 
     if (error) {
-      alert('Erro ao publicar simulado')
+      alert('Erro ao publicar')
       return
     }
 
-    // 🔁 VOLTA PARA A PÁGINA DO SIMULADO
-    router.push(`/simulados/${params.id}`)
+    alert('Simulado publicado com sucesso!')
+    router.push(`/simulados/${params.id}`) // 👈 volta para visão do simulado
   }
 
   if (loading) {
@@ -70,6 +67,14 @@ export default function EditarSimuladoPage({ params }: PageProps) {
 
   return (
     <div className="p-6 space-y-6">
+      <button
+        onClick={() => router.push(`/simulados/${params.id}`)}
+        className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Voltar
+      </button>
+
       <h1 className="text-2xl font-bold">Editar Simulado</h1>
 
       <div className="rounded border bg-white p-4 space-y-2">
@@ -83,14 +88,14 @@ export default function EditarSimuladoPage({ params }: PageProps) {
           disabled={salvando}
           className="rounded bg-green-600 px-4 py-2 text-white disabled:opacity-50"
         >
-          {salvando ? 'Publicando...' : 'Publicar simulado'}
+          {salvando ? 'Publicando...' : 'Publicar'}
         </button>
 
         <button
           onClick={() => router.push(`/simulados/${params.id}`)}
           className="rounded bg-gray-500 px-4 py-2 text-white"
         >
-          Voltar
+          Cancelar
         </button>
       </div>
     </div>
