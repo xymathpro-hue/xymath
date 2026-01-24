@@ -1,4 +1,3 @@
-// @ts-nocheck
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -6,20 +5,25 @@ import { useRouter, useParams } from 'next/navigation'
 import { Html5Qrcode } from 'html5-qrcode'
 import { ArrowLeft, Camera, CheckCircle, XCircle } from 'lucide-react'
 
+interface QRPayload {
+  s: string
+  a: string
+  t?: string
+  m?: string
+}
+
 export default function CorrigirSimuladoPage() {
   const router = useRouter()
-  const params = useParams()
+  const params = useParams<{ id: string }>()
 
-  const scannerRef = useRef(null)
-  const [erro, setErro] = useState(null)
-  const [sucesso, setSucesso] = useState(null)
+  const scannerRef = useRef<Html5Qrcode | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [sucesso, setSucesso] = useState<string | null>(null)
   const [lendo, setLendo] = useState(false)
 
   useEffect(() => {
     return () => {
-      try {
-        scannerRef.current?.stop()
-      } catch {}
+      scannerRef.current?.stop().catch(() => {})
     }
   }, [])
 
@@ -31,17 +35,18 @@ export default function CorrigirSimuladoPage() {
     scannerRef.current = leitor
 
     try {
-      await leitor.start(
+      await (leitor.start as any)(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
-        (decodedText) => {
+
+        (decodedText: string) => {
+          leitor.stop().catch(() => {})
+          setLendo(false)
+
           try {
-            leitor.stop()
-            setLendo(false)
+            const payload = JSON.parse(decodedText) as QRPayload
 
-            const payload = JSON.parse(decodedText)
-
-            if (!payload?.s || !payload?.a) {
+            if (!payload.s || !payload.a) {
               throw new Error()
             }
 
@@ -49,15 +54,16 @@ export default function CorrigirSimuladoPage() {
               `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
             )
           } catch {
-            setErro('QR Code inválido')
+            setErro('QR Code inválido ou mal formatado')
           }
         },
+
         () => {}
       )
 
       setLendo(true)
     } catch {
-      setErro('Erro ao acessar câmera')
+      setErro('Não foi possível acessar a câmera')
     }
   }
 
