@@ -1,18 +1,26 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 
-export default function EditarSimuladoPage() {
-  const router = useRouter()
-  const params = useParams<{ id: string }>()
+interface PageProps {
+  params: {
+    id: string
+  }
+}
+
+export default function EditarSimuladoPage({ params }: PageProps) {
   const supabase = createClient()
+  const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [simulado, setSimulado] = useState<any>(null)
 
+  // =========================
+  // CARREGAR SIMULADO
+  // =========================
   useEffect(() => {
     const carregar = async () => {
       const { data, error } = await supabase
@@ -34,6 +42,9 @@ export default function EditarSimuladoPage() {
     carregar()
   }, [params.id, router, supabase])
 
+  // =========================
+  // PUBLICAR SIMULADO
+  // =========================
   const publicarSimulado = async () => {
     setSalvando(true)
 
@@ -49,7 +60,7 @@ export default function EditarSimuladoPage() {
       return
     }
 
-    // ✅ REDIRECIONAMENTO CORRETO
+    // 🔁 VOLTA PARA A PÁGINA DO SIMULADO
     router.push(`/simulados/${params.id}`)
   }
 
@@ -64,7 +75,6 @@ export default function EditarSimuladoPage() {
       <div className="rounded border bg-white p-4 space-y-2">
         <p><strong>Título:</strong> {simulado.titulo}</p>
         <p><strong>Status:</strong> {simulado.status}</p>
-        <p><strong>Valor total:</strong> {simulado.valor_total ?? 10} pontos</p>
       </div>
 
       <div className="flex gap-3">
