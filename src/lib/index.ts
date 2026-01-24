@@ -15,9 +15,11 @@ export {
 } from './gerar-folha-respostas'
 
 // QR Code
-export { gerarQRCode } from './qrcode-generator'
+export {
+  gerarQRCode,
+  decodificarQRCode
+} from './qrcode-generator'
 
 // Dados e constantes
 export * from './bncc-data'
 export * from './constants'
-
