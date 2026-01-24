@@ -29,7 +29,6 @@ export default function CorrigirAlunoPage() {
   useEffect(() => {
     const carregarDados = async () => {
       try {
-        // Buscar aluno
         const { data: alunoData } = await supabase
           .from('alunos')
           .select('id, nome, matricula')
@@ -38,7 +37,6 @@ export default function CorrigirAlunoPage() {
 
         if (!alunoData) throw new Error('Aluno não encontrado')
 
-        // Buscar simulado
         const { data: simuladoData } = await supabase
           .from('simulados')
           .select('id, titulo')
@@ -50,7 +48,7 @@ export default function CorrigirAlunoPage() {
         setAluno(alunoData)
         setSimulado(simuladoData)
       } catch (e) {
-        setErro('Erro ao carregar dados do aluno ou simulado')
+        setErro('Erro ao carregar dados do aluno ou do simulado')
       } finally {
         setLoading(false)
       }
@@ -100,5 +98,8 @@ export default function CorrigirAlunoPage() {
       </div>
 
       <div className="rounded border border-dashed p-6 text-gray-500 text-center">
-        📌 Próxima etap
-
+        📌 Próxima etapa: leitura das respostas e correção automática
+      </div>
+    </div>
+  )
+}
