@@ -6,25 +6,20 @@ import { useRouter, useParams } from 'next/navigation'
 import { Html5Qrcode } from 'html5-qrcode'
 import { ArrowLeft, Camera, CheckCircle, XCircle } from 'lucide-react'
 
-interface QRPayload {
-  s: string
-  a: string
-  t?: string
-  m?: string
-}
-
 export default function CorrigirSimuladoPage() {
   const router = useRouter()
-  const params = useParams<{ id: string }>()
+  const params = useParams()
 
-  const scannerRef = useRef<any>(null)
-  const [erro, setErro] = useState<string | null>(null)
-  const [sucesso, setSucesso] = useState<string | null>(null)
+  const scannerRef = useRef(null)
+  const [erro, setErro] = useState(null)
+  const [sucesso, setSucesso] = useState(null)
   const [lendo, setLendo] = useState(false)
 
   useEffect(() => {
     return () => {
-      scannerRef.current?.stop?.().catch?.(() => {})
+      try {
+        scannerRef.current?.stop()
+      } catch {}
     }
   }, [])
 
@@ -39,14 +34,14 @@ export default function CorrigirSimuladoPage() {
       await leitor.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
-        (decodedText: string) => {
-          leitor.stop().catch(() => {})
-          setLendo(false)
-
+        (decodedText) => {
           try {
-            const payload = JSON.parse(decodedText) as QRPayload
+            leitor.stop()
+            setLendo(false)
 
-            if (!payload.s || !payload.a) {
+            const payload = JSON.parse(decodedText)
+
+            if (!payload?.s || !payload?.a) {
               throw new Error()
             }
 
@@ -54,17 +49,15 @@ export default function CorrigirSimuladoPage() {
               `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
             )
           } catch {
-            setErro('QR Code inválido ou mal formatado')
+            setErro('QR Code inválido')
           }
         },
-        () => {
-          // erro contínuo ignorado
-        }
+        () => {}
       )
 
       setLendo(true)
     } catch {
-      setErro('Não foi possível acessar a câmera')
+      setErro('Erro ao acessar câmera')
     }
   }
 
