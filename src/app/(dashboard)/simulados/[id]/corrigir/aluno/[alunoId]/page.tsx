@@ -29,6 +29,26 @@ export default function CorrigirSimuladoPage() {
     }
   }, [])
 
+  // 👉 função separada (NÃO async no callback)
+  const processarQRCode = (decodedText: string) => {
+    try {
+      const payload = JSON.parse(decodedText) as QRPayload
+
+      if (!payload.s || !payload.a) {
+        throw new Error('QR inválido')
+      }
+
+      setSucesso(
+        `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
+      )
+
+      // 🔜 próximo passo
+      // router.push(`/simulados/${params.id}/corrigir/aluno/${payload.a}`)
+    } catch {
+      setErro('QR Code inválido ou mal formatado')
+    }
+  }
+
   const iniciarLeitura = async () => {
     setErro(null)
     setSucesso(null)
@@ -41,32 +61,16 @@ export default function CorrigirSimuladoPage() {
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
 
-        // ✅ callback de sucesso — 2 parâmetros
-        async (decodedText: string, _decodedResult: unknown) => {
-          try {
-            await leitor.stop()
-            setLendo(false)
-
-            const payload = JSON.parse(decodedText) as QRPayload
-
-            if (!payload.s || !payload.a) {
-              throw new Error('QR inválido')
-            }
-
-            setSucesso(
-              `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
-            )
-
-            // 🔜 próximo passo
-            // router.push(`/simulados/${params.id}/corrigir/aluno/${payload.a}`)
-          } catch {
-            setErro('QR Code inválido ou mal formatado')
-          }
+        // ✅ callback sucesso (SINCRONO)
+        (decodedText: string, _decodedResult: unknown) => {
+          leitor.stop().catch(() => {})
+          setLendo(false)
+          processarQRCode(decodedText)
         },
 
-        // ✅ callback de erro — 2 parâmetros
+        // ✅ callback erro (SINCRONO)
         (_errorMessage: string, _error: unknown) => {
-          // pode ignorar silenciosamente
+          // ignorar leituras falhas
         }
       )
 
