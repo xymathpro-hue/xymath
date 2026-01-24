@@ -45,10 +45,7 @@ export default function CorrigirSimuladoPage() {
 
           try {
             const payload = JSON.parse(decodedText) as QRPayload
-
-            if (!payload.s || !payload.a) {
-              throw new Error()
-            }
+            if (!payload.s || !payload.a) throw new Error()
 
             setSucesso(
               `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
@@ -69,12 +66,13 @@ export default function CorrigirSimuladoPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* BOTÃO VOLTAR — AGORA FUNCIONA */}
       <button
         onClick={() => router.push(`/simulados/${params.id}`)}
         className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
       >
         <ArrowLeft className="w-4 h-4" />
-        Voltar
+        Voltar para o simulado
       </button>
 
       <h1 className="text-2xl font-bold">Correção Automática</h1>
