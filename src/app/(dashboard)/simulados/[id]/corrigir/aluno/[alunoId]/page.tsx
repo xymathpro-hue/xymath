@@ -2,21 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase-browser'
 import { Html5Qrcode } from 'html5-qrcode'
 import { ArrowLeft, Camera, CheckCircle, XCircle } from 'lucide-react'
 
 interface QRPayload {
-  s: string // simulado
-  a: string // aluno
-  t?: string // turma
-  m?: string // matrícula
+  s: string
+  a: string
+  t?: string
+  m?: string
 }
 
 export default function CorrigirSimuladoPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
-  const supabase = createClient()
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -29,26 +27,6 @@ export default function CorrigirSimuladoPage() {
     }
   }, [])
 
-  // 👉 função separada (NÃO async no callback)
-  const processarQRCode = (decodedText: string) => {
-    try {
-      const payload = JSON.parse(decodedText) as QRPayload
-
-      if (!payload.s || !payload.a) {
-        throw new Error('QR inválido')
-      }
-
-      setSucesso(
-        `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
-      )
-
-      // 🔜 próximo passo
-      // router.push(`/simulados/${params.id}/corrigir/aluno/${payload.a}`)
-    } catch {
-      setErro('QR Code inválido ou mal formatado')
-    }
-  }
-
   const iniciarLeitura = async () => {
     setErro(null)
     setSucesso(null)
@@ -57,20 +35,32 @@ export default function CorrigirSimuladoPage() {
     scannerRef.current = leitor
 
     try {
-      await leitor.start(
+      // 🔐 CAST EXPLÍCITO PARA ELIMINAR BUG DE TIPAGEM
+      await (leitor.start as any)(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
 
-        // ✅ callback sucesso (SINCRONO)
-        (decodedText: string, _decodedResult: unknown) => {
+        (decodedText: string) => {
           leitor.stop().catch(() => {})
           setLendo(false)
-          processarQRCode(decodedText)
+
+          try {
+            const payload = JSON.parse(decodedText) as QRPayload
+
+            if (!payload.s || !payload.a) {
+              throw new Error()
+            }
+
+            setSucesso(
+              `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
+            )
+          } catch {
+            setErro('QR Code inválido ou mal formatado')
+          }
         },
 
-        // ✅ callback erro (SINCRONO)
-        (_errorMessage: string, _error: unknown) => {
-          // ignorar leituras falhas
+        (_error: unknown) => {
+          // erro de leitura contínua (ignorar)
         }
       )
 
