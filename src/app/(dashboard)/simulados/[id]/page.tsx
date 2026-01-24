@@ -1,115 +1,110 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
-import { Html5Qrcode } from 'html5-qrcode'
-import { ArrowLeft, Camera, CheckCircle, XCircle } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
-interface QRPayload {
-  s: string // simulado
-  a: string // aluno
-  t: string // turma
-  m: string // matricula
+interface PageProps {
+  params: {
+    id: string
+  }
 }
 
-export default function CorrigirSimuladoPage() {
-  const router = useRouter()
-  const params = useParams<{ id: string }>()
+export default function SimuladoPage({ params }: PageProps) {
   const supabase = createClient()
+  const router = useRouter()
 
-  const scannerRef = useRef<Html5Qrcode | null>(null)
-  const [erro, setErro] = useState<string | null>(null)
-  const [sucesso, setSucesso] = useState<string | null>(null)
-  const [lendo, setLendo] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [salvando, setSalvando] = useState(false)
+  const [simulado, setSimulado] = useState<any>(null)
 
+  // =========================
+  // CARREGAR SIMULADO
+  // =========================
   useEffect(() => {
-    return () => {
-      scannerRef.current?.stop().catch(() => {})
+    const carregar = async () => {
+      const { data, error } = await supabase
+        .from('simulados')
+        .select('*')
+        .eq('id', params.id)
+        .single()
+
+      if (error || !data) {
+        alert('Simulado não encontrado')
+        router.push('/simulados')
+        return
+      }
+
+      setSimulado(data)
+      setLoading(false)
     }
-  }, [])
 
-  const iniciarLeitura = async () => {
-    setErro(null)
-    setSucesso(null)
+    carregar()
+  }, [params.id, router, supabase])
 
-    const leitor = new Html5Qrcode('qr-reader')
-    scannerRef.current = leitor
+  // =========================
+  // PUBLICAR SIMULADO
+  // =========================
+  const publicarSimulado = async () => {
+    setSalvando(true)
 
-    try {
-      await leitor.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: 250 },
+    const { error } = await supabase
+      .from('simulados')
+      .update({ status: 'publicado' })
+      .eq('id', params.id)
 
-        // ✅ sucesso
-        async (texto) => {
-          try {
-            await leitor.stop()
-            setLendo(false)
+    setSalvando(false)
 
-            const payload = JSON.parse(texto) as QRPayload
-
-            if (!payload.s || !payload.a) {
-              throw new Error('QR inválido')
-            }
-
-            // Aqui futuramente entra OCR / captura
-            setSucesso(`QR lido com sucesso - Matrícula ${payload.m}`)
-          } catch {
-            setErro('QR Code inválido ou mal formatado')
-          }
-        },
-
-        // ✅ erro (OBRIGATÓRIO)
-        (errorMessage) => {
-          // erros de leitura contínuos não precisam travar a UI
-          console.debug('Erro leitura QR:', errorMessage)
-        }
-      )
-
-      setLendo(true)
-    } catch {
-      setErro('Não foi possível acessar a câmera')
+    if (error) {
+      alert('Erro ao publicar simulado')
+      return
     }
+
+    alert('Simulado publicado com sucesso!')
+
+    // ✅ SEMPRE VOLTA PARA A PÁGINA DO SIMULADO
+    router.push(`/simulados/${params.id}`)
+  }
+
+  if (loading) {
+    return <div className="p-6">Carregando...</div>
   }
 
   return (
     <div className="p-6 space-y-6">
       <button
-        onClick={() => router.push(`/simulados/${params.id}`)}
+        onClick={() => router.back()}
         className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
       >
         <ArrowLeft className="w-4 h-4" />
         Voltar
       </button>
 
-      <h1 className="text-2xl font-bold">Correção Automática</h1>
+      <h1 className="text-2xl font-bold">{simulado.titulo}</h1>
 
-      <div className="rounded border p-4 bg-white space-y-4">
+      <div className="rounded border bg-white p-4 space-y-2">
+        <p><strong>Status:</strong> {simulado.status}</p>
+        <p><strong>Valor total:</strong> {simulado.valor_total ?? 10} pontos</p>
+      </div>
+
+      <div className="flex gap-3">
+        {simulado.status !== 'publicado' && (
+          <button
+            onClick={publicarSimulado}
+            disabled={salvando}
+            className="rounded bg-green-600 px-4 py-2 text-white disabled:opacity-50"
+          >
+            {salvando ? 'Publicando...' : 'Publicar simulado'}
+          </button>
+        )}
+
         <button
-          onClick={iniciarLeitura}
-          disabled={lendo}
-          className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 text-white disabled:opacity-50"
+          onClick={() => router.push('/simulados')}
+          className="rounded bg-gray-500 px-4 py-2 text-white"
         >
-          <Camera className="w-4 h-4" />
-          {lendo ? 'Lendo QR...' : 'Ler QR Code'}
+          Voltar para lista
         </button>
-
-        <div id="qr-reader" className="w-full max-w-sm" />
-
-        {erro && (
-          <div className="flex items-center gap-2 text-red-600">
-            <XCircle className="w-4 h-4" />
-            {erro}
-          </div>
-        )}
-
-        {sucesso && (
-          <div className="flex items-center gap-2 text-green-600">
-            <CheckCircle className="w-4 h-4" />
-            {sucesso}
-          </div>
-        )}
       </div>
     </div>
   )
