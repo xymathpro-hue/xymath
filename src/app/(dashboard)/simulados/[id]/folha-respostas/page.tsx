@@ -1,46 +1,82 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Printer, QrCode } from 'lucide-react'
+import { ArrowLeft, Printer } from 'lucide-react'
 
 export default function FolhaRespostasPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
 
+  const totalQuestoes = 20
+  const alternativas = ['A', 'B', 'C', 'D', 'E']
+
   return (
     <div className="p-6 space-y-6">
-      <button
-        onClick={() => router.push(`/simulados/${params.id}`)}
-        className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Voltar
-      </button>
+      {/* Topo */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => router.push(`/simulados/${params.id}`)}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Voltar ao simulado
+        </button>
 
-      <h1 className="text-2xl font-bold">Folha de Respostas</h1>
+        <button
+          onClick={() => window.print()}
+          className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 text-white"
+        >
+          <Printer className="w-4 h-4" />
+          Imprimir
+        </button>
+      </div>
 
-      <div className="rounded border bg-white p-6 space-y-4">
-        <p className="text-gray-700">
-          Aqui será gerada a folha de respostas oficial do simulado.
-        </p>
+      <h1 className="text-2xl font-bold text-center">
+        Folha de Respostas – Simulado
+      </h1>
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => alert('Geração de PDF será o próximo passo')}
-            className="flex items-center gap-2 rounded bg-gray-700 px-4 py-2 text-white"
-          >
-            <Printer className="w-4 h-4" />
-            Imprimir folha
-          </button>
+      {/* Área de impressão */}
+      <div className="grid grid-cols-2 gap-6 print:grid-cols-2">
+        {[0, 1].map((bloco) => (
+          <div key={bloco} className="border p-4 rounded">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className="border p-1 text-left">Questão</th>
+                  {alternativas.map((alt) => (
+                    <th key={alt} className="border p-1 text-center">
+                      {alt}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
 
-          <button
-            onClick={() => alert('QR Code será incorporado na folha')}
-            className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 text-white"
-          >
-            <QrCode className="w-4 h-4" />
-            Visualizar QR
-          </button>
-        </div>
+              <tbody>
+                {Array.from({ length: totalQuestoes / 2 }).map((_, i) => {
+                  const numero = bloco * (totalQuestoes / 2) + i + 1
+                  return (
+                    <tr key={numero}>
+                      <td className="border p-1 text-center font-medium">
+                        {numero}
+                      </td>
+                      {alternativas.map((alt) => (
+                        <td key={alt} className="border p-1 text-center">
+                          ⬜
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+
+      {/* Rodapé para identificação */}
+      <div className="border-t pt-4 mt-6 space-y-2 text-sm">
+        <p>Aluno: _______________________________________________</p>
+        <p>Matrícula: ____________________   Turma: ______________</p>
       </div>
     </div>
   )
