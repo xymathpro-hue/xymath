@@ -10,7 +10,7 @@ interface QRPayload {
   s: string // simulado
   a: string // aluno
   t?: string // turma
-  m?: string // matricula
+  m?: string // matrícula
 }
 
 export default function CorrigirSimuladoPage() {
@@ -40,12 +40,14 @@ export default function CorrigirSimuladoPage() {
       await leitor.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
-        async (texto) => {
+
+        // ✅ callback de sucesso — 2 parâmetros
+        async (decodedText: string, _decodedResult: unknown) => {
           try {
             await leitor.stop()
             setLendo(false)
 
-            const payload = JSON.parse(texto) as QRPayload
+            const payload = JSON.parse(decodedText) as QRPayload
 
             if (!payload.s || !payload.a) {
               throw new Error('QR inválido')
@@ -55,14 +57,16 @@ export default function CorrigirSimuladoPage() {
               `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
             )
 
-            // 🔜 Próximo passo: redirecionar para correção do aluno
+            // 🔜 próximo passo
             // router.push(`/simulados/${params.id}/corrigir/aluno/${payload.a}`)
           } catch {
             setErro('QR Code inválido ou mal formatado')
           }
         },
-        () => {
-          // callback de erro obrigatório (pode ficar vazio)
+
+        // ✅ callback de erro — 2 parâmetros
+        (_errorMessage: string, _error: unknown) => {
+          // pode ignorar silenciosamente
         }
       )
 
