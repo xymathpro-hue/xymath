@@ -18,3 +18,16 @@ export async function gerarQRCode(
     throw error
   }
 }
+
+/**
+ * Decodifica o conteúdo de um QR Code
+ * Usado na correção automática
+ */
+export function decodificarQRCode<T = any>(conteudo: string): T {
+  try {
+    return JSON.parse(conteudo)
+  } catch (error) {
+    console.error('Erro ao decodificar QR Code:', error)
+    throw new Error('QR Code inválido ou corrompido')
+  }
+}
