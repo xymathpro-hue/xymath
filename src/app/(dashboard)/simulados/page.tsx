@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
+import { PlusCircle } from 'lucide-react'
 
 interface Simulado {
   id: string
   titulo: string
-  publicado: boolean
+  status: string
+  created_at: string
 }
 
 export default function SimuladosPage() {
@@ -21,7 +23,7 @@ export default function SimuladosPage() {
     const carregar = async () => {
       const { data, error } = await supabase
         .from('simulados')
-        .select('id, titulo, publicado')
+        .select('id, titulo, status, created_at')
         .order('created_at', { ascending: false })
 
       if (!error && data) {
@@ -32,62 +34,54 @@ export default function SimuladosPage() {
     }
 
     carregar()
-  }, [supabase])
+  }, [])
 
   if (loading) {
-    return <div className="p-6">Carregando...</div>
+    return <div className="p-6">Carregando simulados...</div>
   }
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Simulados</h1>
 
         <button
           onClick={() => router.push('/simulados/novo')}
-          className="rounded bg-indigo-600 px-4 py-2 text-white"
+          className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 text-white"
         >
-          + Novo Simulado
+          <PlusCircle className="w-4 h-4" />
+          Novo simulado
         </button>
       </div>
 
-      {simulados.length === 0 && (
-        <p className="text-gray-500">Nenhum simulado encontrado.</p>
-      )}
+      {simulados.length === 0 ? (
+        <div className="rounded border bg-white p-6 text-gray-600">
+          Nenhum simulado criado ainda.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {simulados.map((simulado) => (
+            <div
+              key={simulado.id}
+              className="flex items-center justify-between rounded border bg-white p-4"
+            >
+              <div>
+                <p className="font-medium">{simulado.titulo}</p>
+                <p className="text-sm text-gray-500">
+                  Status: {simulado.status}
+                </p>
+              </div>
 
-      <div className="space-y-4">
-        {simulados.map((s) => (
-          <div
-            key={s.id}
-            className="flex items-center justify-between rounded border bg-white p-4"
-          >
-            <div>
-              <p className="font-semibold">{s.titulo}</p>
-              {s.publicado && (
-                <span className="text-xs text-green-600">Publicado</span>
-              )}
-            </div>
-
-            <div className="flex gap-2">
               <button
-                onClick={() => router.push(`/simulados/${s.id}`)}
-                className="rounded bg-gray-700 px-3 py-1 text-white text-sm"
+                onClick={() => router.push(`/simulados/${simulado.id}`)}
+                className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white"
               >
                 Abrir
               </button>
-
-              <button
-                onClick={() =>
-                  router.push(`/simulados/${s.id}/folha-respostas`)
-                }
-                className="rounded bg-gray-500 px-3 py-1 text-white text-sm"
-              >
-                Folha
-              </button>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
