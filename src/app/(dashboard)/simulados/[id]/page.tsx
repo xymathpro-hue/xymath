@@ -7,10 +7,11 @@ import { createClient } from '@/lib/supabase-browser'
 interface Simulado {
   id: string
   titulo: string
-  status: string
+  status: 'rascunho' | 'publicado'
+  valor_total: number | null
 }
 
-export default function SimuladoDetalhePage() {
+export default function SimuladoResumoPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const supabase = createClient()
@@ -22,71 +23,73 @@ export default function SimuladoDetalhePage() {
     const carregar = async () => {
       const { data, error } = await supabase
         .from('simulados')
-        .select('id, titulo, status')
+        .select('id, titulo, status, valor_total')
         .eq('id', params.id)
         .single()
 
-      if (!error && data) {
-        setSimulado(data)
+      if (error || !data) {
+        alert('Simulado não encontrado')
+        router.push('/simulados')
+        return
       }
 
+      setSimulado(data)
       setLoading(false)
     }
 
     carregar()
-  }, [params.id])
+  }, [params.id, router, supabase])
 
   if (loading) {
-    return <div className="p-6">Carregando simulado...</div>
+    return <div className="p-6">Carregando...</div>
   }
 
   if (!simulado) {
-    return <div className="p-6">Simulado não encontrado.</div>
+    return null
   }
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{simulado.titulo}</h1>
-        <p className="text-gray-500">Status: {simulado.status}</p>
+      <h1 className="text-2xl font-bold">Resumo do Simulado</h1>
+
+      <div className="rounded border bg-white p-4 space-y-2">
+        <p><strong>Título:</strong> {simulado.titulo}</p>
+        <p><strong>Status:</strong> {simulado.status}</p>
+        <p>
+          <strong>Valor total:</strong>{' '}
+          {simulado.valor_total ?? 10} pontos
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-3">
         <button
-          onClick={() => router.push(`/simulados/${params.id}/editar`)}
-          className="rounded bg-gray-700 px-4 py-2 text-white"
+          onClick={() => router.push(`/simulados/${simulado.id}/editar`)}
+          className="rounded bg-blue-600 px-4 py-2 text-white"
         >
           Editar simulado
         </button>
 
         <button
-          onClick={() => router.push(`/simulados/${params.id}/folha-respostas`)}
+          onClick={() => router.push(`/simulados/${simulado.id}/folha-respostas`)}
           className="rounded bg-gray-700 px-4 py-2 text-white"
         >
           Folha de respostas
         </button>
 
         <button
-          onClick={() => router.push(`/simulados/${params.id}/gabarito`)}
-          className="rounded bg-gray-700 px-4 py-2 text-white"
-        >
-          Ver gabarito
-        </button>
-
-        <button
-          onClick={() => router.push(`/simulados/${params.id}/corrigir`)}
+          onClick={() => router.push(`/simulados/${simulado.id}/corrigir`)}
           className="rounded bg-indigo-600 px-4 py-2 text-white"
         >
           Correção automática
         </button>
-      </div>
 
-      <button
-        onClick={() => router.push('/simulados')}
-        className="text-sm text-gray-600 underline"
-      >
-        Voltar para simulados
-      </button>
+        <button
+          onClick={() => router.push('/simulados')}
+          className="rounded bg-gray-400 px-4 py-2 text-white"
+        >
+          Voltar
+        </button>
+      </div>
     </div>
   )
 }
