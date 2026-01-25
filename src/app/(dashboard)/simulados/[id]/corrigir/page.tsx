@@ -6,17 +6,14 @@ import { Html5Qrcode } from 'html5-qrcode'
 import { ArrowLeft, Camera, CheckCircle, XCircle } from 'lucide-react'
 
 interface QRPayload {
-  s: string
-  a: string
-  t?: string
-  m?: string
+  s: string // simulado id
 }
 
 export default function CorrigirSimuladoPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
-
   const scannerRef = useRef<Html5Qrcode | null>(null)
+
   const [erro, setErro] = useState<string | null>(null)
   const [sucesso, setSucesso] = useState<string | null>(null)
   const [lendo, setLendo] = useState(false)
@@ -38,41 +35,39 @@ export default function CorrigirSimuladoPage() {
       await (leitor.start as any)(
         { facingMode: 'environment' },
         { fps: 10, qrbox: 250 },
-
-        (decodedText: string) => {
+        (texto: string) => {
           leitor.stop().catch(() => {})
           setLendo(false)
 
           try {
-            const payload = JSON.parse(decodedText) as QRPayload
-            if (!payload.s || !payload.a) throw new Error()
+            const payload = JSON.parse(texto) as QRPayload
 
-            setSucesso(
-              `QR lido com sucesso${payload.m ? ` - Matrícula ${payload.m}` : ''}`
-            )
+            if (!payload.s || payload.s !== params.id) {
+              throw new Error()
+            }
+
+            setSucesso('QR válido. Pronto para correção.')
           } catch {
-            setErro('QR Code inválido ou mal formatado')
+            setErro('QR inválido para este simulado')
           }
         },
-
         () => {}
       )
 
       setLendo(true)
     } catch {
-      setErro('Não foi possível acessar a câmera')
+      setErro('Erro ao acessar câmera')
     }
   }
 
   return (
     <div className="p-6 space-y-6">
-      {/* BOTÃO VOLTAR — AGORA FUNCIONA */}
       <button
         onClick={() => router.push(`/simulados/${params.id}`)}
-        className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+        className="flex items-center gap-2 text-gray-600"
       >
         <ArrowLeft className="w-4 h-4" />
-        Voltar para o simulado
+        Voltar
       </button>
 
       <h1 className="text-2xl font-bold">Correção Automática</h1>
