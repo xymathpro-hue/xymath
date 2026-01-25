@@ -4,59 +4,61 @@ import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Printer } from 'lucide-react'
 
 export default function FolhaRespostasPage() {
-  const router = useRouter()
   const params = useParams<{ id: string }>()
+  const router = useRouter()
+
+  const simuladoId = params.id
+
+  const imprimir = () => {
+    window.print()
+  }
 
   return (
     <div className="p-6 space-y-6">
-      {/* Voltar */}
       <button
-        onClick={() => router.push(`/simulados/${params.id}`)}
+        onClick={() => router.push(`/simulados/${simuladoId}`)}
         className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
       >
         <ArrowLeft className="w-4 h-4" />
-        Voltar para o simulado
+        Voltar
       </button>
 
       <h1 className="text-2xl font-bold">Folha de Respostas</h1>
 
-      {/* Instruções */}
-      <div className="rounded border bg-white p-4 space-y-2">
-        <p className="text-gray-700">
-          Utilize esta folha para que os alunos marquem as respostas.
-        </p>
-        <p className="text-sm text-gray-500">
-          Marque apenas uma alternativa por questão.
-        </p>
-      </div>
+      <div className="rounded border bg-white p-6 space-y-6">
+        <div className="border p-4 rounded text-center space-y-4">
+          <p className="font-semibold">Simulado ID</p>
+          <p className="text-sm text-gray-500">{simuladoId}</p>
 
-      {/* Folha simples */}
-      <div className="rounded border bg-white p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {/* QR PLACEHOLDER */}
+          <div className="mx-auto h-40 w-40 border flex items-center justify-center text-gray-400">
+            QR CODE
+          </div>
+        </div>
+
+        <div className="grid grid-cols-5 gap-4">
           {Array.from({ length: 20 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4">
-              <span className="w-6 font-semibold">{i + 1}</span>
-              {['A', 'B', 'C', 'D', 'E'].map((letra) => (
-                <div
-                  key={letra}
-                  className="w-6 h-6 border rounded-full flex items-center justify-center text-sm"
-                >
-                  {letra}
-                </div>
-              ))}
+            <div key={i} className="border rounded p-2 text-center">
+              <p className="text-sm font-semibold">Q{i + 1}</p>
+              <div className="flex justify-center gap-2 mt-1">
+                {['A', 'B', 'C', 'D', 'E'].map((l) => (
+                  <span key={l} className="border rounded-full w-6 h-6 text-xs flex items-center justify-center">
+                    {l}
+                  </span>
+                ))}
+              </div>
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Imprimir */}
-      <button
-        onClick={() => window.print()}
-        className="flex items-center gap-2 rounded bg-gray-800 px-4 py-2 text-white"
-      >
-        <Printer className="w-4 h-4" />
-        Imprimir folha
-      </button>
+        <button
+          onClick={imprimir}
+          className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 text-white"
+        >
+          <Printer className="w-4 h-4" />
+          Imprimir
+        </button>
+      </div>
     </div>
   )
 }
