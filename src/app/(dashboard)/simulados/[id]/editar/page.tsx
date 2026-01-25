@@ -1,25 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, CheckCircle } from 'lucide-react'
 
-interface PageProps {
-  params: {
-    id: string
-  }
-}
-
-export default function EditarSimuladoPage({ params }: PageProps) {
-  const supabase = createClient()
+export default function EditarSimuladoPage() {
   const router = useRouter()
+  const params = useParams<{ id: string }>()
+  const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [simulado, setSimulado] = useState<any>(null)
 
-  // 🔹 carregar simulado
   useEffect(() => {
     const carregar = async () => {
       const { data, error } = await supabase
@@ -39,9 +33,8 @@ export default function EditarSimuladoPage({ params }: PageProps) {
     }
 
     carregar()
-  }, [params.id])
+  }, [params.id, router, supabase])
 
-  // 🔹 publicar sem redirecionar para correção
   const publicarSimulado = async () => {
     setSalvando(true)
 
@@ -53,12 +46,12 @@ export default function EditarSimuladoPage({ params }: PageProps) {
     setSalvando(false)
 
     if (error) {
-      alert('Erro ao publicar')
+      alert('Erro ao publicar simulado')
       return
     }
 
-    alert('Simulado publicado com sucesso!')
-    router.push(`/simulados/${params.id}`) // 👈 volta para visão do simulado
+    // ✅ VOLTA PARA A PÁGINA DO SIMULADO (NÃO correção)
+    router.push(`/simulados/${params.id}`)
   }
 
   if (loading) {
@@ -75,29 +68,21 @@ export default function EditarSimuladoPage({ params }: PageProps) {
         Voltar
       </button>
 
-      <h1 className="text-2xl font-bold">Editar Simulado</h1>
+      <h1 className="text-2xl font-bold">Publicar Simulado</h1>
 
-      <div className="rounded border bg-white p-4 space-y-2">
+      <div className="rounded border bg-white p-6 space-y-2">
         <p><strong>Título:</strong> {simulado.titulo}</p>
         <p><strong>Status:</strong> {simulado.status}</p>
       </div>
 
-      <div className="flex gap-3">
-        <button
-          onClick={publicarSimulado}
-          disabled={salvando}
-          className="rounded bg-green-600 px-4 py-2 text-white disabled:opacity-50"
-        >
-          {salvando ? 'Publicando...' : 'Publicar'}
-        </button>
-
-        <button
-          onClick={() => router.push(`/simulados/${params.id}`)}
-          className="rounded bg-gray-500 px-4 py-2 text-white"
-        >
-          Cancelar
-        </button>
-      </div>
+      <button
+        onClick={publicarSimulado}
+        disabled={salvando}
+        className="flex items-center gap-2 rounded bg-green-600 px-4 py-2 text-white disabled:opacity-50"
+      >
+        <CheckCircle className="w-4 h-4" />
+        {salvando ? 'Publicando...' : 'Publicar simulado'}
+      </button>
     </div>
   )
 }
