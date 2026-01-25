@@ -1,93 +1,53 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase-browser'
+import { ArrowLeft, FileText, QrCode, Printer } from 'lucide-react'
 
-interface Simulado {
-  id: string
-  titulo: string
-  status: 'rascunho' | 'publicado'
-  valor_total: number | null
-}
-
-export default function SimuladoResumoPage() {
+export default function SimuladoDetalhePage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
-  const supabase = createClient()
-
-  const [simulado, setSimulado] = useState<Simulado | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const carregar = async () => {
-      const { data, error } = await supabase
-        .from('simulados')
-        .select('id, titulo, status, valor_total')
-        .eq('id', params.id)
-        .single()
-
-      if (error || !data) {
-        alert('Simulado não encontrado')
-        router.push('/simulados')
-        return
-      }
-
-      setSimulado(data)
-      setLoading(false)
-    }
-
-    carregar()
-  }, [params.id, router, supabase])
-
-  if (loading) {
-    return <div className="p-6">Carregando...</div>
-  }
-
-  if (!simulado) {
-    return null
-  }
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Resumo do Simulado</h1>
+      {/* VOLTAR */}
+      <button
+        onClick={() => router.push('/simulados')}
+        className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Voltar
+      </button>
 
-      <div className="rounded border bg-white p-4 space-y-2">
-        <p><strong>Título:</strong> {simulado.titulo}</p>
-        <p><strong>Status:</strong> {simulado.status}</p>
-        <p>
-          <strong>Valor total:</strong>{' '}
-          {simulado.valor_total ?? 10} pontos
-        </p>
-      </div>
+      {/* TÍTULO */}
+      <h1 className="text-2xl font-bold">Simulado {params.id}</h1>
 
-      <div className="flex flex-wrap gap-3">
+      {/* AÇÕES */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* EDIÇÃO / VISUALIZAÇÃO */}
         <button
-          onClick={() => router.push(`/simulados/${simulado.id}/editar`)}
-          className="rounded bg-blue-600 px-4 py-2 text-white"
+          onClick={() => alert('Edição do simulado — próximo passo')}
+          className="flex items-center justify-center gap-2 rounded bg-gray-700 px-4 py-3 text-white"
         >
-          Editar simulado
+          <FileText className="w-4 h-4" />
+          Editar / Visualizar
         </button>
 
+        {/* FOLHA DE RESPOSTAS */}
         <button
-          onClick={() => router.push(`/simulados/${simulado.id}/folha-respostas`)}
-          className="rounded bg-gray-700 px-4 py-2 text-white"
+          onClick={() => router.push(`/simulados/${params.id}/folha-respostas`)}
+          className="flex items-center justify-center gap-2 rounded bg-indigo-600 px-4 py-3 text-white"
         >
-          Folha de respostas
+          <Printer className="w-4 h-4" />
+          Folha de Respostas
         </button>
 
+        {/* CORREÇÃO AUTOMÁTICA */}
         <button
-          onClick={() => router.push(`/simulados/${simulado.id}/corrigir`)}
-          className="rounded bg-indigo-600 px-4 py-2 text-white"
+          onClick={() => router.push(`/simulados/${params.id}/corrigir`)}
+          className="flex items-center justify-center gap-2 rounded bg-emerald-600 px-4 py-3 text-white"
         >
-          Correção automática
-        </button>
-
-        <button
-          onClick={() => router.push('/simulados')}
-          className="rounded bg-gray-400 px-4 py-2 text-white"
-        >
-          Voltar
+          <QrCode className="w-4 h-4" />
+          Correção Automática
         </button>
       </div>
     </div>
