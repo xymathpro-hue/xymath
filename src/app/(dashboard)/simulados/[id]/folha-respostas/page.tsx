@@ -1,36 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import QRCode from 'qrcode'
 import { ArrowLeft, Printer } from 'lucide-react'
 
 export default function FolhaRespostasPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
 
-  const [qr, setQr] = useState<string>('')
-
-  useEffect(() => {
-    const gerar = async () => {
-      const payload = JSON.stringify({
-        s: params.id,
-      })
-
-      const dataUrl = await QRCode.toDataURL(payload)
-      setQr(dataUrl)
-    }
-
-    gerar()
-  }, [params.id])
+  // Simulado fake por enquanto (base estrutural)
+  const totalQuestoes = 20
 
   return (
-    <div className="p-6 space-y-6 print:p-0">
-      {/* CONTROLES (não imprime) */}
-      <div className="flex gap-4 print:hidden">
+    <div className="p-6 space-y-6 bg-white text-black">
+      {/* TOPO */}
+      <div className="flex items-center justify-between print:hidden">
         <button
           onClick={() => router.push(`/simulados/${params.id}`)}
-          className="flex items-center gap-2 text-gray-600"
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
         >
           <ArrowLeft className="w-4 h-4" />
           Voltar
@@ -45,45 +31,52 @@ export default function FolhaRespostasPage() {
         </button>
       </div>
 
-      {/* FOLHA */}
-      <div className="mx-auto max-w-[800px] border p-6 space-y-6 text-black">
-        <div className="flex justify-between items-center">
+      {/* CABEÇALHO */}
+      <div className="border p-4 space-y-2">
+        <h1 className="text-xl font-bold text-center">
+          Folha de Respostas — Simulado {params.id}
+        </h1>
+
+        <div className="grid grid-cols-2 gap-4 text-sm mt-4">
           <div>
-            <h1 className="text-xl font-bold">Folha de Respostas</h1>
-            <p className="text-sm">Simulado ID: {params.id}</p>
+            <strong>Aluno:</strong> ____________________________________
           </div>
-
-          {qr && <img src={qr} alt="QR Code" className="w-28 h-28" />}
-        </div>
-
-        <div className="border-t pt-4 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="border p-2">Aluno:</div>
-            <div className="border p-2">Matrícula:</div>
-            <div className="border p-2">Turma:</div>
-            <div className="border p-2">Data:</div>
+          <div>
+            <strong>Matrícula:</strong> ________________________________
+          </div>
+          <div>
+            <strong>Turma:</strong> ____________________________________
+          </div>
+          <div>
+            <strong>Data:</strong> ____ / ____ / ______
           </div>
         </div>
+      </div>
 
-        <div className="border-t pt-6 space-y-3">
-          {Array.from({ length: 20 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between border-b pb-2"
-            >
-              <span className="font-medium">{i + 1}</span>
+      {/* QUESTÕES */}
+      <div className="border p-4">
+        <h2 className="font-semibold mb-4">Marque apenas uma alternativa</h2>
 
-              <div className="flex gap-3">
-                {['A', 'B', 'C', 'D', 'E'].map((op) => (
-                  <div
-                    key={op}
-                    className="w-6 h-6 border border-black rounded-full"
-                  />
-                ))}
-              </div>
+        <div className="grid grid-cols-2 gap-6">
+          {Array.from({ length: totalQuestoes }).map((_, index) => (
+            <div key={index} className="flex items-center gap-4">
+              <span className="font-semibold w-6">{index + 1}.</span>
+              {['A', 'B', 'C', 'D', 'E'].map((alt) => (
+                <div
+                  key={alt}
+                  className="w-6 h-6 border border-black flex items-center justify-center"
+                >
+                  {alt}
+                </div>
+              ))}
             </div>
           ))}
         </div>
+      </div>
+
+      {/* RODAPÉ */}
+      <div className="text-xs text-center text-gray-500 mt-8">
+        XYMath • Folha de respostas padrão • Uso educacional
       </div>
     </div>
   )
