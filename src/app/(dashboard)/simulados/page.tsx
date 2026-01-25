@@ -3,13 +3,11 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
-import Link from 'next/link'
 
 interface Simulado {
   id: string
   titulo: string
   publicado: boolean
-  total_questoes: number
 }
 
 export default function SimuladosPage() {
@@ -23,11 +21,11 @@ export default function SimuladosPage() {
     const carregar = async () => {
       const { data, error } = await supabase
         .from('simulados')
-        .select('id, titulo, publicado, total_questoes')
+        .select('id, titulo, publicado')
         .order('created_at', { ascending: false })
 
       if (!error && data) {
-        setSimulados(data as Simulado[])
+        setSimulados(data)
       }
 
       setLoading(false)
@@ -42,7 +40,7 @@ export default function SimuladosPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Simulados</h1>
 
         <button
@@ -54,45 +52,38 @@ export default function SimuladosPage() {
       </div>
 
       {simulados.length === 0 && (
-        <div className="text-gray-500">
-          Nenhum simulado encontrado.
-        </div>
+        <p className="text-gray-500">Nenhum simulado encontrado.</p>
       )}
 
       <div className="space-y-4">
-        {simulados.map(simulado => (
+        {simulados.map((s) => (
           <div
-            key={simulado.id}
-            className="rounded border bg-white p-4 flex items-center justify-between"
+            key={s.id}
+            className="flex items-center justify-between rounded border bg-white p-4"
           >
             <div>
-              <div className="font-semibold">{simulado.titulo}</div>
-              <div className="text-sm text-gray-500">
-                {simulado.total_questoes} questões
-                {simulado.publicado && (
-                  <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-green-700">
-                    Publicado
-                  </span>
-                )}
-              </div>
+              <p className="font-semibold">{s.titulo}</p>
+              {s.publicado && (
+                <span className="text-xs text-green-600">Publicado</span>
+              )}
             </div>
 
             <div className="flex gap-2">
-              <Link
-                href={`/simulados/${simulado.id}`}
-                className="rounded bg-gray-700 px-3 py-1.5 text-white"
+              <button
+                onClick={() => router.push(`/simulados/${s.id}`)}
+                className="rounded bg-gray-700 px-3 py-1 text-white text-sm"
               >
                 Abrir
-              </Link>
+              </button>
 
-              {simulado.publicado && (
-                <Link
-                  href={`/simulados/${simulado.id}/correcao`}
-                  className="rounded bg-indigo-600 px-3 py-1.5 text-white"
-                >
-                  Corrigir
-                </Link>
-              )}
+              <button
+                onClick={() =>
+                  router.push(`/simulados/${s.id}/folha-respostas`)
+                }
+                className="rounded bg-gray-500 px-3 py-1 text-white text-sm"
+              >
+                Folha
+              </button>
             </div>
           </div>
         ))}
