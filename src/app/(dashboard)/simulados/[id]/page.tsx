@@ -1,24 +1,25 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
-import {
-  FileText,
-  Printer,
-  QrCode,
-  Edit,
-  ArrowLeft,
-} from 'lucide-react'
 
-export default function SimuladoDetalhePage() {
-  const router = useRouter()
-  const params = useParams<{ id: string }>()
+interface PageProps {
+  params: {
+    id: string
+  }
+}
+
+export default function SimuladoPage({ params }: PageProps) {
   const supabase = createClient()
+  const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [simulado, setSimulado] = useState<any>(null)
 
+  // =========================
+  // CARREGAR SIMULADO
+  // =========================
   useEffect(() => {
     const carregar = async () => {
       const { data, error } = await supabase
@@ -46,56 +47,48 @@ export default function SimuladoDetalhePage() {
 
   return (
     <div className="p-6 space-y-6">
-      <button
-        onClick={() => router.push('/simulados')}
-        className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Voltar
-      </button>
-
       <h1 className="text-2xl font-bold">{simulado.titulo}</h1>
 
-      <div className="rounded border bg-white p-4 space-y-1">
-        <p><strong>Status:</strong> {simulado.status}</p>
-        <p><strong>ID:</strong> {simulado.id}</p>
+      <div className="rounded border bg-white p-4 space-y-2">
+        <p>
+          <strong>Status:</strong>{' '}
+          {simulado.status === 'publicado' ? 'Publicado' : 'Rascunho'}
+        </p>
+        <p>
+          <strong>Valor total:</strong> {simulado.valor_total ?? 10} pontos
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* =========================
+          AÇÕES DO SIMULADO
+      ========================= */}
+      <div className="flex flex-wrap gap-3">
         <button
           onClick={() => router.push(`/simulados/${params.id}/editar`)}
-          className="flex items-center gap-3 rounded border p-4 hover:bg-gray-50"
+          className="rounded bg-blue-600 px-4 py-2 text-white"
         >
-          <Edit className="w-5 h-5" />
-          Editar simulado
+          Editar
         </button>
 
         <button
-          onClick={() => alert('Impressão do simulado — próximo passo')}
-          className="flex items-center gap-3 rounded border p-4 hover:bg-gray-50"
+          onClick={() => router.push(`/simulados/${params.id}/folha-respostas`)}
+          className="rounded bg-gray-700 px-4 py-2 text-white"
         >
-          <Printer className="w-5 h-5" />
-          Imprimir simulado
-        </button>
-
-        <button
-          onClick={() =>
-            router.push(`/simulados/${params.id}/folha-respostas`)
-          }
-          className="flex items-center gap-3 rounded border p-4 hover:bg-gray-50"
-        >
-          <FileText className="w-5 h-5" />
           Folha de respostas
         </button>
 
         <button
-          onClick={() =>
-            router.push(`/simulados/${params.id}/corrigir`)
-          }
-          className="flex items-center gap-3 rounded border p-4 hover:bg-gray-50"
+          onClick={() => router.push(`/simulados/${params.id}/corrigir`)}
+          className="rounded bg-indigo-600 px-4 py-2 text-white"
         >
-          <QrCode className="w-5 h-5" />
           Correção automática
+        </button>
+
+        <button
+          onClick={() => router.push('/simulados')}
+          className="rounded bg-gray-500 px-4 py-2 text-white"
+        >
+          Voltar
         </button>
       </div>
     </div>
