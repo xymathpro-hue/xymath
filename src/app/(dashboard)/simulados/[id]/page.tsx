@@ -39,7 +39,7 @@ export default function SimuladoPage() {
     }
 
     carregar()
-  }, [params.id])
+  }, [params.id, router, supabase])
 
   const publicar = async () => {
     setPublicando(true)
@@ -51,7 +51,4 @@ export default function SimuladoPage() {
 
     setPublicando(false)
 
-    if (error) {
-      alert('Erro ao publicar')
-      return
-    }
+    if (error
