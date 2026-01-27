@@ -10,7 +10,8 @@ export default async function DashboardLayout({
 }: {
   children: ReactNode
 }) {
-  const supabase = createClient()
+  // 🔧 FIX: createClient é async no seu projeto
+  const supabase = await createClient()
 
   const {
     data: { user },
