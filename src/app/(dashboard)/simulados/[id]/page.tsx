@@ -1,30 +1,30 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 
-interface PageProps {
-  params: {
-    id: string
-  }
+interface Simulado {
+  id: string
+  titulo: string
+  status: 'rascunho' | 'publicado'
+  valor_total: number | null
 }
 
-export default function SimuladoPage({ params }: PageProps) {
-  const supabase = createClient()
+export default function SimuladoPage() {
   const router = useRouter()
+  const params = useParams<{ id: string }>()
+  const supabase = createClient()
 
+  const [simulado, setSimulado] = useState<Simulado | null>(null)
   const [loading, setLoading] = useState(true)
-  const [simulado, setSimulado] = useState<any>(null)
+  const [publicando, setPublicando] = useState(false)
 
-  // =========================
-  // CARREGAR SIMULADO
-  // =========================
   useEffect(() => {
     const carregar = async () => {
       const { data, error } = await supabase
         .from('simulados')
-        .select('*')
+        .select('id, titulo, status, valor_total')
         .eq('id', params.id)
         .single()
 
@@ -39,58 +39,19 @@ export default function SimuladoPage({ params }: PageProps) {
     }
 
     carregar()
-  }, [params.id, router, supabase])
+  }, [params.id])
 
-  if (loading) {
-    return <div className="p-6">Carregando...</div>
-  }
+  const publicar = async () => {
+    setPublicando(true)
 
-  return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">{simulado.titulo}</h1>
+    const { error } = await supabase
+      .from('simulados')
+      .update({ status: 'publicado' })
+      .eq('id', params.id)
 
-      <div className="rounded border bg-white p-4 space-y-2">
-        <p>
-          <strong>Status:</strong>{' '}
-          {simulado.status === 'publicado' ? 'Publicado' : 'Rascunho'}
-        </p>
-        <p>
-          <strong>Valor total:</strong> {simulado.valor_total ?? 10} pontos
-        </p>
-      </div>
+    setPublicando(false)
 
-      {/* =========================
-          AÇÕES DO SIMULADO
-      ========================= */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={() => router.push(`/simulados/${params.id}/editar`)}
-          className="rounded bg-blue-600 px-4 py-2 text-white"
-        >
-          Editar
-        </button>
-
-        <button
-          onClick={() => router.push(`/simulados/${params.id}/folha-respostas`)}
-          className="rounded bg-gray-700 px-4 py-2 text-white"
-        >
-          Folha de respostas
-        </button>
-
-        <button
-          onClick={() => router.push(`/simulados/${params.id}/corrigir`)}
-          className="rounded bg-indigo-600 px-4 py-2 text-white"
-        >
-          Correção automática
-        </button>
-
-        <button
-          onClick={() => router.push('/simulados')}
-          className="rounded bg-gray-500 px-4 py-2 text-white"
-        >
-          Voltar
-        </button>
-      </div>
-    </div>
-  )
-}
+    if (error) {
+      alert('Erro ao publicar')
+      return
+    }
