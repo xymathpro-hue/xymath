@@ -9,18 +9,18 @@ import {
   Upload, 
   Check, 
   X, 
-  RefreshCw, 
   Loader2,
-  ScanLine,
   FileImage,
   AlertCircle,
   CheckCircle2,
-  ChevronRight,
   Trash2,
-  Save
+  Save,
+  ScanLine,
+  RotateCcw,
+  Volume2,
+  VolumeX
 } from 'lucide-react'
 
-// URL da API OpenCV (Railway)
 const OPENCV_API_URL = process.env.NEXT_PUBLIC_OPENCV_API_URL || 'https://web-production-af772.up.railway.app'
 
 interface QRData {
@@ -30,13 +30,35 @@ interface QRData {
   total_questoes: number
 }
 
+interface BubbleInfo {
+  option: string
+  x: number
+  y: number
+  rect: { x: number; y: number; w: number; h: number }
+  filled: boolean
+}
+
+interface BubbleLocation {
+  question: number
+  answer: string | null
+  status: 'valid' | 'blank' | 'multiple' | 'not_found'
+  bubbles: BubbleInfo[]
+}
+
 interface ProcessResult {
   success: boolean
   qr_data?: QRData
+  qr_location?: { x: number; y: number; width: number; height: number }
   answers?: (string | null)[]
+  bubble_locations?: BubbleLocation[]
   total_detected?: number
   total_questions?: number
+  total_valid?: number
+  total_blank?: number
+  total_multiple?: number
+  corners_found?: boolean
   error?: string
+  debug?: any
 }
 
 interface Simulado {
@@ -66,10 +88,13 @@ export default function CorrecaoAutomaticaPage() {
   const supabase = createClient()
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const [mode, setMode] = useState<'select' | 'camera' | 'upload'>('select')
   const [cameraActive, setCameraActive] = useState(false)
+  const [scanning, setScanning] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [results, setResults] = useState<PendingCorrection[]>([])
   const [currentResult, setCurrentResult] = useState<PendingCorrection | null>(null)
@@ -77,34 +102,69 @@ export default function CorrecaoAutomaticaPage() {
   const [saving, setSaving] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [scanStatus, setScanStatus] = useState<string>('Posicione a folha na câmera')
+  const [cornersDetected, setCornersDetected] = useState(false)
+  const [qrDetected, setQrDetected] = useState(false)
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [lastDetection, setLastDetection] = useState<ProcessResult | null>(null)
+  const [showBlankWarning, setShowBlankWarning] = useState(false)
+  const [pendingCapture, setPendingCapture] = useState<{imageData: string, result: ProcessResult} | null>(null)
 
-  // Iniciar câmera com melhor compatibilidade mobile
+  // Sons de feedback
+  const playSound = useCallback((type: 'success' | 'error' | 'beep') => {
+    if (!soundEnabled) return
+    
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+    
+    if (type === 'success') {
+      oscillator.frequency.value = 800
+      gainNode.gain.value = 0.3
+      oscillator.start()
+      setTimeout(() => {
+        oscillator.frequency.value = 1000
+      }, 100)
+      setTimeout(() => oscillator.stop(), 200)
+    } else if (type === 'error') {
+      oscillator.frequency.value = 300
+      gainNode.gain.value = 0.3
+      oscillator.start()
+      setTimeout(() => oscillator.stop(), 300)
+    } else {
+      oscillator.frequency.value = 600
+      gainNode.gain.value = 0.2
+      oscillator.start()
+      setTimeout(() => oscillator.stop(), 100)
+    }
+  }, [soundEnabled])
+
+  // Iniciar câmera
   const startCamera = useCallback(async () => {
     setError(null)
     setCameraError(null)
     setMode('camera')
+    setScanStatus('Iniciando câmera...')
 
     try {
-      // Primeiro tenta câmera traseira
       let stream: MediaStream | null = null
       
+      // Tentar câmera traseira primeiro
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: { exact: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
           },
           audio: false
         })
       } catch (e) {
-        // Se falhar, tenta qualquer câmera
-        console.log('Câmera traseira não disponível, tentando qualquer câmera...')
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false
         })
       }
@@ -112,646 +172,353 @@ export default function CorrecaoAutomaticaPage() {
       if (videoRef.current && stream) {
         videoRef.current.srcObject = stream
         videoRef.current.setAttribute('playsinline', 'true')
-        videoRef.current.setAttribute('autoplay', 'true')
-        videoRef.current.setAttribute('muted', 'true')
         videoRef.current.muted = true
         
-        // Aguardar o vídeo estar pronto
         videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            videoRef.current.play()
-              .then(() => {
-                setCameraActive(true)
-                setCameraError(null)
-              })
-              .catch(err => {
-                console.error('Erro ao dar play:', err)
-                setCameraError('Erro ao iniciar vídeo. Use o botão de upload.')
-              })
-          }
+          videoRef.current?.play()
+            .then(() => {
+              setCameraActive(true)
+              setScanStatus('Posicione a folha dentro da área')
+              // Iniciar escaneamento contínuo
+              startContinuousScan()
+            })
+            .catch(err => {
+              setCameraError('Erro ao iniciar vídeo.')
+            })
         }
       }
     } catch (err: any) {
-      console.error('Erro ao acessar câmera:', err)
-      
       let errorMsg = 'Não foi possível acessar a câmera.'
-      
       if (err.name === 'NotAllowedError') {
-        errorMsg = 'Permissão de câmera negada. Verifique as configurações do navegador.'
+        errorMsg = 'Permissão de câmera negada.'
       } else if (err.name === 'NotFoundError') {
-        errorMsg = 'Nenhuma câmera encontrada no dispositivo.'
-      } else if (err.name === 'NotReadableError') {
-        errorMsg = 'Câmera em uso por outro aplicativo.'
+        errorMsg = 'Nenhuma câmera encontrada.'
       }
-      
       setCameraError(errorMsg)
     }
   }, [])
 
+  // Parar câmera
   const stopCamera = useCallback(() => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current)
+      scanIntervalRef.current = null
+    }
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream
       stream.getTracks().forEach(track => track.stop())
       videoRef.current.srcObject = null
     }
     setCameraActive(false)
+    setScanning(false)
   }, [])
 
-  // Parar câmera ao sair da página
   useEffect(() => {
-    return () => {
-      stopCamera()
-    }
+    return () => stopCamera()
   }, [stopCamera])
-
-  const capturePhoto = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current) return
-
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-
-    if (!ctx) return
-
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    ctx.drawImage(video, 0, 0)
-
-    const imageData = canvas.toDataURL('image/jpeg', 0.8)
-    await processImage(imageData)
-  }, [])
-
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = async (event) => {
-      const imageData = event.target?.result as string
-      await processImage(imageData)
-    }
-    reader.readAsDataURL(file)
-    e.target.value = ''
-  }, [])
-  const processImage = async (imageData: string) => {
-    setProcessing(true)
-    setError(null)
-
-    try {
-      const response = await fetch(`${OPENCV_API_URL}/api/process`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageData })
-      })
-
-      const result: ProcessResult = await response.json()
-
-      if (result.success && result.qr_data) {
-        // Buscar dados do simulado e aluno
-        const [simuladoRes, alunoRes] = await Promise.all([
-          supabase
-            .from('simulados')
-            .select('id, titulo, total_questoes, gabarito')
-            .eq('id', result.qr_data.simulado_id)
-            .single(),
-          supabase
-            .from('alunos')
-            .select('id, nome, numero')
-            .eq('id', result.qr_data.aluno_id)
-            .single()
-        ])
-
-        const simulado = simuladoRes.data as Simulado | null
-        const aluno = alunoRes.data as Aluno | null
-
-        let acertos = 0
-        let percentual = 0
+  // Escaneamento contínuo
+  const startContinuousScan = useCallback(() => {
+    if (scanIntervalRef.current) return
+    
+    setScanning(true)
+    
+    // Escanear a cada 500ms
+    scanIntervalRef.current = setInterval(async () => {
+      if (!videoRef.current || !canvasRef.current || processing) return
+      
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      const ctx = canvas.getContext('2d')
+      
+      if (!ctx || video.videoWidth === 0) return
+      
+      // Capturar frame
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      ctx.drawImage(video, 0, 0)
+      
+      const imageData = canvas.toDataURL('image/jpeg', 0.7)
+      
+      try {
+        const response = await fetch(`${OPENCV_API_URL}/api/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: imageData })
+        })
         
-        if (simulado?.gabarito && result.answers) {
-          const gabarito = typeof simulado.gabarito === 'string' 
-            ? JSON.parse(simulado.gabarito) 
-            : simulado.gabarito
+        const result: ProcessResult = await response.json()
+        
+        setLastDetection(result)
+        
+        // Atualizar status visual
+        setCornersDetected(result.corners_found || false)
+        setQrDetected(result.qr_data !== null && result.qr_data !== undefined)
+        
+        // Desenhar overlay
+        drawOverlay(result)
+        
+        if (result.success && result.qr_data) {
+          // Verificar se tem questões em branco
+          const blankCount = result.total_blank || 0
+          const multipleCount = result.total_multiple || 0
           
-          result.answers.forEach((answer, idx) => {
-            if (answer && answer === gabarito[idx]) {
-              acertos++
+          if (blankCount > 0 || multipleCount > 0) {
+            // Tem questões em branco ou múltiplas - avisar
+            playSound('beep')
+            setScanStatus(`⚠️ ${blankCount} em branco, ${multipleCount} múltiplas`)
+            
+            // Pausar scan e mostrar aviso
+            if (scanIntervalRef.current) {
+              clearInterval(scanIntervalRef.current)
+              scanIntervalRef.current = null
             }
-          })
-          percentual = Math.round((acertos / gabarito.length) * 100)
+            setScanning(false)
+            setPendingCapture({ imageData, result })
+            setShowBlankWarning(true)
+          } else {
+            // Tudo OK - captura automática!
+            playSound('success')
+            setScanStatus('✅ Leitura completa!')
+            
+            // Pausar scan
+            if (scanIntervalRef.current) {
+              clearInterval(scanIntervalRef.current)
+              scanIntervalRef.current = null
+            }
+            setScanning(false)
+            
+            // Processar resultado
+            await processSuccessfulScan(imageData, result)
+          }
+        } else {
+          // Ainda não detectou tudo
+          if (result.corners_found && !result.qr_data) {
+            setScanStatus('📍 Marcadores OK - Ajuste o QR Code')
+          } else if (!result.corners_found) {
+            setScanStatus('🔍 Procurando marcadores de canto...')
+          } else {
+            setScanStatus(result.error || 'Posicione a folha na câmera')
+          }
         }
-
-        const correction: PendingCorrection = {
-          imageData,
-          result,
-          simulado: simulado || undefined,
-          aluno: aluno || undefined,
-          acertos,
-          percentual
-        }
-
-        setCurrentResult(correction)
-        setShowConfirmModal(true)
-      } else {
-        setError(result.error || 'Não foi possível ler o QR Code ou as respostas. Tente novamente com melhor iluminação.')
+      } catch (err) {
+        // Erro de conexão - não parar o scan
+        console.error('Erro no scan:', err)
       }
+    }, 500)
+  }, [processing, playSound])
+
+  // Desenhar overlay na imagem
+  const drawOverlay = useCallback((result: ProcessResult) => {
+    if (!overlayCanvasRef.current || !videoRef.current) return
+    
+    const canvas = overlayCanvasRef.current
+    const video = videoRef.current
+    const ctx = canvas.getContext('2d')
+    
+    if (!ctx) return
+    
+    // Ajustar tamanho do canvas ao vídeo
+    const rect = video.getBoundingClientRect()
+    canvas.width = rect.width
+    canvas.height = rect.height
+    
+    // Limpar canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    
+    // Escala entre vídeo real e exibido
+    const scaleX = rect.width / video.videoWidth
+    const scaleY = rect.height / video.videoHeight
+    
+    // Desenhar QR Code detectado (verde)
+    if (result.qr_location) {
+      ctx.strokeStyle = '#00FF00'
+      ctx.lineWidth = 3
+      ctx.strokeRect(
+        result.qr_location.x * scaleX,
+        result.qr_location.y * scaleY,
+        result.qr_location.width * scaleX,
+        result.qr_location.height * scaleY
+      )
+      
+      // Label
+      ctx.fillStyle = '#00FF00'
+      ctx.font = 'bold 14px Arial'
+      ctx.fillText('QR OK ✓', result.qr_location.x * scaleX, result.qr_location.y * scaleY - 5)
+    }
+    
+    // Desenhar bolinhas detectadas
+    if (result.bubble_locations) {
+      result.bubble_locations.forEach(location => {
+        location.bubbles.forEach(bubble => {
+          const x = bubble.rect.x * scaleX
+          const y = bubble.rect.y * scaleY
+          const w = bubble.rect.w * scaleX
+          const h = bubble.rect.h * scaleY
+          
+          if (bubble.filled) {
+            // Bolha preenchida - vermelho
+            ctx.strokeStyle = '#FF0000'
+            ctx.lineWidth = 2
+            ctx.beginPath()
+            ctx.arc(x + w/2, y + h/2, Math.max(w, h)/2, 0, 2 * Math.PI)
+            ctx.stroke()
+            
+            // Letra da opção
+            ctx.fillStyle = '#FF0000'
+            ctx.font = 'bold 12px Arial'
+            ctx.fillText(bubble.option, x + w/2 - 4, y + h/2 + 4)
+          }
+        })
+        
+        // Indicar status da questão
+        if (location.status === 'multiple') {
+          ctx.fillStyle = '#FFA500'
+          ctx.font = 'bold 10px Arial'
+          ctx.fillText(`Q${location.question}: MÚLTIPLA`, 10, 20 + location.question * 12)
+        } else if (location.status === 'blank') {
+          ctx.fillStyle = '#FFFF00'
+          ctx.font = 'bold 10px Arial'
+          ctx.fillText(`Q${location.question}: BRANCO`, 10, 20 + location.question * 12)
+        }
+      })
+    }
+    
+    // Indicadores de canto
+    if (result.corners_found) {
+      ctx.fillStyle = '#00FF00'
+      ctx.font = 'bold 16px Arial'
+      ctx.fillText('◼ Cantos detectados', 10, canvas.height - 10)
+    } else {
+      ctx.fillStyle = '#FF0000'
+      ctx.font = 'bold 16px Arial'
+      ctx.fillText('◻ Procurando cantos...', 10, canvas.height - 10)
+    }
+  }, [])
+
+  // Processar scan bem-sucedido
+  const processSuccessfulScan = async (imageData: string, result: ProcessResult) => {
+    setProcessing(true)
+    
+    try {
+      // Buscar dados do simulado e aluno
+      const [simuladoRes, alunoRes] = await Promise.all([
+        supabase
+          .from('simulados')
+          .select('id, titulo, total_questoes, gabarito')
+          .eq('id', result.qr_data!.simulado_id)
+          .single(),
+        supabase
+          .from('alunos')
+          .select('id, nome, numero')
+          .eq('id', result.qr_data!.aluno_id)
+          .single()
+      ])
+
+      const simulado = simuladoRes.data as Simulado | null
+      const aluno = alunoRes.data as Aluno | null
+
+      let acertos = 0
+      let percentual = 0
+      
+      if (simulado?.gabarito && result.answers) {
+        const gabarito = typeof simulado.gabarito === 'string' 
+          ? JSON.parse(simulado.gabarito) 
+          : simulado.gabarito
+        
+        result.answers.forEach((answer, idx) => {
+          if (answer && answer !== 'X' && answer === gabarito[idx]) {
+            acertos++
+          }
+        })
+        percentual = Math.round((acertos / gabarito.length) * 100)
+      }
+
+      const correction: PendingCorrection = {
+        imageData,
+        result,
+        simulado: simulado || undefined,
+        aluno: aluno || undefined,
+        acertos,
+        percentual
+      }
+
+      setCurrentResult(correction)
+      setShowConfirmModal(true)
     } catch (err) {
-      setError('Erro ao conectar com o servidor de processamento. Verifique sua conexão.')
-      console.error('Erro:', err)
+      setError('Erro ao buscar dados do simulado/aluno')
     } finally {
       setProcessing(false)
     }
   }
+
+  // Confirmar leitura com questões em branco
+  const confirmBlankWarning = async () => {
+    setShowBlankWarning(false)
+    if (pendingCapture) {
+      await processSuccessfulScan(pendingCapture.imageData, pendingCapture.result)
+      setPendingCapture(null)
+    }
+  }
+
+  // Cancelar e continuar escaneando
+  const cancelBlankWarning = () => {
+    setShowBlankWarning(false)
+    setPendingCapture(null)
+    startContinuousScan()
+  }
+
+  // Upload de arquivo
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setProcessing(true)
+    setError(null)
+
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      const imageData = event.target?.result as string
+      
+      try {
+        const response = await fetch(`${OPENCV_API_URL}/api/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: imageData })
+        })
+
+        const result: ProcessResult = await response.json()
+
+        if (result.success && result.qr_data) {
+          await processSuccessfulScan(imageData, result)
+        } else {
+          setError(result.error || 'Não foi possível processar a imagem')
+        }
+      } catch (err) {
+        setError('Erro ao conectar com o servidor')
+      } finally {
+        setProcessing(false)
+      }
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }, [])
 
   const confirmResult = () => {
     if (currentResult) {
       setResults(prev => [...prev, currentResult])
       setCurrentResult(null)
       setShowConfirmModal(false)
+      
+      // Continuar escaneando
+      if (mode === 'camera') {
+        setTimeout(() => {
+          setScanStatus('Posicione a próxima folha')
+          startContinuousScan()
+        }, 1000)
+      }
     }
   }
 
   const removeResult = (index: number) => {
     setResults(prev => prev.filter((_, i) => i !== index))
   }
-
-  const saveAllResults = async () => {
-    if (results.length === 0) return
-
-    setSaving(true)
-    setError(null)
-
-    try {
-      for (const correction of results) {
-        if (!correction.result.qr_data || !correction.result.answers) continue
-
-        const { qr_data, answers } = correction.result
-
-        // Verificar se já existe resultado para este aluno/simulado
-        const { data: existing } = await supabase
-          .from('resultados')
-          .select('id')
-          .eq('simulado_id', qr_data.simulado_id)
-          .eq('aluno_id', qr_data.aluno_id)
-          .single()
-
-        const resultadoData = {
-          simulado_id: qr_data.simulado_id,
-          aluno_id: qr_data.aluno_id,
-          turma_id: qr_data.turma_id,
-          respostas: answers,
-          acertos: correction.acertos || 0,
-          total_questoes: qr_data.total_questoes,
-          percentual: correction.percentual || 0,
-          corrigido_em: new Date().toISOString(),
-          metodo_correcao: 'qrcode'
-        }
-
-        if (existing) {
-          await supabase
-            .from('resultados')
-            .update(resultadoData)
-            .eq('id', existing.id)
-        } else {
-          await supabase
-            .from('resultados')
-            .insert(resultadoData)
-        }
-
-        // Registrar no caderno de erros
-        if (correction.simulado?.gabarito && answers) {
-          const gabarito = typeof correction.simulado.gabarito === 'string'
-            ? JSON.parse(correction.simulado.gabarito)
-            : correction.simulado.gabarito
-
-          for (let i = 0; i < answers.length; i++) {
-            if (answers[i] && answers[i] !== gabarito[i]) {
-              // Buscar questão do simulado
-              const { data: simuladoData } = await supabase
-                .from('simulados')
-                .select('questoes_ids')
-                .eq('id', qr_data.simulado_id)
-                .single()
-
-              if (simuladoData?.questoes_ids?.[i]) {
-                await supabase.from('caderno_erros').upsert({
-                  aluno_id: qr_data.aluno_id,
-                  questao_id: simuladoData.questoes_ids[i],
-                  resposta_errada: answers[i],
-                  resposta_correta: gabarito[i],
-                  simulado_id: qr_data.simulado_id,
-                  data_erro: new Date().toISOString()
-                }, {
-                  onConflict: 'aluno_id,questao_id,simulado_id'
-                })
-              }
-            }
-          }
-        }
-      }
-
-      setResults([])
-      alert(`${results.length} correção(ões) salva(s) com sucesso!`)
-    } catch (err) {
-      setError('Erro ao salvar correções. Tente novamente.')
-      console.error('Erro ao salvar:', err)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="p-6 lg:p-8 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Correção Automática</h1>
-        <p className="text-gray-600">Escaneie as folhas de respostas para corrigir automaticamente</p>
-      </div>
-
-      {/* Mensagem de erro */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-red-800">{error}</p>
-            <button 
-              onClick={() => setError(null)}
-              className="text-sm text-red-600 underline mt-1"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Botões de salvar quando há resultados */}
-      {results.length > 0 && (
-        <div className="flex justify-end">
-          <Button 
-            onClick={saveAllResults} 
-            disabled={saving}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4 mr-2" />
-            )}
-            Salvar {results.length} Correção(ões)
-          </Button>
-        </div>
-      )}
-
-      {/* Modo de seleção */}
-      {mode === 'select' && (
-        <Card>
-          <CardContent className="p-8">
-            <div className="grid md:grid-cols-2 gap-6">
-              <button
-                onClick={startCamera}
-                className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all"
-              >
-                <Camera className="w-16 h-16 text-indigo-600 mb-4" />
-                <span className="text-lg font-semibold text-gray-900">Usar Câmera</span>
-                <span className="text-sm text-gray-500 mt-1">Tire fotos das folhas de respostas</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setMode('upload')
-                  fileInputRef.current?.click()
-                }}
-                className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all"
-              >
-                <Upload className="w-16 h-16 text-indigo-600 mb-4" />
-                <span className="text-lg font-semibold text-gray-900">Upload de Imagem</span>
-                <span className="text-sm text-gray-500 mt-1">Selecione fotos já tiradas</span>
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      {/* Modo câmera */}
-      {mode === 'camera' && (
-        <Card>
-          <CardContent className="p-4">
-            {cameraError ? (
-              <div className="text-center py-8">
-                <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-                <p className="text-red-600 mb-4">{cameraError}</p>
-                <div className="flex gap-3 justify-center">
-                  <Button variant="outline" onClick={() => setMode('select')}>
-                    Voltar
-                  </Button>
-                  <Button onClick={() => fileInputRef.current?.click()}>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Usar Upload
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="relative bg-black rounded-lg overflow-hidden">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-auto max-h-[60vh] object-contain"
-                  />
-                  
-                  {/* Overlay de guia */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute inset-4 border-2 border-white/50 rounded-lg"></div>
-                    <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/50 text-white px-3 py-1 rounded text-sm">
-                      Posicione a folha dentro da área
-                    </div>
-                  </div>
-
-                  {/* Indicador de processamento */}
-                  {processing && (
-                    <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-                      <div className="text-center">
-                        <Loader2 className="w-12 h-12 text-white animate-spin mx-auto mb-3" />
-                        <p className="text-white">Processando...</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Indicador de câmera carregando */}
-                  {!cameraActive && !cameraError && (
-                    <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-                      <div className="text-center">
-                        <Loader2 className="w-12 h-12 text-white animate-spin mx-auto mb-3" />
-                        <p className="text-white">Iniciando câmera...</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-3 mt-4 justify-center">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      stopCamera()
-                      setMode('select')
-                    }}
-                  >
-                    <X className="w-4 h-4 mr-2" />
-                    Cancelar
-                  </Button>
-                  <Button 
-                    size="lg" 
-                    onClick={capturePhoto}
-                    disabled={!cameraActive || processing}
-                    className="px-8"
-                  >
-                    <Camera className="w-5 h-5 mr-2" />
-                    Capturar
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload
-                  </Button>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Modo upload */}
-      {mode === 'upload' && (
-        <Card>
-          <CardContent className="p-8">
-            <div 
-              className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-indigo-500 transition-colors cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {processing ? (
-                <div>
-                  <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-indigo-600" />
-                  <p className="text-lg text-gray-700">Processando imagem...</p>
-                </div>
-              ) : (
-                <>
-                  <FileImage className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                  <p className="text-lg text-gray-700 mb-2">
-                    Clique para selecionar ou arraste uma imagem
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Formatos suportados: JPG, PNG
-                  </p>
-                </>
-              )}
-            </div>
-
-            <div className="flex gap-4 mt-4 justify-center">
-              <Button variant="outline" onClick={() => setMode('select')}>
-                <X className="w-4 h-4 mr-2" />
-                Voltar
-              </Button>
-              <Button onClick={startCamera}>
-                <Camera className="w-4 h-4 mr-2" />
-                Usar Câmera
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Input de arquivo (hidden) */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFileUpload}
-      />
-
-      {/* Canvas para captura (hidden) */}
-      <canvas ref={canvasRef} className="hidden" />
-
-      {/* Lista de correções pendentes */}
-      {results.length > 0 && (
-        <Card>
-          <CardContent className="p-6">
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
-              Correções Pendentes ({results.length})
-            </h3>
-
-            <div className="space-y-3">
-              {results.map((correction, idx) => (
-                <div 
-                  key={idx}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-                >
-                  <div className="flex items-center gap-4">
-                    <img 
-                      src={correction.imageData} 
-                      alt="Preview"
-                      className="w-16 h-16 object-cover rounded"
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {correction.aluno?.nome || 'Aluno não identificado'}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {correction.simulado?.titulo || 'Simulado não identificado'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className={`text-2xl font-bold ${
-                        (correction.percentual || 0) >= 60 ? 'text-green-600' : 
-                        (correction.percentual || 0) >= 40 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {correction.percentual || 0}%
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {correction.acertos || 0}/{correction.simulado?.total_questoes || 0} acertos
-                      </p>
-                    </div>
-
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => removeResult(idx)}
-                    >
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Instruções */}
-      <Card className="bg-blue-50 border-blue-200">
-        <CardContent className="p-6">
-          <h3 className="font-bold text-blue-900 mb-3">📋 Como usar</h3>
-          <ol className="space-y-2 text-blue-800">
-            <li className="flex items-start gap-2">
-              <span className="bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold shrink-0">1</span>
-              <span>Imprima as folhas de respostas com QR Code (geradas ao criar o simulado)</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold shrink-0">2</span>
-              <span>Os alunos preenchem as bolhas com caneta preta</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold shrink-0">3</span>
-              <span>Tire uma foto de cada folha preenchida (boa iluminação, sem reflexos)</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold shrink-0">4</span>
-              <span>O sistema lê automaticamente o QR Code e as respostas marcadas</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="bg-blue-200 text-blue-900 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold shrink-0">5</span>
-              <span>Confira o resultado e clique em "Salvar" para registrar</span>
-            </li>
-          </ol>
-        </CardContent>
-      </Card>
-
-      {/* Modal de confirmação */}
-      <Modal 
-        isOpen={showConfirmModal} 
-        onClose={() => {
-          setShowConfirmModal(false)
-          setCurrentResult(null)
-        }}
-        title="Confirmar Correção"
-      >
-        {currentResult && (
-          <div className="space-y-4">
-            <div className="flex gap-4">
-              <img 
-                src={currentResult.imageData} 
-                alt="Gabarito escaneado"
-                className="w-32 h-32 object-cover rounded-lg"
-              />
-              <div>
-                <h4 className="font-bold text-gray-900">
-                  {currentResult.aluno?.nome || 'Aluno não encontrado'}
-                </h4>
-                <p className="text-sm text-gray-600">
-                  {currentResult.simulado?.titulo || 'Simulado não encontrado'}
-                </p>
-                <div className="mt-2">
-                  <Badge variant={
-                    (currentResult.percentual || 0) >= 60 ? 'success' : 
-                    (currentResult.percentual || 0) >= 40 ? 'warning' : 'danger'
-                  }>
-                    {currentResult.percentual || 0}% - {currentResult.acertos || 0} acertos
-                  </Badge>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-gray-700 mb-2">Respostas detectadas:</p>
-              <div className="flex flex-wrap gap-2">
-                {currentResult.result.answers?.map((answer, idx) => {
-                  const gabarito = currentResult.simulado?.gabarito
-                  const gabaritoArray = typeof gabarito === 'string' ? JSON.parse(gabarito) : gabarito
-                  const isCorrect = answer && gabaritoArray && answer === gabaritoArray[idx]
-                  
-                  return (
-                    <div key={idx} className="flex flex-col items-center">
-                      <span className="text-xs text-gray-500">{idx + 1}</span>
-                      <span 
-                        className={`w-8 h-8 flex items-center justify-center rounded text-sm font-medium ${
-                          answer 
-                            ? isCorrect
-                              ? 'bg-green-100 text-green-700 border border-green-300' 
-                              : 'bg-red-100 text-red-700 border border-red-300'
-                            : 'bg-gray-100 text-gray-400'
-                        }`}
-                      >
-                        {answer || '-'}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                {currentResult.result.total_detected || 0} de {currentResult.result.total_questions || 0} respostas detectadas
-              </p>
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <Button 
-                variant="outline" 
-                className="flex-1"
-                onClick={() => {
-                  setShowConfirmModal(false)
-                  setCurrentResult(null)
-                }}
-              >
-                <X className="w-4 h-4 mr-2" />
-                Descartar
-              </Button>
-              <Button 
-                className="flex-1"
-                onClick={confirmResult}
-              >
-                <Check className="w-4 h-4 mr-2" />
-                Confirmar
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </div>
-  )
-}
