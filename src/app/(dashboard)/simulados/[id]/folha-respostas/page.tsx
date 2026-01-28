@@ -143,8 +143,8 @@ export default function FolhaRespostasPage() {
 
         // Marcadores de canto (quadrados pretos)
         const markerSize = 5
-        // Superior esquerdo
         doc.setFillColor(0, 0, 0)
+        // Superior esquerdo
         doc.rect(margin, yOffset + margin, markerSize, markerSize, 'F')
         // Superior direito
         doc.rect(pageWidth - margin - markerSize, yOffset + margin, markerSize, markerSize, 'F')
@@ -153,11 +153,13 @@ export default function FolhaRespostasPage() {
         // Inferior direito
         doc.rect(pageWidth - margin - markerSize, yOffset + halfHeight - margin - markerSize, markerSize, markerSize, 'F')
 
-        // Linha divisória entre as duas folhas
+        // Linha divisória (tracejada) entre as duas folhas
         if (!isTopHalf) {
-          doc.setDrawColor(200, 200, 200)
-          doc.setLineWidth(0.5)
+          doc.setDrawColor(180, 180, 180)
+          doc.setLineWidth(0.3)
+          doc.setLineDashPattern([2, 2], 0)
           doc.line(margin, halfHeight, pageWidth - margin, halfHeight)
+          doc.setLineDashPattern([], 0)
         }
 
         // Cabeçalho
@@ -207,67 +209,72 @@ export default function FolhaRespostasPage() {
 
         if (aluno.matricula) {
           doc.setFont('helvetica', 'bold')
-          doc.text('MATRÍCULA:', margin + 60, currentY)
+          doc.text('MATRÍCULA:', margin + 55, currentY)
           doc.setFont('helvetica', 'normal')
-          doc.text(aluno.matricula, margin + 82, currentY)
+          doc.text(aluno.matricula, margin + 77, currentY)
         }
         currentY += 8
 
         // Instruções
-        doc.setFillColor(245, 245, 245)
+        doc.setFillColor(240, 240, 240)
         doc.rect(margin, currentY, pageWidth - 2 * margin, 8, 'F')
         doc.setFontSize(7)
         doc.setFont('helvetica', 'bold')
-        doc.text('INSTRUÇÕES:', margin + 2, currentY + 3)
+        doc.text('INSTRUÇÕES:', margin + 2, currentY + 5)
         doc.setFont('helvetica', 'normal')
-        doc.text('Preencha completamente o círculo da alternativa escolhida usando caneta PRETA. Não rasure.', margin + 22, currentY + 3)
+        doc.text('Preencha completamente o círculo da alternativa escolhida usando caneta PRETA. Não rasure.', margin + 24, currentY + 5)
         currentY += 12
-        // Grade de respostas
-        const questoesPorLinha = 5
-        const colunaWidth = (pageWidth - 2 * margin) / questoesPorLinha
-        const linhaHeight = 8
-        const circleRadius = 2.5
+        // Grade de respostas - FORMATO 2 COLUNAS (de cima para baixo)
+        const totalQuestoes = simulado.total_questoes
+        const questoesPorColuna = Math.ceil(totalQuestoes / 2)
+        const colunaWidth = (pageWidth - 2 * margin) / 2
+        const linhaHeight = 7
+        const circleRadius = 2.8
 
-        for (let q = 0; q < simulado.total_questoes; q++) {
-          const col = q % questoesPorLinha
-          const row = Math.floor(q / questoesPorLinha)
-          const x = margin + col * colunaWidth
+        for (let q = 0; q < totalQuestoes; q++) {
+          // Determina coluna e linha (numeração de cima para baixo)
+          const col = q < questoesPorColuna ? 0 : 1
+          const row = q < questoesPorColuna ? q : q - questoesPorColuna
+          
+          const baseX = margin + col * colunaWidth
           const y = currentY + row * linhaHeight
 
-          // Número da questão
-          doc.setFontSize(8)
+          // Número da questão (fora das bolinhas, à esquerda)
+          doc.setFontSize(9)
           doc.setFont('helvetica', 'bold')
-          doc.text(String(q + 1).padStart(2, '0'), x + 2, y + 4)
+          doc.setTextColor(0, 0, 0)
+          const numQuestao = String(q + 1).padStart(2, '0')
+          doc.text(numQuestao, baseX + 3, y + 4)
 
           // Alternativas A, B, C, D, E
           const alternativas = ['A', 'B', 'C', 'D', 'E']
-          alternativas.forEach((alt, idx) => {
-            const circleX = x + 12 + idx * 7
-            const circleY = y + 3
+          const startX = baseX + 15
 
-            // Letra acima do círculo
-            doc.setFontSize(6)
-            doc.setFont('helvetica', 'bold')
-            doc.text(alt, circleX, circleY - 3, { align: 'center' })
+          alternativas.forEach((alt, idx) => {
+            const circleX = startX + idx * 12
+            const circleY = y + 3
 
             // Círculo
             doc.setDrawColor(0, 0, 0)
-            doc.setLineWidth(0.4)
+            doc.setLineWidth(0.5)
+            doc.setFillColor(255, 255, 255)
             doc.circle(circleX, circleY, circleRadius)
+
+            // Letra dentro do círculo
+            doc.setFontSize(7)
+            doc.setFont('helvetica', 'bold')
+            doc.text(alt, circleX, circleY + 0.8, { align: 'center' })
           })
         }
 
-        // Calcular altura usada pelas questões
-        const totalLinhas = Math.ceil(simulado.total_questoes / questoesPorLinha)
-        currentY += totalLinhas * linhaHeight + 5
-
         // Rodapé
+        const footerY = yOffset + halfHeight - margin - 2
         doc.setFontSize(6)
         doc.setFont('helvetica', 'normal')
         doc.setTextColor(128, 128, 128)
-        doc.text(`ID: ${aluno.id.substring(0, 8)}`, margin, yOffset + halfHeight - margin - 2)
-        doc.text('xyMath - Sistema de Avaliação', pageWidth / 2, yOffset + halfHeight - margin - 2, { align: 'center' })
-        doc.text(`Folha ${i + 1} de ${alunos.length}`, pageWidth - margin, yOffset + halfHeight - margin - 2, { align: 'right' })
+        doc.text(`ID: ${aluno.id.substring(0, 8)}`, margin, footerY)
+        doc.text('xyMath - Sistema de Avaliação', pageWidth / 2, footerY, { align: 'center' })
+        doc.text(`Folha ${i + 1} de ${alunos.length}`, pageWidth - margin, footerY, { align: 'right' })
         doc.setTextColor(0, 0, 0)
       }
 
@@ -367,45 +374,63 @@ export default function FolhaRespostasPage() {
       <div className="p-6">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Pré-visualização</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Pré-visualização do Layout</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {alunos.slice(0, 4).map((aluno, index) => (
-                <div key={aluno.id} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="font-semibold text-gray-900">{aluno.nome}</p>
-                      <p className="text-sm text-gray-500">
-                        {turmaAtual?.nome} - {turmaAtual?.ano_serie}
-                      </p>
-                      {aluno.matricula && (
-                        <p className="text-xs text-gray-400">Mat: {aluno.matricula}</p>
-                      )}
-                    </div>
-                    <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
-                      <span className="text-xs text-gray-500">QR</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1 mt-2">
-                    {[1, 2, 3].map(q => (
-                      <div key={q} className="flex items-center gap-0.5">
-                        <span className="text-xs font-bold text-gray-600">{q}</span>
+            {/* Exemplo visual do formato */}
+            <div className="border rounded-lg p-4 bg-gray-50 mb-4">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="font-bold text-gray-900">Nome do Aluno</p>
+                  <p className="text-sm text-gray-600">Turma - Ano/Série</p>
+                </div>
+                <div className="w-16 h-16 bg-gray-300 rounded flex items-center justify-center text-xs">QR</div>
+              </div>
+              
+              {/* Layout 2 colunas */}
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div className="space-y-1">
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <div key={n} className="flex items-center gap-2">
+                      <span className="text-xs font-bold w-5">{String(n).padStart(2, '0')}</span>
+                      <div className="flex gap-1">
                         {['A', 'B', 'C', 'D', 'E'].map(alt => (
-                          <div key={alt} className="w-3 h-3 border border-gray-400 rounded-full"></div>
+                          <div key={alt} className="w-5 h-5 border border-gray-400 rounded-full flex items-center justify-center text-[8px] font-bold">
+                            {alt}
+                          </div>
                         ))}
                       </div>
-                    ))}
-                    <span className="text-xs text-gray-400">...</span>
-                  </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-1">
+                  {[6, 7, 8, 9, 10].map(n => (
+                    <div key={n} className="flex items-center gap-2">
+                      <span className="text-xs font-bold w-5">{String(n).padStart(2, '0')}</span>
+                      <div className="flex gap-1">
+                        {['A', 'B', 'C', 'D', 'E'].map(alt => (
+                          <div key={alt} className="w-5 h-5 border border-gray-400 rounded-full flex items-center justify-center text-[8px] font-bold">
+                            {alt}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Lista de alunos */}
+            <h3 className="font-medium text-gray-900 mb-2">Alunos ({alunos.length})</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+              {alunos.map((aluno, index) => (
+                <div key={aluno.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm">
+                  <span className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center text-xs font-bold text-indigo-600">
+                    {index + 1}
+                  </span>
+                  <span className="truncate text-gray-900">{aluno.nome}</span>
                 </div>
               ))}
             </div>
-
-            {alunos.length > 4 && (
-              <p className="text-center text-sm text-gray-500 mt-4">
-                E mais {alunos.length - 4} alunos...
-              </p>
-            )}
 
             {alunos.length > 0 && (
               <div className="mt-6 p-4 bg-indigo-50 rounded-lg">
