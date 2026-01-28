@@ -30,8 +30,8 @@ interface QuestaoSelecionada {
   resposta_correta: string
   dificuldade: string
   ano_serie: string
-  habilidade_bncc_id?: string
-  descritor_saeb_id?: string
+  habilidade_id?: string
+  descritor_id?: string
   imagem_url?: string
   origem: 'banco' | 'manual' | 'importada'
   tempId?: string
@@ -63,11 +63,11 @@ export default function NovoSimuladoPage() {
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState(editId ? 2 : 1)
 
-  // Dados do formulário (Step 1) - REMOVIDO tempo_minutos
+  // Dados do formulário (Step 1)
   const [formData, setFormData] = useState({
     titulo: '',
     descricao: '',
-    turmas_ids: [] as string[], // MUDOU: agora é array para múltiplas turmas
+    turmas_ids: [] as string[],
     pontuacao_questao: 1.0,
     embaralhar_questoes: false,
     embaralhar_alternativas: false,
@@ -85,12 +85,11 @@ export default function NovoSimuladoPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterOpen, setFilterOpen] = useState(true)
   
-  // MUDOU: filtros agora suportam múltipla seleção para habilidade e descritor
   const [filters, setFilters] = useState({
     ano_serie: '',
     unidade_tematica_id: '',
-    habilidades_bncc_ids: [] as string[], // MUDOU: array
-    descritores_saeb_ids: [] as string[], // MUDOU: array
+    habilidades_ids: [] as string[],
+    descritores_ids: [] as string[],
     dificuldade: '',
     contexto_id: ''
   })
@@ -197,7 +196,8 @@ export default function NovoSimuladoPage() {
 
   useEffect(() => {
     fetchData()
-  }, [fetchData])// Buscar questões do banco com filtros - ATUALIZADO para múltiplos filtros
+  }, [fetchData])
+  // Buscar questões do banco com filtros
   const buscarQuestoes = useCallback(async () => {
     setLoadingBanco(true)
     try {
@@ -214,13 +214,11 @@ export default function NovoSimuladoPage() {
       if (filters.unidade_tematica_id) {
         query = query.eq('unidade_tematica_id', filters.unidade_tematica_id)
       }
-      // MUDOU: suporta múltiplas habilidades
-      if (filters.habilidades_bncc_ids.length > 0) {
-        query = query.in('habilidade_bncc_id', filters.habilidades_bncc_ids)
+      if (filters.habilidades_ids.length > 0) {
+        query = query.in('habilidade_id', filters.habilidades_ids)
       }
-      // MUDOU: suporta múltiplos descritores
-      if (filters.descritores_saeb_ids.length > 0) {
-        query = query.in('descritor_saeb_id', filters.descritores_saeb_ids)
+      if (filters.descritores_ids.length > 0) {
+        query = query.in('descritor_id', filters.descritores_ids)
       }
       if (filters.dificuldade) {
         query = query.eq('dificuldade', filters.dificuldade)
@@ -248,7 +246,7 @@ export default function NovoSimuladoPage() {
     }
   }, [abaAtiva, buscarQuestoes])
 
-  // Toggle turma selecionada (múltiplas turmas)
+  // Toggle turma selecionada
   const toggleTurma = (turmaId: string) => {
     setFormData(prev => ({
       ...prev,
@@ -258,23 +256,23 @@ export default function NovoSimuladoPage() {
     }))
   }
 
-  // Toggle habilidade no filtro (múltipla seleção)
+  // Toggle habilidade no filtro
   const toggleHabilidadeFilter = (habId: string) => {
     setFilters(prev => ({
       ...prev,
-      habilidades_bncc_ids: prev.habilidades_bncc_ids.includes(habId)
-        ? prev.habilidades_bncc_ids.filter(id => id !== habId)
-        : [...prev.habilidades_bncc_ids, habId]
+      habilidades_ids: prev.habilidades_ids.includes(habId)
+        ? prev.habilidades_ids.filter(id => id !== habId)
+        : [...prev.habilidades_ids, habId]
     }))
   }
 
-  // Toggle descritor no filtro (múltipla seleção)
+  // Toggle descritor no filtro
   const toggleDescritorFilter = (descId: string) => {
     setFilters(prev => ({
       ...prev,
-      descritores_saeb_ids: prev.descritores_saeb_ids.includes(descId)
-        ? prev.descritores_saeb_ids.filter(id => id !== descId)
-        : [...prev.descritores_saeb_ids, descId]
+      descritores_ids: prev.descritores_ids.includes(descId)
+        ? prev.descritores_ids.filter(id => id !== descId)
+        : [...prev.descritores_ids, descId]
     }))
   }
 
@@ -368,7 +366,7 @@ export default function NovoSimuladoPage() {
     })
   }
 
-  // Salvar simulado - ATUALIZADO para múltiplas turmas
+  // Salvar simulado
   const handleSave = async (status: 'rascunho' | 'publicado') => {
     if (!usuario?.id) return
     if (!formData.titulo) {
@@ -382,7 +380,6 @@ export default function NovoSimuladoPage() {
 
     setSaving(true)
     try {
-      // Salvar questões manuais primeiro
       const questoesParaSalvar = []
       for (const q of questoesSelecionadas) {
         if (q.origem === 'manual' && !q.id) {
@@ -413,15 +410,14 @@ export default function NovoSimuladoPage() {
         }
       }
 
-      // Montar gabarito
       const gabarito = questoesSelecionadas.map(q => q.resposta_correta)
 
       const simuladoData = {
         usuario_id: usuario.id,
         titulo: formData.titulo,
         descricao: formData.descricao || null,
-        turmas_ids: formData.turmas_ids, // MUDOU: array de turmas
-        turma_id: formData.turmas_ids[0] || null, // Mantém compatibilidade
+        turmas_ids: formData.turmas_ids,
+        turma_id: formData.turmas_ids[0] || null,
         questoes_ids: questoesParaSalvar,
         gabarito: gabarito,
         total_questoes: questoesParaSalvar.length,
@@ -462,8 +458,8 @@ export default function NovoSimuladoPage() {
     setFilters({
       ano_serie: '',
       unidade_tematica_id: '',
-      habilidades_bncc_ids: [],
-      descritores_saeb_ids: [],
+      habilidades_ids: [],
+      descritores_ids: [],
       dificuldade: '',
       contexto_id: ''
     })
@@ -491,8 +487,8 @@ export default function NovoSimuladoPage() {
     filters.unidade_tematica_id,
     filters.dificuldade,
     filters.contexto_id,
-    ...filters.habilidades_bncc_ids,
-    ...filters.descritores_saeb_ids
+    ...filters.habilidades_ids,
+    ...filters.descritores_ids
   ].filter(Boolean).length
 
   const turmasSelected = turmas.filter(t => formData.turmas_ids.includes(t.id))
@@ -506,7 +502,8 @@ export default function NovoSimuladoPage() {
         </div>
       </div>
     )
-  }return (
+  }
+  return (
     <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
@@ -541,7 +538,7 @@ export default function NovoSimuladoPage() {
         ))}
       </div>
 
-      {/* Step 1: Informações Básicas - ATUALIZADO */}
+      {/* Step 1: Informações Básicas */}
       {step === 1 && (
         <Card variant="bordered">
           <CardContent className="p-6 space-y-6">
@@ -712,7 +709,7 @@ export default function NovoSimuladoPage() {
           <div className="grid lg:grid-cols-3 gap-6">
             {/* Coluna da esquerda: Conteúdo da aba */}
             <div className="lg:col-span-2">
-              {/* Aba Banco xyMath - FILTROS ATUALIZADOS */}
+              {/* Aba Banco xyMath */}
               {abaAtiva === 'banco' && (
                 <Card variant="bordered">
                   <CardContent className="p-4">
@@ -743,7 +740,7 @@ export default function NovoSimuladoPage() {
                         </Button>
                       </div>
 
-                      {/* Filtros expandidos - ATUALIZADOS */}
+                      {/* Filtros expandidos */}
                       {filterOpen && (
                         <div className="bg-gray-50 rounded-lg p-4 space-y-4">
                           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -805,8 +802,8 @@ export default function NovoSimuladoPage() {
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                               Habilidades BNCC (múltipla seleção)
-                              {filters.habilidades_bncc_ids.length > 0 && (
-                                <span className="ml-2 text-indigo-600">({filters.habilidades_bncc_ids.length} selecionadas)</span>
+                              {filters.habilidades_ids.length > 0 && (
+                                <span className="ml-2 text-indigo-600">({filters.habilidades_ids.length} selecionadas)</span>
                               )}
                             </label>
                             <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg bg-white p-2 space-y-1">
@@ -814,12 +811,12 @@ export default function NovoSimuladoPage() {
                                 <label
                                   key={hab.id}
                                   className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-gray-50 ${
-                                    filters.habilidades_bncc_ids.includes(hab.id) ? 'bg-indigo-50' : ''
+                                    filters.habilidades_ids.includes(hab.id) ? 'bg-indigo-50' : ''
                                   }`}
                                 >
                                   <input
                                     type="checkbox"
-                                    checked={filters.habilidades_bncc_ids.includes(hab.id)}
+                                    checked={filters.habilidades_ids.includes(hab.id)}
                                     onChange={() => toggleHabilidadeFilter(hab.id)}
                                     className="w-4 h-4 text-indigo-600 rounded"
                                   />
@@ -835,8 +832,8 @@ export default function NovoSimuladoPage() {
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                               Descritores SAEB (múltipla seleção)
-                              {filters.descritores_saeb_ids.length > 0 && (
-                                <span className="ml-2 text-indigo-600">({filters.descritores_saeb_ids.length} selecionados)</span>
+                              {filters.descritores_ids.length > 0 && (
+                                <span className="ml-2 text-indigo-600">({filters.descritores_ids.length} selecionados)</span>
                               )}
                             </label>
                             <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg bg-white p-2 space-y-1">
@@ -844,12 +841,12 @@ export default function NovoSimuladoPage() {
                                 <label
                                   key={desc.id}
                                   className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-gray-50 ${
-                                    filters.descritores_saeb_ids.includes(desc.id) ? 'bg-indigo-50' : ''
+                                    filters.descritores_ids.includes(desc.id) ? 'bg-indigo-50' : ''
                                   }`}
                                 >
                                   <input
                                     type="checkbox"
-                                    checked={filters.descritores_saeb_ids.includes(desc.id)}
+                                    checked={filters.descritores_ids.includes(desc.id)}
                                     onChange={() => toggleDescritorFilter(desc.id)}
                                     className="w-4 h-4 text-indigo-600 rounded"
                                   />
@@ -929,11 +926,11 @@ export default function NovoSimuladoPage() {
                                     >
                                       {questao.dificuldade === 'facil' ? 'Fácil' : questao.dificuldade === 'medio' ? 'Médio' : 'Difícil'}
                                     </Badge>
-                                    {getHabilidadeCodigo(questao.habilidade_bncc_id) && (
-                                      <Badge className="text-xs">{getHabilidadeCodigo(questao.habilidade_bncc_id)}</Badge>
+                                    {getHabilidadeCodigo(questao.habilidade_id) && (
+                                      <Badge className="text-xs">{getHabilidadeCodigo(questao.habilidade_id)}</Badge>
                                     )}
-                                    {getDescritorCodigo(questao.descritor_saeb_id) && (
-                                      <Badge className="text-xs">{getDescritorCodigo(questao.descritor_saeb_id)}</Badge>
+                                    {getDescritorCodigo(questao.descritor_id) && (
+                                      <Badge className="text-xs">{getDescritorCodigo(questao.descritor_id)}</Badge>
                                     )}
                                   </div>
                                   <p className="text-gray-900 line-clamp-2">{questao.enunciado}</p>
@@ -1319,11 +1316,11 @@ export default function NovoSimuladoPage() {
               >
                 {viewingQuestao.dificuldade === 'facil' ? 'Fácil' : viewingQuestao.dificuldade === 'medio' ? 'Médio' : 'Difícil'}
               </Badge>
-              {getHabilidadeCodigo(viewingQuestao.habilidade_bncc_id) && (
-                <Badge>{getHabilidadeCodigo(viewingQuestao.habilidade_bncc_id)}</Badge>
+              {getHabilidadeCodigo(viewingQuestao.habilidade_id) && (
+                <Badge>{getHabilidadeCodigo(viewingQuestao.habilidade_id)}</Badge>
               )}
-              {getDescritorCodigo(viewingQuestao.descritor_saeb_id) && (
-                <Badge>{getDescritorCodigo(viewingQuestao.descritor_saeb_id)}</Badge>
+              {getDescritorCodigo(viewingQuestao.descritor_id) && (
+                <Badge>{getDescritorCodigo(viewingQuestao.descritor_id)}</Badge>
               )}
             </div>
             <div className="bg-gray-100 p-4 rounded-lg">
