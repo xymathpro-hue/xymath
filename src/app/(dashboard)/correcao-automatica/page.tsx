@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 
 // URL da API OpenCV (Railway)
-const OPENCV_API_URL = process.env.NEXT_PUBLIC_OPENCV_API_URL || 'https://xymath-opencv.up.railway.app'
+const OPENCV_API_URL = process.env.NEXT_PUBLIC_OPENCV_API_URL || 'https://web-production-af772.up.railway.app'
 
 interface QRData {
   simulado_id: string
@@ -77,12 +77,11 @@ export default function CorrecaoAutomaticaPage() {
   const [saving, setSaving] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
 
-  // Iniciar câmera
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
-          facingMode: 'environment', // Câmera traseira no celular
+          facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }
@@ -99,7 +98,6 @@ export default function CorrecaoAutomaticaPage() {
     }
   }, [])
 
-  // Parar câmera
   const stopCamera = useCallback(() => {
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream
@@ -109,7 +107,6 @@ export default function CorrecaoAutomaticaPage() {
     setCameraActive(false)
   }, [])
 
-  // Capturar foto da câmera
   const capturePhoto = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) return
 
@@ -127,7 +124,6 @@ export default function CorrecaoAutomaticaPage() {
     await processImage(imageData)
   }, [])
 
-  // Processar upload de arquivo
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -138,12 +134,9 @@ export default function CorrecaoAutomaticaPage() {
       await processImage(imageData)
     }
     reader.readAsDataURL(file)
-    
-    // Limpar input para permitir selecionar o mesmo arquivo novamente
     e.target.value = ''
   }, [])
 
-  // Enviar imagem para API OpenCV
   const processImage = async (imageData: string) => {
     setProcessing(true)
     setError(null)
@@ -158,7 +151,6 @@ export default function CorrecaoAutomaticaPage() {
       const result: ProcessResult = await response.json()
 
       if (result.success && result.qr_data) {
-        // Buscar dados do simulado e aluno
         const [simuladoRes, alunoRes] = await Promise.all([
           supabase
             .from('simulados')
@@ -175,7 +167,6 @@ export default function CorrecaoAutomaticaPage() {
         const simulado = simuladoRes.data as Simulado | null
         const aluno = alunoRes.data as Aluno | null
 
-        // Calcular acertos se tiver gabarito
         let acertos = 0
         let percentual = 0
         
@@ -214,7 +205,6 @@ export default function CorrecaoAutomaticaPage() {
     }
   }
 
-  // Confirmar e adicionar à lista
   const confirmResult = () => {
     if (currentResult) {
       setResults(prev => [...prev, currentResult])
@@ -223,12 +213,10 @@ export default function CorrecaoAutomaticaPage() {
     }
   }
 
-  // Remover resultado da lista
   const removeResult = (index: number) => {
     setResults(prev => prev.filter((_, i) => i !== index))
   }
 
-  // Salvar todos os resultados no banco
   const saveAllResults = async () => {
     if (results.length === 0) return
 
@@ -241,7 +229,6 @@ export default function CorrecaoAutomaticaPage() {
 
         const { qr_data, answers } = correction.result
 
-        // Verificar se já existe resultado para este aluno/simulado
         const { data: existing } = await supabase
           .from('resultados')
           .select('id')
@@ -250,7 +237,6 @@ export default function CorrecaoAutomaticaPage() {
           .single()
 
         if (existing) {
-          // Atualizar resultado existente
           await supabase
             .from('resultados')
             .update({
@@ -262,7 +248,6 @@ export default function CorrecaoAutomaticaPage() {
             })
             .eq('id', existing.id)
         } else {
-          // Criar novo resultado
           await supabase
             .from('resultados')
             .insert({
@@ -277,41 +262,74 @@ export default function CorrecaoAutomaticaPage() {
             })
         }
 
-        // Salvar respostas individuais
         if (correction.simulado?.gabarito) {
           const gabarito = typeof correction.simulado.gabarito === 'string'
             ? JSON.parse(correction.simulado.gabarito)
             : correction.simulado.gabarito
 
-          // Buscar questões do simulado
-          const { data: questoesSimulado } = await supabase
-            .from('simulado_questoes')
-            .select('questao_id, ordem')
-            .eq('simulado_id', qr_data.simulado_id)
-            .order('ordem')
+          const { data: simuladoData } = await supabase
+            .from('simulados')
+            .select('questoes_ids')
+            .eq('id', qr_data.simulado_id)
+            .single()
 
-          if (questoesSimulado) {
+          if (simuladoData?.questoes_ids) {
+            const questoesIds = simuladoData.questoes_ids
+
+            const { data: questoesData } = await supabase
+              .from('questoes')
+              .select('id, habilidade_codigo, descritor_codigo, ano_serie, dificuldade')
+              .in('id', questoesIds)
+
+            const questoesMap = new Map(questoesData?.map(q => [q.id, q]) || [])
+
             for (let i = 0; i < answers.length; i++) {
-              const questaoData = questoesSimulado[i]
-              if (!questaoData || !answers[i]) continue
+              const questaoId = questoesIds[i]
+              const questaoInfo = questoesMap.get(questaoId)
+              const respostaMarcada = answers[i]
+              const respostaCorreta = gabarito[i]
+              const acertou = respostaMarcada === respostaCorreta
 
-              await supabase
-                .from('respostas')
-                .upsert({
-                  aluno_id: qr_data.aluno_id,
-                  questao_id: questaoData.questao_id,
-                  simulado_id: qr_data.simulado_id,
-                  resposta: answers[i],
-                  correta: answers[i] === gabarito[i]
-                }, {
-                  onConflict: 'aluno_id,questao_id,simulado_id'
-                })
+              if (questaoId && respostaMarcada) {
+                await supabase
+                  .from('respostas')
+                  .upsert({
+                    aluno_id: qr_data.aluno_id,
+                    questao_id: questaoId,
+                    simulado_id: qr_data.simulado_id,
+                    resposta_marcada: respostaMarcada,
+                    correta: acertou
+                  }, {
+                    onConflict: 'aluno_id,questao_id,simulado_id',
+                    ignoreDuplicates: false
+                  })
+              }
+
+              if (!acertou && questaoId && usuario?.id) {
+                await supabase
+                  .from('caderno_erros')
+                  .upsert({
+                    usuario_id: usuario.id,
+                    aluno_id: qr_data.aluno_id,
+                    turma_id: qr_data.turma_id,
+                    simulado_id: qr_data.simulado_id,
+                    questao_id: questaoId,
+                    habilidade_codigo: questaoInfo?.habilidade_codigo || null,
+                    descritor_codigo: questaoInfo?.descritor_codigo || null,
+                    ano_serie: questaoInfo?.ano_serie || null,
+                    dificuldade: questaoInfo?.dificuldade || null,
+                    resposta_correta: respostaCorreta,
+                    resposta_marcada: respostaMarcada
+                  }, {
+                    onConflict: 'aplicacao_id,aluno_id,questao_id',
+                    ignoreDuplicates: true
+                  })
+              }
             }
           }
         }
       }
 
-      // Limpar lista após salvar
       setResults([])
       setError(null)
       alert(`${results.length} correção(ões) salva(s) com sucesso!`)
@@ -323,7 +341,6 @@ export default function CorrecaoAutomaticaPage() {
     }
   }
 
-  // Cleanup ao desmontar
   useEffect(() => {
     return () => {
       stopCamera()
@@ -332,7 +349,6 @@ export default function CorrecaoAutomaticaPage() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -356,7 +372,6 @@ export default function CorrecaoAutomaticaPage() {
         )}
       </div>
 
-      {/* Erro */}
       {error && (
         <Card className="bg-red-50 border-red-200">
           <CardContent className="p-4 flex items-center gap-3">
@@ -369,7 +384,6 @@ export default function CorrecaoAutomaticaPage() {
         </Card>
       )}
 
-      {/* Seleção de modo */}
       {mode === 'select' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card 
@@ -407,7 +421,6 @@ export default function CorrecaoAutomaticaPage() {
         </div>
       )}
 
-      {/* Modo Câmera */}
       {mode === 'camera' && (
         <Card>
           <CardContent className="p-4">
@@ -419,7 +432,6 @@ export default function CorrecaoAutomaticaPage() {
                 className="w-full max-h-[60vh] object-contain"
               />
               
-              {/* Overlay com guias */}
               <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute inset-8 border-2 border-white/50 rounded-lg">
                   <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-indigo-500 rounded-tl-lg" />
@@ -429,7 +441,6 @@ export default function CorrecaoAutomaticaPage() {
                 </div>
               </div>
 
-              {/* Processando */}
               {processing && (
                 <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
                   <div className="text-center text-white">
@@ -466,7 +477,6 @@ export default function CorrecaoAutomaticaPage() {
         </Card>
       )}
 
-      {/* Modo Upload */}
       {mode === 'upload' && (
         <Card>
           <CardContent className="p-8">
@@ -506,7 +516,6 @@ export default function CorrecaoAutomaticaPage() {
         </Card>
       )}
 
-      {/* Input de arquivo oculto */}
       <input
         ref={fileInputRef}
         type="file"
@@ -516,10 +525,8 @@ export default function CorrecaoAutomaticaPage() {
         onChange={handleFileUpload}
       />
 
-      {/* Canvas oculto para captura */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Lista de correções pendentes */}
       {results.length > 0 && (
         <Card>
           <CardContent className="p-6">
@@ -578,7 +585,6 @@ export default function CorrecaoAutomaticaPage() {
         </Card>
       )}
 
-      {/* Instruções */}
       <Card className="bg-blue-50 border-blue-200">
         <CardContent className="p-6">
           <h3 className="font-bold text-blue-900 mb-3">📋 Como usar</h3>
@@ -607,7 +613,6 @@ export default function CorrecaoAutomaticaPage() {
         </CardContent>
       </Card>
 
-      {/* Modal de confirmação */}
       <Modal 
         isOpen={showConfirmModal} 
         onClose={() => {
@@ -618,7 +623,6 @@ export default function CorrecaoAutomaticaPage() {
       >
         {currentResult && (
           <div className="space-y-4">
-            {/* Preview da imagem */}
             <div className="flex gap-4">
               <img 
                 src={currentResult.imageData} 
@@ -643,7 +647,6 @@ export default function CorrecaoAutomaticaPage() {
               </div>
             </div>
 
-            {/* Respostas detectadas */}
             <div>
               <p className="text-sm font-medium text-gray-700 mb-2">Respostas detectadas:</p>
               <div className="flex flex-wrap gap-2">
@@ -665,7 +668,6 @@ export default function CorrecaoAutomaticaPage() {
               </p>
             </div>
 
-            {/* Botões */}
             <div className="flex gap-3 pt-4">
               <Button 
                 variant="outline" 
