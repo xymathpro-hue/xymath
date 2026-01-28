@@ -1,7 +1,7 @@
-// src/app/(dashboard)/layout.tsx
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
+import { Sidebar } from '@/components/layout/Sidebar'
 
 export default async function DashboardLayout({
   children,
@@ -17,10 +17,3 @@ export default async function DashboardLayout({
   if (!user) {
     redirect('/login')
   }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {children}
-    </div>
-  )
-}
