@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
-import { PlusCircle, FileText, Calendar } from 'lucide-react'
+import { PlusCircle, FileText, Calendar, Edit, Trash2, Eye } from 'lucide-react'
+import { Modal, Button } from '@/components/ui'
 
 interface Simulado {
   id: string
@@ -19,21 +20,24 @@ export default function SimuladosPage() {
 
   const [simulados, setSimulados] = useState<Simulado[]>([])
   const [loading, setLoading] = useState(true)
+  const [deleteModal, setDeleteModal] = useState(false)
+  const [simuladoToDelete, setSimuladoToDelete] = useState<Simulado | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => {
-    const carregar = async () => {
-      const { data, error } = await supabase
-        .from('simulados')
-        .select('id, titulo, status, total_questoes, created_at')
-        .order('created_at', { ascending: false })
+  const carregar = async () => {
+    const { data, error } = await supabase
+      .from('simulados')
+      .select('id, titulo, status, total_questoes, created_at')
+      .order('created_at', { ascending: false })
 
-      if (!error && data) {
-        setSimulados(data)
-      }
-
-      setLoading(false)
+    if (!error && data) {
+      setSimulados(data)
     }
 
+    setLoading(false)
+  }
+
+  useEffect(() => {
     carregar()
   }, [])
 
@@ -43,6 +47,34 @@ export default function SimuladosPage() {
       month: '2-digit',
       year: 'numeric'
     })
+  }
+
+  const handleDeleteClick = (simulado: Simulado) => {
+    setSimuladoToDelete(simulado)
+    setDeleteModal(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!simuladoToDelete) return
+    
+    setDeleting(true)
+    
+    const { error } = await supabase
+      .from('simulados')
+      .delete()
+      .eq('id', simuladoToDelete.id)
+
+    setDeleting(false)
+    setDeleteModal(false)
+    setSimuladoToDelete(null)
+
+    if (error) {
+      alert('Erro ao excluir simulado')
+      return
+    }
+
+    // Recarregar lista
+    carregar()
   }
 
   if (loading) {
@@ -108,16 +140,72 @@ export default function SimuladosPage() {
                 </div>
               </div>
 
-              <button
-                onClick={() => router.push(`/simulados/${simulado.id}`)}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700 transition-colors"
-              >
-                Abrir
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Botão Abrir/Ver */}
+                <button
+                  onClick={() => router.push(`/simulados/${simulado.id}`)}
+                  className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 transition-colors"
+                  title="Abrir simulado"
+                >
+                  <Eye className="w-4 h-4" />
+                  Abrir
+                </button>
+
+                {/* Botão Editar */}
+                <button
+                  onClick={() => router.push(`/simulados/novo?edit=${simulado.id}`)}
+                  className="flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700 hover:bg-gray-200 transition-colors"
+                  title="Editar simulado"
+                >
+                  <Edit className="w-4 h-4" />
+                  Editar
+                </button>
+
+                {/* Botão Excluir */}
+                <button
+                  onClick={() => handleDeleteClick(simulado)}
+                  className="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 hover:bg-red-100 transition-colors"
+                  title="Excluir simulado"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      <Modal 
+        isOpen={deleteModal} 
+        onClose={() => setDeleteModal(false)} 
+        title="Excluir Simulado"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700">
+            Tem certeza que deseja excluir o simulado <strong>"{simuladoToDelete?.titulo}"</strong>?
+          </p>
+          <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+            ⚠️ Esta ação não pode ser desfeita. Todos os dados deste simulado serão perdidos.
+          </p>
+          <div className="flex gap-3 justify-end pt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => setDeleteModal(false)}
+              disabled={deleting}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              variant="danger" 
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
+              {deleting ? 'Excluindo...' : 'Sim, Excluir'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
