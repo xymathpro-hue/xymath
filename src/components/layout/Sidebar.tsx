@@ -15,7 +15,6 @@ import {
   X,
   Library,
   Clock,
-  Flame,
   FileUp,
   PieChart,
   Shield,
@@ -23,39 +22,113 @@ import {
   FileSpreadsheet,
   Calculator,
   Calendar,
-  ScanLine
+  ScanLine,
+  Settings,
+  AlertTriangle,
+  Brain,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 
-const menuItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/minha-semana', label: 'Minha Semana', icon: Calendar },
-  { href: '/turmas', label: 'Turmas', icon: Users },
-  { href: '/alunos', label: 'Alunos', icon: GraduationCap },
-  { href: '/atividades', label: 'Atividades', icon: ClipboardList },
-  { href: '/notas', label: 'Notas', icon: Calculator },
-  { href: '/alertas', label: 'Alertas', icon: Bell },
-  { href: '/questoes', label: 'Banco de Questões', icon: BookOpen },
-  { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
-  { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
-  { href: '/simulados', label: 'Simulados', icon: FileText },
-  { href: '/resultados', label: 'Resultados', icon: BarChart3 },
-  { href: '/avaliacoes-rede', label: 'Avaliações de Rede', icon: FileSpreadsheet },
-  { href: '/gestao-horarios', label: 'Gestão de Horários', icon: Clock },
-  { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
-  { href: '/relatorios', label: 'Relatórios', icon: PieChart },
-  { href: '/correcao-automatica', label: 'Correção Automática', icon: ScanLine },
-  { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
+interface MenuItem {
+  href: string
+  label: string
+  icon: React.ElementType
+}
+
+interface MenuGroup {
+  id: string
+  title: string
+  icon: React.ElementType
+  items: MenuItem[]
+  adminOnly?: boolean
+}
+
+const menuGroups: MenuGroup[] = [
+  {
+    id: 'inicio',
+    title: 'Início',
+    icon: LayoutDashboard,
+    items: [
+      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/minha-semana', label: 'Minha Semana', icon: Calendar },
+    ]
+  },
+  {
+    id: 'gestao',
+    title: 'Gestão',
+    icon: Users,
+    items: [
+      { href: '/turmas', label: 'Turmas', icon: Users },
+      { href: '/alunos', label: 'Alunos', icon: GraduationCap },
+      { href: '/gestao-horarios', label: 'Horários', icon: Clock },
+    ]
+  },
+  {
+    id: 'avaliacoes',
+    title: 'Avaliações',
+    icon: FileText,
+    items: [
+      { href: '/questoes', label: 'Banco de Questões', icon: BookOpen },
+      { href: '/simulados', label: 'Simulados', icon: FileText },
+      { href: '/correcao-automatica', label: 'Correção', icon: ScanLine },
+      { href: '/avaliacoes-rede', label: 'Avaliações de Rede', icon: FileSpreadsheet },
+    ]
+  },
+  {
+    id: 'resultados',
+    title: 'Resultados',
+    icon: BarChart3,
+    items: [
+      { href: '/notas', label: 'Notas', icon: Calculator },
+      { href: '/resultados', label: 'Desempenho', icon: BarChart3 },
+      { href: '/caderno-erros', label: 'Caderno de Erros', icon: AlertTriangle },
+      { href: '/relatorios', label: 'Relatórios', icon: PieChart },
+    ]
+  },
+  {
+    id: 'recursos',
+    title: 'Recursos',
+    icon: Library,
+    items: [
+      { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
+      { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
+      { href: '/atividades', label: 'Atividades', icon: ClipboardList },
+    ]
+  },
+  {
+    id: 'ferramentas',
+    title: 'Ferramentas',
+    icon: Settings,
+    items: [
+      { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
+      { href: '/alertas', label: 'Alertas', icon: Bell },
+      { href: '/configuracoes', label: 'Configurações', icon: Settings },
+    ]
+  },
 ]
+
+const adminGroup: MenuGroup = {
+  id: 'admin',
+  title: 'Administração',
+  icon: Shield,
+  adminOnly: true,
+  items: [
+    { href: '/admin', label: 'Painel Admin', icon: Shield },
+    { href: '/admin/xy-insights', label: 'XY Insights', icon: Brain },
+  ]
+}
 
 export function Sidebar() {
   const pathname = usePathname()
   const { usuario, signOut } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(['inicio', 'avaliacoes', 'resultados'])
   const supabase = createClient()
 
   useEffect(() => {
@@ -71,113 +144,181 @@ export function Sidebar() {
     checkAdmin()
   }, [usuario?.id, supabase])
 
+  useEffect(() => {
+    const allGroups = [...menuGroups, adminGroup]
+    allGroups.forEach(group => {
+      const hasActiveItem = group.items.some(
+        item => pathname === item.href || pathname.startsWith(item.href + '/')
+      )
+      if (hasActiveItem && !expandedGroups.includes(group.id)) {
+        setExpandedGroups(prev => [...prev, group.id])
+      }
+    })
+  }, [pathname, expandedGroups])
+
   const handleSignOut = async () => {
     await signOut()
     window.location.href = '/login'
   }
 
-  const NavContent = () => (
-    <>
-      <div className="px-6 py-6 border-b border-gray-200">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-xl">xy</span>
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => 
+      prev.includes(groupId) 
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId]
+    )
+  }
+
+  const isItemActive = (href: string) => {
+    return pathname === href || pathname.startsWith(href + '/')
+  }
+
+  const isGroupActive = (group: MenuGroup) => {
+    return group.items.some(item => isItemActive(item.href))
+  }
+
+  const renderMenuGroup = (group: MenuGroup) => {
+    const isExpanded = expandedGroups.includes(group.id)
+    const groupActive = isGroupActive(group)
+    const GroupIcon = group.icon
+
+    return (
+      <div key={group.id} className="mb-1">
+        <button
+          onClick={() => toggleGroup(group.id)}
+          className={clsx(
+            'w-full flex items-center justify-between px-4 py-2.5 rounded-lg transition-all duration-200',
+            groupActive 
+              ? 'bg-indigo-50 text-indigo-700' 
+              : 'text-gray-600 hover:bg-gray-50'
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <GroupIcon className={clsx(
+              'w-5 h-5',
+              groupActive ? 'text-indigo-600' : 'text-gray-400'
+            )} />
+            <span className="font-semibold text-sm">{group.title}</span>
           </div>
-          <span className="text-xl font-bold text-gray-900">xyMath</span>
+          {isExpanded 
+            ? <ChevronDown className="w-4 h-4 text-gray-400" />
+            : <ChevronRight className="w-4 h-4 text-gray-400" />
+          }
+        </button>
+
+        <div className={clsx(
+          'overflow-hidden transition-all duration-200',
+          isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+        )}>
+          <div className="ml-4 pl-4 border-l-2 border-gray-100 mt-1 space-y-0.5">
+            {group.items.map((item) => {
+              const isActive = isItemActive(item.href)
+              const ItemIcon = item.icon
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150',
+                    isActive 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  )}
+                >
+                  <ItemIcon className={clsx(
+                    'w-4 h-4',
+                    isActive ? 'text-white' : 'text-gray-400'
+                  )} />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const NavContent = () => (
+    <div className="h-full flex flex-col">
+      <div className="px-6 py-5 border-b border-gray-100">
+        <Link href="/dashboard" className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+            <span className="text-white font-bold text-lg">xy</span>
+          </div>
+          <div>
+            <span className="text-xl font-bold text-gray-900">xyMath</span>
+            <p className="text-[10px] text-gray-400 -mt-0.5">Plataforma Educacional</p>
+          </div>
         </Link>
       </div>
 
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setMobileMenuOpen(false)}
-              className={clsx(
-                'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
-                isActive 
-                  ? 'bg-indigo-50 text-indigo-600' 
-                  : 'text-gray-600 hover:bg-gray-100'
-              )}
-            >
-              <item.icon className="w-5 h-5" />
-              <span className="font-medium">{item.label}</span>
-            </Link>
-          )
-        })}
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        {menuGroups.map(group => renderMenuGroup(group))}
         
-        {/* Admin link - só aparece para admins */}
         {isAdmin && (
-          <Link
-            href="/admin"
-            onClick={() => setMobileMenuOpen(false)}
-            className={clsx(
-              'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
-              pathname === '/admin' || pathname.startsWith('/admin/')
-                ? 'bg-indigo-50 text-indigo-600' 
-                : 'text-gray-600 hover:bg-gray-100'
-            )}
-          >
-            <Shield className="w-5 h-5" />
-            <span className="font-medium">Admin</span>
-          </Link>
+          <>
+            <div className="my-4 mx-4 border-t border-gray-200" />
+            {renderMenuGroup(adminGroup)}
+          </>
         )}
       </nav>
 
-      <div className="p-4 border-t border-gray-200">
-        <div className="flex items-center gap-3 px-4 py-3 mb-2">
-          <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-            <span className="text-indigo-600 font-semibold">
+      <div className="p-4 border-t border-gray-100 bg-gray-50/50">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-md">
+            <span className="text-white font-semibold text-sm">
               {usuario?.nome?.charAt(0).toUpperCase() || 'U'}
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-gray-900 truncate">{usuario?.nome || 'Usuário'}</p>
-            <p className="text-sm text-gray-500 truncate">{usuario?.email}</p>
+            <p className="font-semibold text-gray-900 text-sm truncate">
+              {usuario?.nome || 'Usuário'}
+            </p>
+            <p className="text-xs text-gray-500 truncate">{usuario?.email}</p>
           </div>
         </div>
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-3 w-full px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 text-sm font-medium"
         >
-          <LogOut className="w-5 h-5" />
-          <span className="font-medium">Sair</span>
+          <LogOut className="w-4 h-4" />
+          <span>Sair da conta</span>
         </button>
       </div>
-    </>
+    </div>
   )
 
   return (
     <>
-      {/* Mobile menu button */}
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 bg-white rounded-lg shadow-md"
+          className="p-2.5 bg-white rounded-xl shadow-lg border border-gray-100"
         >
-          {mobileMenuOpen ? <X className="w-6 h-6 text-gray-600" /> : <Menu className="w-6 h-6 text-gray-600" />}
+          {mobileMenuOpen 
+            ? <X className="w-5 h-5 text-gray-600" /> 
+            : <Menu className="w-5 h-5 text-gray-600" />
+          }
         </button>
       </div>
 
-      {/* Mobile menu overlay */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileMenuOpen(false)} />
+        <div 
+          className="lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40" 
+          onClick={() => setMobileMenuOpen(false)} 
+        />
       )}
 
-      {/* Mobile sidebar */}
       <aside className={clsx(
-        'lg:hidden fixed top-0 left-0 h-full w-72 bg-white z-50 transform transition-transform duration-200',
+        'lg:hidden fixed top-0 left-0 h-full w-72 bg-white z-50 transform transition-transform duration-300 shadow-2xl',
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
-        <div className="h-full flex flex-col">
-          <NavContent />
-        </div>
+        <NavContent />
       </aside>
 
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:fixed lg:inset-y-0 lg:left-0 bg-white border-r border-gray-200">
+      <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:fixed lg:inset-y-0 lg:left-0 bg-white border-r border-gray-100 shadow-sm">
         <NavContent />
       </aside>
     </>
