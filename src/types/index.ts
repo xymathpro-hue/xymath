@@ -41,13 +41,13 @@ export interface Aluno {
 // BNCC - Base Nacional Comum Curricular
 export interface ComponenteCurricular {
   id: string;
-  codigo: string; // Ex: MAT, POR, CIE
-  nome: string; // Ex: Matemática, Português, Ciências
+  codigo: string;
+  nome: string;
 }
 
 export interface HabilidadeBNCC {
   id: string;
-  codigo: string; // Ex: EF05MA01
+  codigo: string;
   descricao: string;
   componente_id: string;
   ano_serie: string;
@@ -55,7 +55,7 @@ export interface HabilidadeBNCC {
 
 export interface Descritor {
   id: string;
-  codigo: string; // Ex: D1, D2
+  codigo: string;
   descricao: string;
   componente_id: string;
 }
@@ -71,9 +71,13 @@ export interface Questao {
   alternativa_d: string;
   alternativa_e?: string;
   resposta_correta: 'A' | 'B' | 'C' | 'D' | 'E';
-  componente_id: string;
+  componente_id?: string;
   habilidade_id?: string;
+  habilidade_bncc_id?: string;
   descritor_id?: string;
+  descritor_saeb_id?: string;
+  unidade_tematica_id?: string;
+  contexto_id?: string;
   ano_serie: string;
   dificuldade: 'facil' | 'medio' | 'dificil';
   tags?: string[];
@@ -87,9 +91,12 @@ export interface Simulado {
   titulo: string;
   descricao?: string;
   turma_id?: string;
+  turmas_ids?: string[];
   data_aplicacao?: string;
   tempo_minutos?: number;
   questoes_ids: string[];
+  gabarito?: string[];
+  total_questoes?: number;
   configuracoes: SimuladoConfig;
   status: 'rascunho' | 'publicado' | 'encerrado';
   created_at: string;
@@ -101,6 +108,9 @@ export interface SimuladoConfig {
   mostrar_gabarito_apos?: boolean;
   permitir_revisao?: boolean;
   pontuacao_questao?: number;
+  valor_total?: number;
+  cabecalho_escola?: string;
+  cabecalho_endereco?: string;
 }
 
 export interface Aplicacao {
@@ -137,7 +147,7 @@ export interface ResultadoAluno {
 export interface GabaritoQRCode {
   aplicacao_id: string;
   aluno_id: string;
-  respostas: string; // Ex: "ABCDABCDAB"
+  respostas: string;
   timestamp: string;
 }
 
@@ -182,7 +192,9 @@ export interface DesempenhoHabilidade {
 export interface FiltroQuestoes {
   componente_id?: string;
   habilidade_id?: string;
+  habilidade_bncc_id?: string;
   descritor_id?: string;
+  descritor_saeb_id?: string;
   ano_serie?: string;
   dificuldade?: string;
   busca?: string;
