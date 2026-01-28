@@ -111,7 +111,7 @@ export default function FolhaRespostasPage() {
       const doc = new jsPDF('portrait', 'mm', 'a4')
       const pageWidth = 210
       const pageHeight = 297
-      const margin = 10
+      const margin = 8
       const halfHeight = pageHeight / 2
 
       const turmaAtual = turmas.find(t => t.id === turmaSelecionada)
@@ -134,118 +134,107 @@ export default function FolhaRespostasPage() {
           q: simulado.total_questoes
         })
 
-        // QR Code maior para melhor leitura
+        // QR Code com alta correção de erros
         const qrDataUrl = await QRCode.toDataURL(qrData, {
-          width: 150,
-          margin: 2,
-          errorCorrectionLevel: 'H' // Alta correção de erros
+          width: 200,
+          margin: 1,
+          errorCorrectionLevel: 'H'
         })
 
         // === DESENHAR FOLHA ===
 
-        // Marcadores de canto (quadrados pretos) - MAIORES para melhor detecção
-        const markerSize = 6
+        // Marcadores de canto (quadrados pretos)
+        const markerSize = 5
         doc.setFillColor(0, 0, 0)
+        
         // Superior esquerdo
         doc.rect(margin, yOffset + margin, markerSize, markerSize, 'F')
         // Superior direito
         doc.rect(pageWidth - margin - markerSize, yOffset + margin, markerSize, markerSize, 'F')
-        // Inferior esquerdo
-        doc.rect(margin, yOffset + halfHeight - margin - markerSize, markerSize, markerSize, 'F')
+        // Inferior esquerdo (afastado da borda para não tocar na linha de corte)
+        doc.rect(margin, yOffset + halfHeight - margin - markerSize - 2, markerSize, markerSize, 'F')
         // Inferior direito
-        doc.rect(pageWidth - margin - markerSize, yOffset + halfHeight - margin - markerSize, markerSize, markerSize, 'F')
+        doc.rect(pageWidth - margin - markerSize, yOffset + halfHeight - margin - markerSize - 2, markerSize, markerSize, 'F')
 
-        // Linha divisória (tracejada) entre as duas folhas
-        if (!isTopHalf) {
-          doc.setDrawColor(180, 180, 180)
-          doc.setLineWidth(0.3)
-          doc.setLineDashPattern([2, 2], 0)
-          doc.line(margin, halfHeight, pageWidth - margin, halfHeight)
-          doc.setLineDashPattern([], 0)
-        }
+        // SEM linha divisória - os marcadores já definem a área
 
-        // QR Code - MAIOR e bem posicionado (canto superior direito)
-        const qrSize = 28
-        const qrX = pageWidth - margin - qrSize - 2
-        const qrY = yOffset + margin + markerSize + 2
+        // QR Code - posicionado no canto superior direito com margem de segurança
+        const qrSize = 26
+        const qrX = pageWidth - margin - markerSize - qrSize - 3
+        const qrY = yOffset + margin + markerSize + 3
         doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize)
 
         // Cabeçalho
-        let currentY = yOffset + margin + markerSize + 4
+        let currentY = yOffset + margin + markerSize + 2
 
-        if (simulado.configuracoes?.cabecalho_escola) {
-          doc.setFontSize(9)
-          doc.setFont('helvetica', 'bold')
-          doc.text(simulado.configuracoes.cabecalho_escola, margin + markerSize + 2, currentY)
-          currentY += 4
-        }
-
-        if (simulado.configuracoes?.cabecalho_endereco) {
-          doc.setFontSize(7)
-          doc.setFont('helvetica', 'normal')
-          doc.text(simulado.configuracoes.cabecalho_endereco, margin + markerSize + 2, currentY)
-          currentY += 4
-        }
-
-        // Título do simulado
+        // Título do simulado (à esquerda do QR)
         doc.setFontSize(11)
         doc.setFont('helvetica', 'bold')
-        doc.text(simulado.titulo, margin + markerSize + 2, currentY + 2)
-        currentY += 10
+        doc.setTextColor(0, 0, 0)
+        doc.text(simulado.titulo, margin + markerSize + 3, currentY + 3)
+        
+        if (simulado.configuracoes?.cabecalho_escola) {
+          currentY += 5
+          doc.setFontSize(8)
+          doc.setFont('helvetica', 'normal')
+          doc.text(simulado.configuracoes.cabecalho_escola, margin + markerSize + 3, currentY + 3)
+        }
 
-        // Linha separadora
+        currentY = yOffset + margin + markerSize + qrSize + 6
+
+        // Linha separadora do cabeçalho
         doc.setDrawColor(0, 0, 0)
         doc.setLineWidth(0.3)
-        doc.line(margin, currentY, pageWidth - margin, currentY)
-        currentY += 5
+        doc.line(margin + markerSize, currentY, pageWidth - margin - markerSize, currentY)
+        currentY += 4
 
         // Dados do aluno
         doc.setFontSize(9)
         doc.setFont('helvetica', 'bold')
-        doc.text('ALUNO:', margin + 2, currentY)
+        doc.text('ALUNO:', margin + markerSize + 2, currentY)
         doc.setFont('helvetica', 'normal')
-        const nomeAluno = aluno.nome.length > 40 ? aluno.nome.substring(0, 40) + '...' : aluno.nome
-        doc.text(nomeAluno, margin + 17, currentY)
+        const nomeAluno = aluno.nome.length > 35 ? aluno.nome.substring(0, 35) + '...' : aluno.nome
+        doc.text(nomeAluno, margin + markerSize + 18, currentY)
         currentY += 5
 
         doc.setFont('helvetica', 'bold')
-        doc.text('TURMA:', margin + 2, currentY)
+        doc.text('TURMA:', margin + markerSize + 2, currentY)
         doc.setFont('helvetica', 'normal')
-        doc.text(`${turmaAtual?.nome || ''} - ${turmaAtual?.ano_serie || ''}`, margin + 17, currentY)
+        doc.text(`${turmaAtual?.nome || ''} - ${turmaAtual?.ano_serie || ''}`, margin + markerSize + 18, currentY)
 
         if (aluno.matricula) {
           doc.setFont('helvetica', 'bold')
-          doc.text('MAT:', margin + 70, currentY)
+          doc.text('MAT:', margin + 80, currentY)
           doc.setFont('helvetica', 'normal')
-          doc.text(aluno.matricula, margin + 80, currentY)
+          doc.text(aluno.matricula, margin + 90, currentY)
         }
-        currentY += 7
+        currentY += 6
 
         // Instruções
-        doc.setFillColor(245, 245, 245)
-        doc.rect(margin, currentY, pageWidth - 2 * margin, 7, 'F')
-        doc.setFontSize(6)
+        doc.setFillColor(240, 240, 240)
+        doc.rect(margin + markerSize, currentY, pageWidth - 2 * margin - 2 * markerSize, 6, 'F')
+        doc.setFontSize(5.5)
         doc.setFont('helvetica', 'bold')
         doc.setTextColor(0, 0, 0)
-        doc.text('INSTRUÇÕES: Preencha COMPLETAMENTE o círculo. Use caneta PRETA. Não rasure. Marque apenas UMA alternativa.', margin + 2, currentY + 4.5)
-        currentY += 10
+        doc.text('INSTRUÇÕES: Preencha COMPLETAMENTE o círculo. Use caneta PRETA. Marque apenas UMA alternativa por questão.', margin + markerSize + 2, currentY + 4)
+        currentY += 9
         // Grade de respostas - FORMATO 2 COLUNAS (de cima para baixo)
-        // BOLINHAS MENORES para facilitar preenchimento
         const totalQuestoes = simulado.total_questoes
         const questoesPorColuna = Math.ceil(totalQuestoes / 2)
-        const colunaWidth = (pageWidth - 2 * margin) / 2
-        const linhaHeight = 6.5
-        const circleRadius = 2.0 // REDUZIDO de 2.8 para 2.0
+        const areaWidth = pageWidth - 2 * margin - 2 * markerSize
+        const colunaWidth = areaWidth / 2
+        const linhaHeight = 6
+        const circleRadius = 2.0
 
         for (let q = 0; q < totalQuestoes; q++) {
           // Determina coluna e linha (numeração de cima para baixo)
           const col = q < questoesPorColuna ? 0 : 1
           const row = q < questoesPorColuna ? q : q - questoesPorColuna
           
-          const baseX = margin + col * colunaWidth
+          const baseX = margin + markerSize + col * colunaWidth
           const y = currentY + row * linhaHeight
 
-          // Número da questão (fora das bolinhas, à esquerda)
+          // Número da questão
           doc.setFontSize(8)
           doc.setFont('helvetica', 'bold')
           doc.setTextColor(0, 0, 0)
@@ -257,10 +246,10 @@ export default function FolhaRespostasPage() {
           const startX = baseX + 12
 
           alternativas.forEach((alt, idx) => {
-            const circleX = startX + idx * 10
+            const circleX = startX + idx * 9
             const circleY = y + 2
 
-            // Círculo com borda mais fina
+            // Círculo
             doc.setDrawColor(0, 0, 0)
             doc.setLineWidth(0.3)
             doc.setFillColor(255, 255, 255)
@@ -273,11 +262,11 @@ export default function FolhaRespostasPage() {
           })
         }
 
-        // Rodapé
-        const footerY = yOffset + halfHeight - margin - 2
+        // Rodapé (dentro da área dos marcadores)
+        const footerY = yOffset + halfHeight - margin - markerSize - 6
         doc.setFontSize(5)
         doc.setFont('helvetica', 'normal')
-        doc.setTextColor(100, 100, 100)
+        doc.setTextColor(120, 120, 120)
         doc.text(`ID: ${aluno.id.substring(0, 8)}`, margin + markerSize + 2, footerY)
         doc.text('xyMath - Sistema de Avaliação', pageWidth / 2, footerY, { align: 'center' })
         doc.text(`Folha ${i + 1} de ${alunos.length}`, pageWidth - margin - markerSize - 2, footerY, { align: 'right' })
@@ -383,26 +372,33 @@ export default function FolhaRespostasPage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Pré-visualização do Layout</h2>
             
             {/* Exemplo visual do formato */}
-            <div className="border rounded-lg p-4 bg-gray-50 mb-4">
-              <div className="flex justify-between items-start mb-3">
+            <div className="border-2 border-black rounded p-3 bg-white mb-4 relative">
+              {/* Marcadores de canto */}
+              <div className="absolute top-2 left-2 w-3 h-3 bg-black"></div>
+              <div className="absolute top-2 right-2 w-3 h-3 bg-black"></div>
+              <div className="absolute bottom-2 left-2 w-3 h-3 bg-black"></div>
+              <div className="absolute bottom-2 right-2 w-3 h-3 bg-black"></div>
+              
+              <div className="flex justify-between items-start mb-3 ml-5 mr-5">
                 <div>
-                  <p className="font-bold text-gray-900">Nome do Aluno</p>
-                  <p className="text-sm text-gray-600">Turma - Ano/Série</p>
+                  <p className="font-bold text-gray-900">{simulado.titulo}</p>
+                  <p className="text-sm text-gray-600">Nome do Aluno</p>
+                  <p className="text-xs text-gray-500">Turma - Ano/Série</p>
                 </div>
-                <div className="w-20 h-20 bg-gray-800 rounded flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">QR CODE</span>
+                <div className="w-16 h-16 bg-gray-800 rounded flex items-center justify-center">
+                  <span className="text-white text-[8px] font-bold text-center">QR<br/>CODE</span>
                 </div>
               </div>
               
               {/* Layout 2 colunas */}
-              <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="grid grid-cols-2 gap-4 mt-4 ml-5">
                 <div className="space-y-1">
                   {[1, 2, 3, 4, 5].map(n => (
                     <div key={n} className="flex items-center gap-2">
                       <span className="text-xs font-bold w-5 text-gray-900">{String(n).padStart(2, '0')}</span>
                       <div className="flex gap-1">
                         {['A', 'B', 'C', 'D', 'E'].map(alt => (
-                          <div key={alt} className="w-4 h-4 border border-gray-600 rounded-full flex items-center justify-center text-[7px] font-bold text-gray-900">
+                          <div key={alt} className="w-4 h-4 border border-gray-600 rounded-full flex items-center justify-center text-[6px] font-bold text-gray-900">
                             {alt}
                           </div>
                         ))}
@@ -416,7 +412,7 @@ export default function FolhaRespostasPage() {
                       <span className="text-xs font-bold w-5 text-gray-900">{String(n).padStart(2, '0')}</span>
                       <div className="flex gap-1">
                         {['A', 'B', 'C', 'D', 'E'].map(alt => (
-                          <div key={alt} className="w-4 h-4 border border-gray-600 rounded-full flex items-center justify-center text-[7px] font-bold text-gray-900">
+                          <div key={alt} className="w-4 h-4 border border-gray-600 rounded-full flex items-center justify-center text-[6px] font-bold text-gray-900">
                             {alt}
                           </div>
                         ))}
@@ -450,15 +446,14 @@ export default function FolhaRespostasPage() {
               </div>
             )}
 
-            {/* Dicas de preenchimento */}
-            <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
-              <h4 className="font-semibold text-amber-800 mb-2">⚠️ Dicas para o aluno:</h4>
-              <ul className="text-sm text-amber-700 space-y-1">
-                <li>• Preencha <strong>completamente</strong> o círculo da alternativa</li>
-                <li>• Use caneta <strong>PRETA</strong></li>
-                <li>• Marque apenas <strong>UMA</strong> alternativa por questão</li>
-                <li>• <strong>Não rasure</strong> - se errar, peça outra folha</li>
-                <li>• <strong>Não dobre</strong> a folha sobre o QR Code</li>
+            {/* Dicas */}
+            <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+              <h4 className="font-semibold text-green-800 mb-2">✅ Melhorias aplicadas:</h4>
+              <ul className="text-sm text-green-700 space-y-1">
+                <li>• QR Code maior e com alta correção de erros</li>
+                <li>• Sem linha cortando o QR Code</li>
+                <li>• Bolinhas menores para fácil preenchimento</li>
+                <li>• Marcadores de canto para calibração</li>
               </ul>
             </div>
           </div>
