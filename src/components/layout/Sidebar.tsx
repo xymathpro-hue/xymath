@@ -27,7 +27,8 @@ import {
   AlertTriangle,
   Brain,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Lock
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -38,6 +39,7 @@ interface MenuItem {
   href: string
   label: string
   icon: React.ElementType
+  adminOnly?: boolean
 }
 
 interface MenuGroup {
@@ -110,6 +112,14 @@ const menuGroups: MenuGroup[] = [
       { href: '/configuracoes', label: 'Configurações', icon: Settings },
     ]
   },
+  {
+    id: 'insights',
+    title: 'Análise Avançada',
+    icon: Brain,
+    items: [
+      { href: '/admin/xy-insights', label: 'XY Insights', icon: Brain, adminOnly: true },
+    ]
+  },
 ]
 
 const adminGroup: MenuGroup = {
@@ -119,7 +129,6 @@ const adminGroup: MenuGroup = {
   adminOnly: true,
   items: [
     { href: '/admin', label: 'Painel Admin', icon: Shield },
-    { href: '/admin/xy-insights', label: 'XY Insights', icon: Brain },
   ]
 }
 
@@ -178,6 +187,9 @@ export function Sidebar() {
   }
 
   const renderMenuGroup = (group: MenuGroup) => {
+    // Pular grupo admin para não-admins
+    if (group.adminOnly && !isAdmin) return null
+
     const isExpanded = expandedGroups.includes(group.id)
     const groupActive = isGroupActive(group)
     const GroupIcon = group.icon
@@ -214,6 +226,25 @@ export function Sidebar() {
             {group.items.map((item) => {
               const isActive = isItemActive(item.href)
               const ItemIcon = item.icon
+              const isLocked = item.adminOnly && !isAdmin
+
+              if (isLocked) {
+                // Item bloqueado para não-admins
+                return (
+                  <div
+                    key={item.href}
+                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-gray-400 cursor-not-allowed"
+                    title="Disponível em breve"
+                  >
+                    <div className="flex items-center gap-3">
+                      <ItemIcon className="w-4 h-4 text-gray-300" />
+                      <span className="text-sm font-medium">{item.label}</span>
+                    </div>
+                    <Lock className="w-3 h-3 text-gray-300" />
+                  </div>
+                )
+              }
+
               return (
                 <Link
                   key={item.href}
