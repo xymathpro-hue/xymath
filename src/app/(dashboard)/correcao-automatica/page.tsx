@@ -522,3 +522,337 @@ export default function CorrecaoAutomaticaPage() {
   const removeResult = (index: number) => {
     setResults(prev => prev.filter((_, i) => i !== index))
   }
+const saveAllResults = async () => {
+    if (results.length === 0) return
+
+    setSaving(true)
+    setError(null)
+
+    try {
+      for (const correction of results) {
+        if (!correction.result.qr_data || !correction.result.answers) continue
+
+        const { qr_data, answers } = correction.result
+
+        // Verificar se já existe resultado
+        const { data: existing } = await supabase
+          .from('resultados')
+          .select('id')
+          .eq('simulado_id', qr_data.simulado_id)
+          .eq('aluno_id', qr_data.aluno_id)
+          .single()
+
+        const resultadoData = {
+          simulado_id: qr_data.simulado_id,
+          aluno_id: qr_data.aluno_id,
+          turma_id: qr_data.turma_id,
+          respostas: answers,
+          acertos: correction.acertos || 0,
+          total_questoes: qr_data.total_questoes,
+          percentual: correction.percentual || 0,
+          corrigido_em: new Date().toISOString(),
+          metodo_correcao: 'camera_auto'
+        }
+
+        if (existing) {
+          await supabase
+            .from('resultados')
+            .update(resultadoData)
+            .eq('id', existing.id)
+        } else {
+          await supabase
+            .from('resultados')
+            .insert(resultadoData)
+        }
+      }
+
+      playSound('success')
+      setResults([])
+      alert(`${results.length} correção(ões) salva(s) com sucesso!`)
+    } catch (err) {
+      setError('Erro ao salvar correções')
+      playSound('error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="p-4 lg:p-6 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Correção Automática</h1>
+          <p className="text-sm text-gray-600">Escaneie as folhas de respostas</p>
+        </div>
+        
+        {results.length > 0 && (
+          <Button 
+            onClick={saveAllResults} 
+            disabled={saving}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+            Salvar ({results.length})
+          </Button>
+        )}
+      </div>
+
+      {/* Erro */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
+          <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+          <p className="text-red-800 text-sm">{error}</p>
+          <button onClick={() => setError(null)} className="ml-auto text-red-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Modo seleção */}
+      {mode === 'select' && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="grid md:grid-cols-2 gap-4">
+              <button
+                onClick={startCamera}
+                className="flex flex-col items-center p-6 border-2 border-dashed border-gray-300 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all"
+              >
+                <ScanLine className="w-12 h-12 text-indigo-600 mb-3" />
+                <span className="font-semibold text-gray-900">Escanear</span>
+                <span className="text-xs text-gray-500">Leitura automática contínua</span>
+              </button>
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center p-6 border-2 border-dashed border-gray-300 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all"
+              >
+                <Upload className="w-12 h-12 text-indigo-600 mb-3" />
+                <span className="font-semibold text-gray-900">Upload</span>
+                <span className="text-xs text-gray-500">Enviar foto da galeria</span>
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modo câmera */}
+      {mode === 'camera' && (
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
+            {cameraError ? (
+              <div className="p-6 text-center">
+                <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
+                <p className="text-red-600 mb-4">{cameraError}</p>
+                <Button variant="outline" onClick={() => setMode('select')}>Voltar</Button>
+              </div>
+            ) : (
+              <div className="relative">
+                {/* Vídeo da câmera */}
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-auto"
+                  style={{ maxHeight: '60vh' }}
+                />
+                
+                {/* Canvas de overlay */}
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                />
+                
+                {/* Status bar */}
+                <div className={`absolute top-0 left-0 right-0 p-2 text-center text-white text-sm font-medium ${
+                  qrDetected && cornersDetected ? 'bg-green-600' : 
+                  cornersDetected ? 'bg-yellow-600' : 'bg-gray-800'
+                } bg-opacity-80`}>
+                  {scanning && <Loader2 className="w-4 h-4 inline mr-2 animate-spin" />}
+                  {scanStatus}
+                </div>
+                
+                {/* Indicadores */}
+                <div className="absolute bottom-16 left-2 right-2 flex justify-between">
+                  <div className={`px-2 py-1 rounded text-xs font-medium ${
+                    cornersDetected ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-300'
+                  }`}>
+                    {cornersDetected ? '✓ Cantos' : '○ Cantos'}
+                  </div>
+                  <div className={`px-2 py-1 rounded text-xs font-medium ${
+                    qrDetected ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-300'
+                  }`}>
+                    {qrDetected ? '✓ QR Code' : '○ QR Code'}
+                  </div>
+                </div>
+                
+                {/* Controles */}
+                <div className="absolute bottom-0 left-0 right-0 p-3 bg-black bg-opacity-50 flex justify-center gap-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => { stopCamera(); setMode('select') }}
+                    className="bg-white"
+                  >
+                    <X className="w-4 h-4 mr-1" /> Sair
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    onClick={() => scanning ? null : startContinuousScan()}
+                    disabled={scanning}
+                    className="bg-indigo-600"
+                  >
+                    {scanning ? (
+                      <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Escaneando</>
+                    ) : (
+                      <><RotateCcw className="w-4 h-4 mr-1" /> Reiniciar</>
+                    )}
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    className="bg-white"
+                  >
+                    {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  </Button>
+                </div>
+                
+                {/* Loading overlay */}
+                {processing && (
+                  <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center">
+                    <div className="text-center text-white">
+                      <Loader2 className="w-10 h-10 animate-spin mx-auto mb-2" />
+                      <p>Processando...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Canvas oculto para captura */}
+      <canvas ref={canvasRef} className="hidden" />
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+
+      {/* Lista de correções */}
+      {results.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              Correções Pendentes ({results.length})
+            </h3>
+            <div className="space-y-2">
+              {results.map((c, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <img src={c.imageData} alt="" className="w-12 h-12 object-cover rounded" />
+                    <div>
+                      <p className="font-medium text-gray-900 text-sm">{c.aluno?.nome || 'Aluno'}</p>
+                      <p className="text-xs text-gray-500">{c.simulado?.titulo || 'Simulado'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-lg font-bold ${
+                      (c.percentual || 0) >= 60 ? 'text-green-600' : 
+                      (c.percentual || 0) >= 40 ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {c.percentual}%
+                    </span>
+                    <button onClick={() => removeResult(idx)}>
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Modal de confirmação */}
+      <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} title="Confirmar Correção">
+        {currentResult && (
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              <img src={currentResult.imageData} alt="" className="w-24 h-24 object-cover rounded" />
+              <div>
+                <p className="font-bold text-gray-900">{currentResult.aluno?.nome || 'Aluno não encontrado'}</p>
+                <p className="text-sm text-gray-600">{currentResult.simulado?.titulo}</p>
+                <Badge variant={(currentResult.percentual || 0) >= 60 ? 'success' : (currentResult.percentual || 0) >= 40 ? 'warning' : 'danger'}>
+                  {currentResult.percentual}% - {currentResult.acertos} acertos
+                </Badge>
+              </div>
+            </div>
+            
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">Respostas:</p>
+              <div className="flex flex-wrap gap-1">
+                {currentResult.result.answers?.map((ans, idx) => {
+                  const gab = currentResult.simulado?.gabarito
+                  const gabArr = typeof gab === 'string' ? JSON.parse(gab) : gab
+                  const isCorrect = ans && ans !== 'X' && gabArr && ans === gabArr[idx]
+                  const isMultiple = ans === 'X'
+                  const isBlank = ans === null
+                  
+                  return (
+                    <div key={idx} className={`w-7 h-7 flex items-center justify-center rounded text-xs font-bold ${
+                      isMultiple ? 'bg-orange-100 text-orange-700 border border-orange-300' :
+                      isBlank ? 'bg-gray-100 text-gray-400' :
+                      isCorrect ? 'bg-green-100 text-green-700 border border-green-300' :
+                      'bg-red-100 text-red-700 border border-red-300'
+                    }`}>
+                      {isMultiple ? 'M' : ans || '-'}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => { setShowConfirmModal(false); setCurrentResult(null); startContinuousScan() }}>
+                <X className="w-4 h-4 mr-1" /> Descartar
+              </Button>
+              <Button className="flex-1" onClick={confirmResult}>
+                <Check className="w-4 h-4 mr-1" /> Confirmar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal de aviso de questões em branco */}
+      <Modal isOpen={showBlankWarning} onClose={cancelBlankWarning} title="⚠️ Atenção">
+        <div className="space-y-4">
+          <p className="text-gray-700">
+            Foram detectadas questões com problema:
+          </p>
+          <ul className="text-sm space-y-1">
+            {(lastDetection?.total_blank || 0) > 0 && (
+              <li className="text-yellow-700">• {lastDetection?.total_blank} questão(ões) em branco</li>
+            )}
+            {(lastDetection?.total_multiple || 0) > 0 && (
+              <li className="text-orange-700">• {lastDetection?.total_multiple} questão(ões) com múltiplas marcações</li>
+            )}
+          </ul>
+          <p className="text-sm text-gray-600">Deseja continuar com a leitura?</p>
+          
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={cancelBlankWarning}>
+              <RotateCcw className="w-4 h-4 mr-1" /> Escanear Novamente
+            </Button>
+            <Button className="flex-1 bg-yellow-600 hover:bg-yellow-700" onClick={confirmBlankWarning}>
+              <Check className="w-4 h-4 mr-1" /> Continuar Assim
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
