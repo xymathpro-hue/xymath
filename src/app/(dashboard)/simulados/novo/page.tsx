@@ -34,7 +34,7 @@ interface QuestaoSelecionada {
   descritor_saeb_id?: string
   imagem_url?: string
   origem: 'banco' | 'manual' | 'importada'
-  tempId?: string // Para questões manuais ainda não salvas
+  tempId?: string
 }
 
 const ANO_SERIE_OPTIONS = [
@@ -63,12 +63,11 @@ export default function NovoSimuladoPage() {
   const [saving, setSaving] = useState(false)
   const [step, setStep] = useState(editId ? 2 : 1)
 
-  // Dados do formulário (Step 1)
+  // Dados do formulário (Step 1) - REMOVIDO tempo_minutos
   const [formData, setFormData] = useState({
     titulo: '',
     descricao: '',
-    turma_id: '',
-    tempo_minutos: 60,
+    turmas_ids: [] as string[], // MUDOU: agora é array para múltiplas turmas
     pontuacao_questao: 1.0,
     embaralhar_questoes: false,
     embaralhar_alternativas: false,
@@ -85,11 +84,13 @@ export default function NovoSimuladoPage() {
   const [loadingBanco, setLoadingBanco] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterOpen, setFilterOpen] = useState(true)
+  
+  // MUDOU: filtros agora suportam múltipla seleção para habilidade e descritor
   const [filters, setFilters] = useState({
     ano_serie: '',
     unidade_tematica_id: '',
-    habilidade_bncc_id: '',
-    descritor_saeb_id: '',
+    habilidades_bncc_ids: [] as string[], // MUDOU: array
+    descritores_saeb_ids: [] as string[], // MUDOU: array
     dificuldade: '',
     contexto_id: ''
   })
@@ -141,7 +142,6 @@ export default function NovoSimuladoPage() {
     if (!usuario?.id) return
     setLoading(true)
     try {
-      // Carregar turmas
       const { data: turmasData } = await supabase
         .from('turmas')
         .select('*')
@@ -149,7 +149,6 @@ export default function NovoSimuladoPage() {
         .eq('ativa', true)
       setTurmas(turmasData || [])
 
-      // Se editando, carregar simulado existente
       if (editId) {
         const { data: simulado } = await supabase
           .from('simulados')
@@ -162,8 +161,7 @@ export default function NovoSimuladoPage() {
           setFormData({
             titulo: simulado.titulo,
             descricao: simulado.descricao || '',
-            turma_id: simulado.turma_id || '',
-            tempo_minutos: simulado.tempo_minutos || 60,
+            turmas_ids: simulado.turmas_ids || (simulado.turma_id ? [simulado.turma_id] : []),
             pontuacao_questao: simulado.configuracoes?.pontuacao_questao || 1.0,
             embaralhar_questoes: simulado.configuracoes?.embaralhar_questoes ?? false,
             embaralhar_alternativas: simulado.configuracoes?.embaralhar_alternativas ?? false,
@@ -171,7 +169,6 @@ export default function NovoSimuladoPage() {
             cabecalho_endereco: simulado.configuracoes?.cabecalho_endereco || '',
           })
 
-          // Carregar questões selecionadas
           if (simulado.questoes_ids && simulado.questoes_ids.length > 0) {
             const { data: questoesData } = await supabase
               .from('questoes')
@@ -182,31 +179,26 @@ export default function NovoSimuladoPage() {
               const questoesOrdenadas = simulado.questoes_ids
                 .map((id: string) => {
                   const q = questoesData.find(q => q.id === id)
-                  if (q) return { ...q, origem: q.usuario_id ? 'manual' : 'banco' } as QuestaoSelecionada
+                  if (q) return { ...q, origem: 'banco' as const }
                   return null
                 })
                 .filter(Boolean) as QuestaoSelecionada[]
               setQuestoesSelecionadas(questoesOrdenadas)
             }
           }
-
-          // Se não tem questões, vai pro step 2
-          if (!simulado.questoes_ids || simulado.questoes_ids.length === 0) {
-            setStep(2)
-          }
         }
       }
-    } catch (e) {
-      console.error(e)
+    } catch (err) {
+      console.error('Erro ao carregar dados:', err)
     } finally {
       setLoading(false)
     }
-  }, [usuario?.id, supabase, editId])
+  }, [usuario?.id, editId, supabase])
 
-  useEffect(() => { fetchData() }, [fetchData])
-
-  // Buscar questões do banco
-  const fetchQuestoesBanco = useCallback(async () => {
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])// Buscar questões do banco com filtros - ATUALIZADO para múltiplos filtros
+  const buscarQuestoes = useCallback(async () => {
     setLoadingBanco(true)
     try {
       let query = supabase
@@ -214,83 +206,154 @@ export default function NovoSimuladoPage() {
         .select('*')
         .eq('ativa', true)
         .order('created_at', { ascending: false })
-        .limit(100)
+        .limit(50)
 
-      if (filters.ano_serie) query = query.eq('ano_serie', filters.ano_serie)
-      if (filters.dificuldade) query = query.eq('dificuldade', filters.dificuldade)
-      if (filters.unidade_tematica_id) query = query.eq('unidade_tematica_id', filters.unidade_tematica_id)
-      if (filters.habilidade_bncc_id) query = query.eq('habilidade_bncc_id', filters.habilidade_bncc_id)
-      if (filters.descritor_saeb_id) query = query.eq('descritor_saeb_id', filters.descritor_saeb_id)
-      if (filters.contexto_id) query = query.eq('contexto_id', filters.contexto_id)
+      if (filters.ano_serie) {
+        query = query.eq('ano_serie', filters.ano_serie)
+      }
+      if (filters.unidade_tematica_id) {
+        query = query.eq('unidade_tematica_id', filters.unidade_tematica_id)
+      }
+      // MUDOU: suporta múltiplas habilidades
+      if (filters.habilidades_bncc_ids.length > 0) {
+        query = query.in('habilidade_bncc_id', filters.habilidades_bncc_ids)
+      }
+      // MUDOU: suporta múltiplos descritores
+      if (filters.descritores_saeb_ids.length > 0) {
+        query = query.in('descritor_saeb_id', filters.descritores_saeb_ids)
+      }
+      if (filters.dificuldade) {
+        query = query.eq('dificuldade', filters.dificuldade)
+      }
+      if (filters.contexto_id) {
+        query = query.eq('contexto_id', filters.contexto_id)
+      }
+      if (searchTerm) {
+        query = query.ilike('enunciado', `%${searchTerm}%`)
+      }
 
       const { data, error } = await query
       if (error) throw error
       setQuestoesBanco(data || [])
-    } catch (error) {
-      console.error('Erro ao buscar questões:', error)
+    } catch (err) {
+      console.error('Erro ao buscar questões:', err)
     } finally {
       setLoadingBanco(false)
     }
-  }, [supabase, filters])
+  }, [supabase, filters, searchTerm])
 
   useEffect(() => {
-    if (step === 2 && abaAtiva === 'banco') {
-      fetchQuestoesBanco()
+    if (abaAtiva === 'banco') {
+      buscarQuestoes()
     }
-  }, [step, abaAtiva, fetchQuestoesBanco])
+  }, [abaAtiva, buscarQuestoes])
 
-  // Filtrar questões por busca
-  const questoesFiltradas = questoesBanco.filter(q =>
-    q.enunciado.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  // Estatísticas
-  const stats = {
-    total: questoesBanco.length,
-    faceis: questoesBanco.filter(q => q.dificuldade === 'facil').length,
-    medias: questoesBanco.filter(q => q.dificuldade === 'medio').length,
-    dificeis: questoesBanco.filter(q => q.dificuldade === 'dificil').length,
+  // Toggle turma selecionada (múltiplas turmas)
+  const toggleTurma = (turmaId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      turmas_ids: prev.turmas_ids.includes(turmaId)
+        ? prev.turmas_ids.filter(id => id !== turmaId)
+        : [...prev.turmas_ids, turmaId]
+    }))
   }
 
-  // Toggle questão selecionada
-  const toggleQuestao = (questao: Questao) => {
-    const jaExiste = questoesSelecionadas.find(q => q.id === questao.id)
-    if (jaExiste) {
-      setQuestoesSelecionadas(prev => prev.filter(q => q.id !== questao.id))
-    } else {
-      setQuestoesSelecionadas(prev => [...prev, {
-        ...questao,
-        origem: 'banco' as const
-      }])
+  // Toggle habilidade no filtro (múltipla seleção)
+  const toggleHabilidadeFilter = (habId: string) => {
+    setFilters(prev => ({
+      ...prev,
+      habilidades_bncc_ids: prev.habilidades_bncc_ids.includes(habId)
+        ? prev.habilidades_bncc_ids.filter(id => id !== habId)
+        : [...prev.habilidades_bncc_ids, habId]
+    }))
+  }
+
+  // Toggle descritor no filtro (múltipla seleção)
+  const toggleDescritorFilter = (descId: string) => {
+    setFilters(prev => ({
+      ...prev,
+      descritores_saeb_ids: prev.descritores_saeb_ids.includes(descId)
+        ? prev.descritores_saeb_ids.filter(id => id !== descId)
+        : [...prev.descritores_saeb_ids, descId]
+    }))
+  }
+
+  // Helpers
+  const getHabilidadeCodigo = (id?: string) => {
+    if (!id) return ''
+    return habilidades.find(h => h.id === id)?.codigo || ''
+  }
+
+  const getDescritorCodigo = (id?: string) => {
+    if (!id) return ''
+    return descritores.find(d => d.id === id)?.codigo || ''
+  }
+
+  // Adicionar questão do banco
+  const addQuestaoFromBanco = (questao: Questao) => {
+    if (questoesSelecionadas.some(q => q.id === questao.id)) return
+    setQuestoesSelecionadas(prev => [...prev, { ...questao, origem: 'banco' }])
+  }
+
+  // Remover questão
+  const removeQuestao = (index: number) => {
+    setQuestoesSelecionadas(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // Mover questão
+  const moveQuestao = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return
+    if (direction === 'down' && index === questoesSelecionadas.length - 1) return
+    
+    const newList = [...questoesSelecionadas]
+    const newIndex = direction === 'up' ? index - 1 : index + 1
+    ;[newList[index], newList[newIndex]] = [newList[newIndex], newList[index]]
+    setQuestoesSelecionadas(newList)
+  }
+
+  // Upload de imagem
+  const handleImageUpload = async (file: File) => {
+    if (!file || !usuario?.id) return
+    setUploadingImage(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${usuario.id}/${Date.now()}.${fileExt}`
+      const { error: uploadError } = await supabase.storage
+        .from('questoes-imagens')
+        .upload(fileName, file)
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('questoes-imagens')
+        .getPublicUrl(fileName)
+
+      setQuestaoManual(prev => ({ ...prev, imagem_url: publicUrl }))
+    } catch (err) {
+      console.error('Erro no upload:', err)
+      alert('Erro ao fazer upload da imagem')
+    } finally {
+      setUploadingImage(false)
     }
   }
 
   // Adicionar questão manual
-  const adicionarQuestaoManual = () => {
-    if (!questaoManual.enunciado || !questaoManual.alternativa_a || !questaoManual.alternativa_b) {
-      alert('Preencha o enunciado e pelo menos as alternativas A e B')
+  const addQuestaoManual = () => {
+    if (!questaoManual.enunciado || !questaoManual.alternativa_a || 
+        !questaoManual.alternativa_b || !questaoManual.alternativa_c || 
+        !questaoManual.alternativa_d) {
+      alert('Preencha o enunciado e as alternativas A, B, C e D')
       return
     }
 
     const novaQuestao: QuestaoSelecionada = {
-      id: '', // Será preenchido ao salvar
-      tempId: `temp_${Date.now()}`,
-      enunciado: questaoManual.enunciado,
-      alternativa_a: questaoManual.alternativa_a,
-      alternativa_b: questaoManual.alternativa_b,
-      alternativa_c: questaoManual.alternativa_c,
-      alternativa_d: questaoManual.alternativa_d,
-      alternativa_e: questaoManual.alternativa_e,
-      resposta_correta: questaoManual.resposta_correta,
-      dificuldade: questaoManual.dificuldade,
-      ano_serie: questaoManual.ano_serie,
-      imagem_url: questaoManual.imagem_url,
+      id: '',
+      tempId: `manual_${Date.now()}`,
+      ...questaoManual,
       origem: 'manual'
     }
 
     setQuestoesSelecionadas(prev => [...prev, novaQuestao])
-
-    // Limpar formulário
     setQuestaoManual({
       enunciado: '',
       alternativa_a: '',
@@ -305,79 +368,24 @@ export default function NovoSimuladoPage() {
     })
   }
 
-  // Upload de imagem
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !usuario?.id) return
-
-    setUploadingImage(true)
-    try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${usuario.id}/${Date.now()}.${fileExt}`
-      const filePath = `questoes/${fileName}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('uploads')
-        .upload(filePath, file)
-
-      if (uploadError) throw uploadError
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('uploads')
-        .getPublicUrl(filePath)
-
-      setQuestaoManual(prev => ({ ...prev, imagem_url: publicUrl }))
-    } catch (error) {
-      console.error('Erro ao fazer upload:', error)
-      alert('Erro ao fazer upload da imagem')
-    } finally {
-      setUploadingImage(false)
+  // Salvar simulado - ATUALIZADO para múltiplas turmas
+  const handleSave = async (status: 'rascunho' | 'publicado') => {
+    if (!usuario?.id) return
+    if (!formData.titulo) {
+      alert('Informe o título do simulado')
+      return
     }
-  }
+    if (questoesSelecionadas.length === 0) {
+      alert('Adicione pelo menos uma questão')
+      return
+    }
 
-  // Remover questão selecionada
-  const removerQuestao = (index: number) => {
-    setQuestoesSelecionadas(prev => prev.filter((_, i) => i !== index))
-  }
-
-  // Mover questão
-  const moverQuestao = (index: number, direction: 'up' | 'down') => {
-    const newOrder = [...questoesSelecionadas]
-    const newIndex = direction === 'up' ? index - 1 : index + 1
-    if (newIndex < 0 || newIndex >= newOrder.length) return
-    ;[newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]]
-    setQuestoesSelecionadas(newOrder)
-  }
-
-  // Limpar filtros
-  const clearFilters = () => {
-    setFilters({
-      ano_serie: '',
-      unidade_tematica_id: '',
-      habilidade_bncc_id: '',
-      descritor_saeb_id: '',
-      dificuldade: '',
-      contexto_id: ''
-    })
-  }
-
-  // Obter nome/código dos dados auxiliares
-  const getHabilidadeCodigo = (id?: string) => id ? habilidades.find(h => h.id === id)?.codigo : null
-  const getDescritorCodigo = (id?: string) => id ? descritores.find(d => d.id === id)?.codigo : null
-
-  // Salvar simulado
-  const handleSave = async (status: 'rascunho' | 'publicado' = 'rascunho') => {
-    if (!usuario?.id || !formData.titulo || questoesSelecionadas.length === 0) return
     setSaving(true)
-
     try {
-      // Primeiro, salvar questões manuais no banco
-      const questoesParaSalvar = questoesSelecionadas.filter(q => q.origem === 'manual' && !q.id)
-      const questoesIdsFinais: string[] = []
-
+      // Salvar questões manuais primeiro
+      const questoesParaSalvar = []
       for (const q of questoesSelecionadas) {
         if (q.origem === 'manual' && !q.id) {
-          // Salvar questão manual
           const { data: novaQuestao, error } = await supabase
             .from('questoes')
             .insert({
@@ -392,106 +400,148 @@ export default function NovoSimuladoPage() {
               dificuldade: q.dificuldade,
               ano_serie: q.ano_serie,
               imagem_url: q.imagem_url || null,
+              origem: 'manual',
               ativa: true
             })
             .select()
             .single()
 
           if (error) throw error
-          questoesIdsFinais.push(novaQuestao.id)
+          questoesParaSalvar.push(novaQuestao.id)
         } else {
-          questoesIdsFinais.push(q.id)
+          questoesParaSalvar.push(q.id)
         }
       }
+
+      // Montar gabarito
+      const gabarito = questoesSelecionadas.map(q => q.resposta_correta)
 
       const simuladoData = {
         usuario_id: usuario.id,
         titulo: formData.titulo,
         descricao: formData.descricao || null,
-        turma_id: formData.turma_id || null,
-        tempo_minutos: formData.tempo_minutos,
-        questoes_ids: questoesIdsFinais,
+        turmas_ids: formData.turmas_ids, // MUDOU: array de turmas
+        turma_id: formData.turmas_ids[0] || null, // Mantém compatibilidade
+        questoes_ids: questoesParaSalvar,
+        gabarito: gabarito,
+        total_questoes: questoesParaSalvar.length,
+        status,
         configuracoes: {
+          pontuacao_questao: formData.pontuacao_questao,
           embaralhar_questoes: formData.embaralhar_questoes,
           embaralhar_alternativas: formData.embaralhar_alternativas,
-          pontuacao_questao: formData.pontuacao_questao,
           cabecalho_escola: formData.cabecalho_escola,
           cabecalho_endereco: formData.cabecalho_endereco,
-        },
-        status,
+        }
       }
 
       if (editId) {
-        await supabase.from('simulados').update(simuladoData).eq('id', editId)
-        router.push(`/simulados/${editId}`)
+        const { error } = await supabase
+          .from('simulados')
+          .update(simuladoData)
+          .eq('id', editId)
+        if (error) throw error
       } else {
-        const { data } = await supabase.from('simulados').insert(simuladoData).select().single()
-        if (data) router.push(`/simulados/${data.id}`)
+        const { error } = await supabase
+          .from('simulados')
+          .insert(simuladoData)
+        if (error) throw error
       }
-    } catch (e) {
-      console.error(e)
+
+      router.push('/simulados')
+    } catch (err) {
+      console.error('Erro ao salvar:', err)
       alert('Erro ao salvar simulado')
     } finally {
       setSaving(false)
     }
   }
 
-  // Calcular totais
-  const totalPontos = questoesSelecionadas.length * formData.pontuacao_questao
-  const turmaSelected = turmas.find(t => t.id === formData.turma_id)
-  const activeFiltersCount = Object.values(filters).filter(Boolean).length
+  // Limpar filtros
+  const limparFiltros = () => {
+    setFilters({
+      ano_serie: '',
+      unidade_tematica_id: '',
+      habilidades_bncc_ids: [],
+      descritores_saeb_ids: [],
+      dificuldade: '',
+      contexto_id: ''
+    })
+    setSearchTerm('')
+  }
 
-  // Contagem por origem
+  // Estatísticas
+  const stats = {
+    total: questoesBanco.length,
+    faceis: questoesBanco.filter(q => q.dificuldade === 'facil').length,
+    medias: questoesBanco.filter(q => q.dificuldade === 'medio').length,
+    dificeis: questoesBanco.filter(q => q.dificuldade === 'dificil').length,
+  }
+
+  const totalPontos = questoesSelecionadas.length * formData.pontuacao_questao
+
   const questoesPorOrigem = {
     banco: questoesSelecionadas.filter(q => q.origem === 'banco').length,
     manual: questoesSelecionadas.filter(q => q.origem === 'manual').length,
     importada: questoesSelecionadas.filter(q => q.origem === 'importada').length,
   }
 
+  const activeFiltersCount = [
+    filters.ano_serie,
+    filters.unidade_tematica_id,
+    filters.dificuldade,
+    filters.contexto_id,
+    ...filters.habilidades_bncc_ids,
+    ...filters.descritores_saeb_ids
+  ].filter(Boolean).length
+
+  const turmasSelected = turmas.filter(t => formData.turmas_ids.includes(t.id))
+
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full" />
+      <div className="p-6 flex items-center justify-center min-h-[50vh]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Carregando...</p>
+        </div>
       </div>
     )
-  }
-
-  return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto">
+  }return (
+    <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
-      <div className="mb-6">
-        <Link href="/simulados" className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4">
-          <ArrowLeft className="w-4 h-4" /> Voltar
+      <div className="flex items-center gap-4">
+        <Link href="/simulados" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+          <ArrowLeft className="w-5 h-5 text-gray-600" />
         </Link>
-        <h1 className="text-2xl font-bold">{editId ? 'Editar Simulado' : 'Novo Simulado'}</h1>
-        {editId && formData.titulo && (
-          <p className="text-gray-600 mt-1">{formData.titulo}</p>
-        )}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {editId ? 'Editar Simulado' : 'Novo Simulado'}
+          </h1>
+          <p className="text-gray-600">
+            {step === 1 && 'Configure as informações básicas'}
+            {step === 2 && 'Selecione as questões'}
+            {step === 3 && 'Revise e publique'}
+          </p>
+        </div>
       </div>
 
-      {/* Steps */}
-      <div className="flex items-center gap-4 mb-8">
-        {[
-          { num: 1, label: 'Informações' },
-          { num: 2, label: 'Questões' },
-          { num: 3, label: 'Revisão' },
-        ].map((s, i) => (
-          <div key={s.num} className="flex items-center">
-            <button
-              onClick={() => setStep(s.num)}
-              className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-colors ${
-                step === s.num ? 'bg-indigo-600 text-white' : step > s.num ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
-              }`}
-            >
-              {step > s.num ? <Check className="w-5 h-5" /> : s.num}
-            </button>
-            <span className={`ml-2 font-medium ${step === s.num ? 'text-indigo-600' : 'text-gray-500'}`}>{s.label}</span>
-            {i < 2 && <div className="w-16 h-0.5 bg-gray-200 mx-4" />}
+      {/* Progress Steps */}
+      <div className="flex items-center justify-center gap-2">
+        {[1, 2, 3].map((s) => (
+          <div key={s} className="flex items-center">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-colors ${
+              step >= s ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'
+            }`}>
+              {step > s ? <Check className="w-5 h-5" /> : s}
+            </div>
+            {s < 3 && (
+              <div className={`w-16 h-1 mx-2 rounded ${step > s ? 'bg-indigo-600' : 'bg-gray-200'}`} />
+            )}
           </div>
         ))}
       </div>
 
-      {/* Step 1: Informações */}
+      {/* Step 1: Informações Básicas - ATUALIZADO */}
       {step === 1 && (
         <Card variant="bordered">
           <CardContent className="p-6 space-y-6">
@@ -503,24 +553,58 @@ export default function NovoSimuladoPage() {
                 onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
               />
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Turma (opcional)</label>
-                <select
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  value={formData.turma_id}
-                  onChange={(e) => setFormData({ ...formData, turma_id: e.target.value })}
-                >
-                  <option value="">Selecione uma turma...</option>
-                  {turmas.map(t => (
-                    <option key={t.id} value={t.id}>{t.nome} - {t.ano_serie}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pontos por questão
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={formData.pontuacao_questao}
+                  onChange={(e) => setFormData({ ...formData, pontuacao_questao: parseFloat(e.target.value) || 1 })}
+                />
               </div>
+            </div>
+
+            {/* Seleção de Múltiplas Turmas */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Turmas (selecione uma ou mais)
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {turmas.map(turma => (
+                  <label
+                    key={turma.id}
+                    className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                      formData.turmas_ids.includes(turma.id)
+                        ? 'border-indigo-600 bg-indigo-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.turmas_ids.includes(turma.id)}
+                      onChange={() => toggleTurma(turma.id)}
+                      className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                    />
+                    <div>
+                      <p className="font-medium text-gray-900">{turma.nome}</p>
+                      <p className="text-xs text-gray-500">{turma.ano_serie}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {formData.turmas_ids.length > 0 && (
+                <p className="mt-2 text-sm text-indigo-600">
+                  {formData.turmas_ids.length} turma(s) selecionada(s)
+                </p>
+              )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descrição / Objetivo</label>
               <textarea
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 rows={3}
                 placeholder="Descreva o objetivo deste simulado..."
                 value={formData.descricao}
@@ -528,43 +612,51 @@ export default function NovoSimuladoPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              <Input
-                label="Tempo (minutos)"
-                type="number"
-                value={formData.tempo_minutos}
-                onChange={(e) => setFormData({ ...formData, tempo_minutos: parseInt(e.target.value) || 60 })}
-              />
-              <Input
-                label="Pontos por questão"
-                type="number"
-                step="0.1"
-                value={formData.pontuacao_questao}
-                onChange={(e) => setFormData({ ...formData, pontuacao_questao: parseFloat(e.target.value) || 1 })}
-              />
-              <div className="flex flex-col justify-end">
-                <p className="text-sm text-gray-600">Total estimado:</p>
-                <p className="text-xl font-bold text-indigo-600">{totalPontos.toFixed(1)} pontos</p>
-                <p className="text-xs text-gray-500">({questoesSelecionadas.length} questões)</p>
+            <div className="border-t pt-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Cabeçalho do Documento</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Escola</label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Ex: Escola Municipal João da Silva"
+                    value={formData.cabecalho_escola}
+                    onChange={(e) => setFormData({ ...formData, cabecalho_escola: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Ex: Rua das Flores, 123 - Centro"
+                    value={formData.cabecalho_endereco}
+                    onChange={(e) => setFormData({ ...formData, cabecalho_endereco: e.target.value })}
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="border-t pt-6">
-              <h3 className="font-semibold mb-4">Cabeçalho do Documento</h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Input
-                  label="Nome da Escola"
-                  placeholder="Ex: Escola Municipal João da Silva"
-                  value={formData.cabecalho_escola}
-                  onChange={(e) => setFormData({ ...formData, cabecalho_escola: e.target.value })}
+            <div className="flex items-center gap-6 pt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.embaralhar_questoes}
+                  onChange={(e) => setFormData({ ...formData, embaralhar_questoes: e.target.checked })}
+                  className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
                 />
-                <Input
-                  label="Endereço"
-                  placeholder="Ex: Rua das Flores, 123 - Centro"
-                  value={formData.cabecalho_endereco}
-                  onChange={(e) => setFormData({ ...formData, cabecalho_endereco: e.target.value })}
+                <span className="text-gray-700">Embaralhar questões</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.embaralhar_alternativas}
+                  onChange={(e) => setFormData({ ...formData, embaralhar_alternativas: e.target.checked })}
+                  className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
                 />
-              </div>
+                <span className="text-gray-700">Embaralhar alternativas</span>
+              </label>
             </div>
 
             <div className="flex justify-end pt-4">
@@ -620,7 +712,7 @@ export default function NovoSimuladoPage() {
           <div className="grid lg:grid-cols-3 gap-6">
             {/* Coluna da esquerda: Conteúdo da aba */}
             <div className="lg:col-span-2">
-              {/* Aba Banco xyMath */}
+              {/* Aba Banco xyMath - FILTROS ATUALIZADOS */}
               {abaAtiva === 'banco' && (
                 <Card variant="bordered">
                   <CardContent className="p-4">
@@ -629,11 +721,12 @@ export default function NovoSimuladoPage() {
                       <div className="flex gap-2">
                         <div className="flex-1 relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <Input
+                          <input
+                            type="text"
                             placeholder="Buscar questões..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10"
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                         </div>
                         <Button 
@@ -650,14 +743,14 @@ export default function NovoSimuladoPage() {
                         </Button>
                       </div>
 
-                      {/* Filtros expandidos */}
+                      {/* Filtros expandidos - ATUALIZADOS */}
                       {filterOpen && (
                         <div className="bg-gray-50 rounded-lg p-4 space-y-4">
                           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
                               <select
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm"
                                 value={filters.ano_serie}
                                 onChange={(e) => setFilters({ ...filters, ano_serie: e.target.value })}
                               >
@@ -670,7 +763,7 @@ export default function NovoSimuladoPage() {
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Unidade Temática</label>
                               <select
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm"
                                 value={filters.unidade_tematica_id}
                                 onChange={(e) => setFilters({ ...filters, unidade_tematica_id: e.target.value })}
                               >
@@ -683,7 +776,7 @@ export default function NovoSimuladoPage() {
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Dificuldade</label>
                               <select
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm"
                                 value={filters.dificuldade}
                                 onChange={(e) => setFilters({ ...filters, dificuldade: e.target.value })}
                               >
@@ -694,142 +787,177 @@ export default function NovoSimuladoPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Habilidade BNCC</label>
-                              <select
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                                value={filters.habilidade_bncc_id}
-                                onChange={(e) => setFilters({ ...filters, habilidade_bncc_id: e.target.value })}
-                              >
-                                <option value="">Todas</option>
-                                {habilidades.map(h => (
-                                  <option key={h.id} value={h.id}>{h.codigo}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Descritor SAEB</label>
-                              <select
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                                value={filters.descritor_saeb_id}
-                                onChange={(e) => setFilters({ ...filters, descritor_saeb_id: e.target.value })}
-                              >
-                                <option value="">Todos</option>
-                                {descritores.map(d => (
-                                  <option key={d.id} value={d.id}>{d.codigo}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Contexto</label>
                               <select
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm"
                                 value={filters.contexto_id}
                                 onChange={(e) => setFilters({ ...filters, contexto_id: e.target.value })}
                               >
                                 <option value="">Todos</option>
-                                {contextos.map(c => (
-                                  <option key={c.id} value={c.id}>{c.nome}</option>
+                                {contextos.map(ctx => (
+                                  <option key={ctx.id} value={ctx.id}>{ctx.nome}</option>
                                 ))}
                               </select>
                             </div>
                           </div>
+
+                          {/* Habilidades BNCC - Múltipla Seleção */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Habilidades BNCC (múltipla seleção)
+                              {filters.habilidades_bncc_ids.length > 0 && (
+                                <span className="ml-2 text-indigo-600">({filters.habilidades_bncc_ids.length} selecionadas)</span>
+                              )}
+                            </label>
+                            <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg bg-white p-2 space-y-1">
+                              {habilidades.map(hab => (
+                                <label
+                                  key={hab.id}
+                                  className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-gray-50 ${
+                                    filters.habilidades_bncc_ids.includes(hab.id) ? 'bg-indigo-50' : ''
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={filters.habilidades_bncc_ids.includes(hab.id)}
+                                    onChange={() => toggleHabilidadeFilter(hab.id)}
+                                    className="w-4 h-4 text-indigo-600 rounded"
+                                  />
+                                  <span className="text-sm text-gray-900">
+                                    <strong>{hab.codigo}</strong> - {hab.descricao.substring(0, 60)}...
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Descritores SAEB - Múltipla Seleção */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Descritores SAEB (múltipla seleção)
+                              {filters.descritores_saeb_ids.length > 0 && (
+                                <span className="ml-2 text-indigo-600">({filters.descritores_saeb_ids.length} selecionados)</span>
+                              )}
+                            </label>
+                            <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg bg-white p-2 space-y-1">
+                              {descritores.map(desc => (
+                                <label
+                                  key={desc.id}
+                                  className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-gray-50 ${
+                                    filters.descritores_saeb_ids.includes(desc.id) ? 'bg-indigo-50' : ''
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={filters.descritores_saeb_ids.includes(desc.id)}
+                                    onChange={() => toggleDescritorFilter(desc.id)}
+                                    className="w-4 h-4 text-indigo-600 rounded"
+                                  />
+                                  <span className="text-sm text-gray-900">
+                                    <strong>{desc.codigo}</strong> - {desc.descricao.substring(0, 60)}...
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
                           <div className="flex justify-end">
-                            <Button variant="ghost" size="sm" onClick={clearFilters}>
-                              <X className="w-4 h-4 mr-1" /> Limpar filtros
-                            </Button>
+                            <button
+                              onClick={limparFiltros}
+                              className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                            >
+                              <X className="w-4 h-4" />
+                              Limpar filtros
+                            </button>
                           </div>
                         </div>
                       )}
                     </div>
 
-                    {/* Estatísticas */}
+                    {/* Stats */}
                     <div className="grid grid-cols-4 gap-2 mb-4">
-                      <div className="bg-gray-50 rounded-lg p-2 text-center">
+                      <div className="bg-gray-100 rounded-lg p-3 text-center">
                         <p className="text-xs text-gray-600">Total</p>
-                        <p className="text-lg font-bold text-gray-900">{stats.total}</p>
+                        <p className="text-xl font-bold text-gray-900">{stats.total}</p>
                       </div>
-                      <div className="bg-green-50 rounded-lg p-2 text-center">
-                        <p className="text-xs text-gray-600">Fáceis</p>
-                        <p className="text-lg font-bold text-green-600">{stats.faceis}</p>
+                      <div className="bg-green-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-green-600">Fáceis</p>
+                        <p className="text-xl font-bold text-green-700">{stats.faceis}</p>
                       </div>
-                      <div className="bg-yellow-50 rounded-lg p-2 text-center">
-                        <p className="text-xs text-gray-600">Médias</p>
-                        <p className="text-lg font-bold text-yellow-600">{stats.medias}</p>
+                      <div className="bg-yellow-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-yellow-600">Médias</p>
+                        <p className="text-xl font-bold text-yellow-700">{stats.medias}</p>
                       </div>
-                      <div className="bg-red-50 rounded-lg p-2 text-center">
-                        <p className="text-xs text-gray-600">Difíceis</p>
-                        <p className="text-lg font-bold text-red-600">{stats.dificeis}</p>
+                      <div className="bg-red-50 rounded-lg p-3 text-center">
+                        <p className="text-xs text-red-600">Difíceis</p>
+                        <p className="text-xl font-bold text-red-700">{stats.dificeis}</p>
                       </div>
                     </div>
 
                     {/* Lista de questões */}
-                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto">
                       {loadingBanco ? (
                         <div className="text-center py-8">
-                          <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto" />
-                          <p className="mt-2 text-gray-600">Carregando questões...</p>
+                          <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                          <p className="text-gray-600">Carregando questões...</p>
                         </div>
-                      ) : questoesFiltradas.length === 0 ? (
-                        <div className="text-center py-8 text-gray-500">
-                          <BookOpen className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                          <p>Nenhuma questão encontrada</p>
-                          <p className="text-sm">Ajuste os filtros para ver mais questões</p>
+                      ) : questoesBanco.length === 0 ? (
+                        <div className="text-center py-8">
+                          <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-600">Nenhuma questão encontrada</p>
+                          <p className="text-sm text-gray-500">Ajuste os filtros para ver mais questões</p>
                         </div>
                       ) : (
-                        questoesFiltradas.map(q => {
-                          const isSelected = questoesSelecionadas.some(qs => qs.id === q.id)
+                        questoesBanco.map((questao) => {
+                          const jaSelecionada = questoesSelecionadas.some(q => q.id === questao.id)
                           return (
                             <div
-                              key={q.id}
-                              className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                                isSelected 
-                                  ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' 
-                                  : 'hover:bg-gray-50 border-gray-200'
+                              key={questao.id}
+                              className={`p-4 border rounded-lg transition-all ${
+                                jaSelecionada 
+                                  ? 'border-green-500 bg-green-50' 
+                                  : 'border-gray-200 hover:border-indigo-300 bg-white'
                               }`}
                             >
-                              <div className="flex items-start gap-3">
-                                <button
-                                  onClick={() => toggleQuestao(q)}
-                                  className={`w-6 h-6 rounded border-2 flex-shrink-0 flex items-center justify-center mt-0.5 ${
-                                    isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'
-                                  }`}
-                                >
-                                  {isSelected && <Check className="w-4 h-4 text-white" />}
-                                </button>
-                                <div className="flex-1 min-w-0" onClick={() => toggleQuestao(q)}>
-                                  <div className="flex gap-1 mb-1 flex-wrap">
-                                    <Badge variant="info" className="text-xs">{q.ano_serie}</Badge>
+                              <div className="flex justify-between items-start gap-4">
+                                <div className="flex-1">
+                                  <div className="flex flex-wrap gap-2 mb-2">
+                                    <Badge variant="info" className="text-xs">{questao.ano_serie}</Badge>
                                     <Badge 
-                                      variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'} 
+                                      variant={questao.dificuldade === 'facil' ? 'success' : questao.dificuldade === 'medio' ? 'warning' : 'danger'}
                                       className="text-xs"
                                     >
-                                      {q.dificuldade === 'facil' ? 'Fácil' : q.dificuldade === 'medio' ? 'Médio' : 'Difícil'}
+                                      {questao.dificuldade === 'facil' ? 'Fácil' : questao.dificuldade === 'medio' ? 'Médio' : 'Difícil'}
                                     </Badge>
-                                    {getHabilidadeCodigo((q as any).habilidade_bncc_id || (q as any).habilidade_id) && (
-                                      <Badge className="text-xs">{getHabilidadeCodigo((q as any).habilidade_bncc_id || (q as any).habilidade_id)}</Badge>
+                                    {getHabilidadeCodigo(questao.habilidade_bncc_id) && (
+                                      <Badge className="text-xs">{getHabilidadeCodigo(questao.habilidade_bncc_id)}</Badge>
                                     )}
-                                    {getDescritorCodigo((q as any).descritor_saeb_id) && (
-                                      <Badge className="text-xs">{getDescritorCodigo((q as any).descritor_saeb_id)}</Badge>
-                                    )}
-                                    {(q as any).imagem_url && (
-                                      <Badge variant="info" className="text-xs">
-                                        <ImageIcon className="w-3 h-3 mr-1" />Imagem
-                                      </Badge>
+                                    {getDescritorCodigo(questao.descritor_saeb_id) && (
+                                      <Badge className="text-xs">{getDescritorCodigo(questao.descritor_saeb_id)}</Badge>
                                     )}
                                   </div>
-                                  <p className="text-sm text-gray-700 line-clamp-2">{q.enunciado}</p>
+                                  <p className="text-gray-900 line-clamp-2">{questao.enunciado}</p>
                                 </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setViewingQuestao({ ...q, origem: 'banco' })
-                                    setViewModalOpen(true)
-                                  }}
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </Button>
+                                <div className="flex gap-2 shrink-0">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setViewingQuestao({ ...questao, origem: 'banco' })
+                                      setViewModalOpen(true)
+                                    }}
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant={jaSelecionada ? 'outline' : 'primary'}
+                                    size="sm"
+                                    onClick={() => addQuestaoFromBanco(questao)}
+                                    disabled={jaSelecionada}
+                                  >
+                                    {jaSelecionada ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                                  </Button>
+                                </div>
                               </div>
                             </div>
                           )
@@ -839,21 +967,28 @@ export default function NovoSimuladoPage() {
                   </CardContent>
                 </Card>
               )}
-
               {/* Aba Criar Manual */}
               {abaAtiva === 'manual' && (
                 <Card variant="bordered">
-                  <CardContent className="p-4 space-y-4">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
-                      <PenLine className="w-5 h-5" />
-                      Criar Questão Manual
-                    </h3>
+                  <CardContent className="p-6 space-y-4">
+                    <h3 className="font-semibold text-gray-900">Criar Questão Manualmente</h3>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Enunciado *</label>
+                      <textarea
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        rows={4}
+                        placeholder="Digite o enunciado da questão..."
+                        value={questaoManual.enunciado}
+                        onChange={(e) => setQuestaoManual({ ...questaoManual, enunciado: e.target.value })}
+                      />
+                    </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Ano/Série</label>
                         <select
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
                           value={questaoManual.ano_serie}
                           onChange={(e) => setQuestaoManual({ ...questaoManual, ano_serie: e.target.value })}
                         >
@@ -865,7 +1000,7 @@ export default function NovoSimuladoPage() {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Dificuldade</label>
                         <select
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
                           value={questaoManual.dificuldade}
                           onChange={(e) => setQuestaoManual({ ...questaoManual, dificuldade: e.target.value })}
                         >
@@ -876,44 +1011,32 @@ export default function NovoSimuladoPage() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Enunciado *</label>
-                      <textarea
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                        rows={4}
-                        placeholder="Digite o enunciado da questão..."
-                        value={questaoManual.enunciado}
-                        onChange={(e) => setQuestaoManual({ ...questaoManual, enunciado: e.target.value })}
-                      />
-                    </div>
-
                     {/* Upload de imagem */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Imagem (opcional)</label>
                       <div className="flex items-center gap-4">
                         <label className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-                          <ImageIcon className="w-5 h-5 text-gray-500" />
-                          <span className="text-sm text-gray-600">
-                            {uploadingImage ? 'Enviando...' : 'Selecionar imagem'}
+                          <ImageIcon className="w-4 h-4 text-gray-600" />
+                          <span className="text-sm text-gray-700">
+                            {uploadingImage ? 'Enviando...' : 'Adicionar imagem'}
                           </span>
                           <input
                             type="file"
                             accept="image/*"
                             className="hidden"
-                            onChange={handleImageUpload}
+                            onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
                             disabled={uploadingImage}
                           />
                         </label>
                         {questaoManual.imagem_url && (
                           <div className="flex items-center gap-2">
-                            <img src={questaoManual.imagem_url} alt="Preview" className="h-12 rounded border" />
-                            <Button
-                              variant="ghost"
-                              size="sm"
+                            <img src={questaoManual.imagem_url} alt="Preview" className="w-16 h-16 object-cover rounded" />
+                            <button
                               onClick={() => setQuestaoManual({ ...questaoManual, imagem_url: '' })}
+                              className="text-red-600 hover:text-red-800"
                             >
-                              <X className="w-4 h-4 text-red-500" />
-                            </Button>
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         )}
                       </div>
@@ -924,114 +1047,98 @@ export default function NovoSimuladoPage() {
                       <label className="block text-sm font-medium text-gray-700">Alternativas *</label>
                       {['A', 'B', 'C', 'D', 'E'].map((letra) => (
                         <div key={letra} className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setQuestaoManual({ ...questaoManual, resposta_correta: letra })}
-                            className={`w-10 h-10 rounded-full font-medium flex items-center justify-center ${
-                              questaoManual.resposta_correta === letra 
-                                ? 'bg-green-500 text-white' 
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                          >
+                          <label className={`flex items-center justify-center w-8 h-8 rounded-full cursor-pointer transition-colors ${
+                            questaoManual.resposta_correta === letra 
+                              ? 'bg-green-600 text-white' 
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}>
+                            <input
+                              type="radio"
+                              name="resposta_correta"
+                              value={letra}
+                              checked={questaoManual.resposta_correta === letra}
+                              onChange={(e) => setQuestaoManual({ ...questaoManual, resposta_correta: e.target.value })}
+                              className="sr-only"
+                            />
                             {letra}
-                          </button>
-                          <Input
+                          </label>
+                          <input
+                            type="text"
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             placeholder={`Alternativa ${letra}${letra === 'E' ? ' (opcional)' : ''}`}
                             value={questaoManual[`alternativa_${letra.toLowerCase()}` as keyof typeof questaoManual] as string}
                             onChange={(e) => setQuestaoManual({ 
                               ...questaoManual, 
                               [`alternativa_${letra.toLowerCase()}`]: e.target.value 
                             })}
-                            className="flex-1"
                           />
-                          {questaoManual.resposta_correta === letra && (
-                            <span className="text-green-600 text-sm font-medium">✓ Correta</span>
-                          )}
                         </div>
                       ))}
+                      <p className="text-xs text-gray-500">Clique na letra para marcar a resposta correta</p>
                     </div>
 
-                    <div className="flex justify-end pt-4 border-t">
-                      <Button onClick={adicionarQuestaoManual}>
+                    <div className="flex justify-end pt-4">
+                      <Button onClick={addQuestaoManual}>
                         <Plus className="w-4 h-4 mr-2" />
-                        Adicionar ao Simulado
+                        Adicionar Questão
                       </Button>
                     </div>
                   </CardContent>
                 </Card>
               )}
 
-              {/* Aba Importar Arquivo */}
+              {/* Aba Importar */}
               {abaAtiva === 'importar' && (
                 <Card variant="bordered">
-                  <CardContent className="p-4">
+                  <CardContent className="p-6">
                     <div className="text-center py-12">
                       <Upload className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Importar Arquivo</h3>
-                      <p className="text-gray-600 mb-6">
-                        Em breve! Você poderá fazer upload de arquivos Word ou PDF e a IA extrairá as questões automaticamente.
-                      </p>
-                      <div className="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-4 py-2 rounded-lg">
-                        <FileText className="w-5 h-5" />
-                        Funcionalidade em desenvolvimento
-                      </div>
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">Importar Questões de Arquivo</h3>
+                      <p className="text-gray-500 mb-6">Em breve você poderá importar questões de arquivos PDF ou Word</p>
+                      <Button variant="outline" disabled>
+                        <FileText className="w-4 h-4 mr-2" />
+                        Selecionar Arquivo
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
               )}
             </div>
 
-            {/* Coluna da direita: Questões selecionadas */}
+            {/* Coluna da direita: Questões Selecionadas */}
             <div className="lg:col-span-1">
               <Card variant="bordered" className="sticky top-6">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold">Selecionadas ({questoesSelecionadas.length})</h3>
-                    <span className="text-sm text-indigo-600 font-medium">{totalPontos.toFixed(1)} pts</span>
+                    <h3 className="font-semibold text-gray-900">Selecionadas ({questoesSelecionadas.length})</h3>
+                    <span className="text-indigo-600 font-semibold">{totalPontos.toFixed(1)} pts</span>
                   </div>
 
-                  {/* Contagem por origem */}
-                  {questoesSelecionadas.length > 0 && (
-                    <div className="flex gap-2 mb-4 text-xs">
-                      {questoesPorOrigem.banco > 0 && (
-                        <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                          📚 {questoesPorOrigem.banco}
-                        </span>
-                      )}
-                      {questoesPorOrigem.manual > 0 && (
-                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded">
-                          ✏️ {questoesPorOrigem.manual}
-                        </span>
-                      )}
-                      {questoesPorOrigem.importada > 0 && (
-                        <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded">
-                          📄 {questoesPorOrigem.importada}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
                   {questoesSelecionadas.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <p>Nenhuma questão selecionada</p>
-                      <p className="text-sm">Selecione questões nas abas ao lado</p>
+                    <div className="text-center py-8">
+                      <FileText className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                      <p className="text-gray-500 text-sm">Nenhuma questão selecionada</p>
+                      <p className="text-gray-400 text-xs">Selecione questões nas abas ao lado</p>
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                      {questoesSelecionadas.map((q, index) => (
-                        <div key={q.id || q.tempId} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                          <div className="flex flex-col gap-0.5">
+                      {questoesSelecionadas.map((questao, index) => (
+                        <div
+                          key={questao.id || questao.tempId}
+                          className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg group"
+                        >
+                          <div className="flex flex-col gap-1">
                             <button
-                              onClick={() => moverQuestao(index, 'up')}
+                              onClick={() => moveQuestao(index, 'up')}
                               disabled={index === 0}
-                              className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"
+                              className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
                             >
                               <ChevronUp className="w-3 h-3" />
                             </button>
                             <button
-                              onClick={() => moverQuestao(index, 'down')}
+                              onClick={() => moveQuestao(index, 'down')}
                               disabled={index === questoesSelecionadas.length - 1}
-                              className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30"
+                              className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
                             >
                               <ChevronDown className="w-3 h-3" />
                             </button>
@@ -1040,26 +1147,26 @@ export default function NovoSimuladoPage() {
                             {index + 1}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs text-gray-700 line-clamp-1">{q.enunciado}</p>
-                            <div className="flex gap-1 mt-0.5">
-                              <span className={`text-xs px-1.5 rounded ${
-                                q.origem === 'banco' ? 'bg-blue-100 text-blue-700' :
-                                q.origem === 'manual' ? 'bg-green-100 text-green-700' :
+                            <p className="text-sm text-gray-900 truncate">{questao.enunciado}</p>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className={`text-xs px-1 rounded ${
+                                questao.origem === 'banco' ? 'bg-blue-100 text-blue-700' :
+                                questao.origem === 'manual' ? 'bg-green-100 text-green-700' :
                                 'bg-purple-100 text-purple-700'
                               }`}>
-                                {q.origem === 'banco' ? '📚' : q.origem === 'manual' ? '✏️' : '📄'}
+                                {questao.origem === 'banco' ? '📚' : questao.origem === 'manual' ? '✏️' : '📄'}
                               </span>
                               <Badge 
-                                variant={q.dificuldade === 'facil' ? 'success' : q.dificuldade === 'medio' ? 'warning' : 'danger'} 
-                                className="text-xs"
+                                variant={questao.dificuldade === 'facil' ? 'success' : questao.dificuldade === 'medio' ? 'warning' : 'danger'}
+                                className="text-xs py-0"
                               >
-                                {q.dificuldade === 'facil' ? 'F' : q.dificuldade === 'medio' ? 'M' : 'D'}
+                                {questao.dificuldade === 'facil' ? 'F' : questao.dificuldade === 'medio' ? 'M' : 'D'}
                               </Badge>
                             </div>
                           </div>
                           <button
-                            onClick={() => removerQuestao(index)}
-                            className="p-1 hover:bg-red-100 rounded text-red-500"
+                            onClick={() => removeQuestao(index)}
+                            className="p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1072,9 +1179,11 @@ export default function NovoSimuladoPage() {
             </div>
           </div>
 
-          {/* Botões de navegação */}
-          <div className="flex justify-between mt-6">
-            <Button variant="outline" onClick={() => setStep(1)}>Voltar</Button>
+          {/* Navegação Step 2 */}
+          <div className="flex justify-between pt-4">
+            <Button variant="outline" onClick={() => setStep(1)}>
+              Voltar
+            </Button>
             <Button onClick={() => setStep(3)} disabled={questoesSelecionadas.length === 0}>
               Próximo: Revisão
             </Button>
@@ -1086,13 +1195,13 @@ export default function NovoSimuladoPage() {
       {step === 3 && (
         <Card variant="bordered">
           <CardContent className="p-6">
-            <h3 className="text-xl font-semibold mb-6">Revisão do Simulado</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-6">Revisão do Simulado</h3>
 
             <div className="grid lg:grid-cols-2 gap-8">
               <div className="space-y-4">
                 <div>
                   <p className="text-sm text-gray-500">Título</p>
-                  <p className="font-medium text-lg">{formData.titulo}</p>
+                  <p className="font-medium text-lg text-gray-900">{formData.titulo}</p>
                 </div>
                 {formData.descricao && (
                   <div>
@@ -1101,18 +1210,20 @@ export default function NovoSimuladoPage() {
                   </div>
                 )}
                 <div>
-                  <p className="text-sm text-gray-500">Turma</p>
-                  <p className="font-medium">{turmaSelected ? `${turmaSelected.nome} - ${turmaSelected.ano_serie}` : 'Não definida'}</p>
+                  <p className="text-sm text-gray-500">Turmas</p>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {turmasSelected.length > 0 ? (
+                      turmasSelected.map(t => (
+                        <Badge key={t.id} variant="info">{t.nome} - {t.ano_serie}</Badge>
+                      ))
+                    ) : (
+                      <span className="text-gray-500">Nenhuma turma selecionada</span>
+                    )}
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Tempo</p>
-                    <p className="font-medium">{formData.tempo_minutos} minutos</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Pontuação</p>
-                    <p className="font-medium">{formData.pontuacao_questao} pts/questão</p>
-                  </div>
+                <div>
+                  <p className="text-sm text-gray-500">Pontuação</p>
+                  <p className="font-medium text-gray-900">{formData.pontuacao_questao} pts/questão</p>
                 </div>
               </div>
 
@@ -1158,7 +1269,7 @@ export default function NovoSimuladoPage() {
             </div>
 
             <div className="mt-8 pt-6 border-t">
-              <h4 className="font-semibold mb-4">Questões ({questoesSelecionadas.length})</h4>
+              <h4 className="font-semibold text-gray-900 mb-4">Questões ({questoesSelecionadas.length})</h4>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {questoesSelecionadas.map((q, i) => (
                   <div key={q.id || q.tempId} className="flex items-center gap-3 p-2 bg-gray-50 rounded">
@@ -1185,11 +1296,11 @@ export default function NovoSimuladoPage() {
             <div className="flex justify-between mt-8 pt-6 border-t">
               <Button variant="outline" onClick={() => setStep(2)}>Voltar</Button>
               <div className="flex gap-3">
-                <Button variant="outline" onClick={() => handleSave('rascunho')} loading={saving}>
+                <Button variant="outline" onClick={() => handleSave('rascunho')} disabled={saving}>
                   <Save className="w-4 h-4 mr-2" />Salvar Rascunho
                 </Button>
-                <Button onClick={() => handleSave('publicado')} loading={saving}>
-                  Publicar Simulado
+                <Button onClick={() => handleSave('publicado')} disabled={saving}>
+                  {saving ? 'Salvando...' : 'Publicar Simulado'}
                 </Button>
               </div>
             </div>
