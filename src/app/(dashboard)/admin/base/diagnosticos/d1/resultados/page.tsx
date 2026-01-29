@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -6,12 +5,8 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
   ArrowLeft, 
-  Users,
   CheckCircle,
-  XCircle,
-  AlertCircle,
-  Download,
-  RefreshCw
+  XCircle
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
@@ -63,7 +58,6 @@ export default function ResultadosD1Page() {
 
   async function carregarResultados() {
     try {
-      // Carregar turma
       const { data: turmaData } = await supabase
         .from('turmas')
         .select('id, nome, ano_serie')
@@ -72,7 +66,6 @@ export default function ResultadosD1Page() {
 
       setTurma(turmaData)
 
-      // Carregar alunos
       const { data: alunosData } = await supabase
         .from('alunos')
         .select('id, nome')
@@ -82,7 +75,6 @@ export default function ResultadosD1Page() {
 
       if (!alunosData) return
 
-      // Carregar grupos
       const bimestre = Math.ceil((new Date().getMonth() + 1) / 3)
       const anoLetivo = new Date().getFullYear()
 
@@ -95,7 +87,6 @@ export default function ResultadosD1Page() {
 
       const gruposMap = new Map(gruposData?.map(g => [g.aluno_id, g.grupo]) || [])
 
-      // Carregar aula do D1
       const { data: diagD1 } = await supabase
         .from('base_diagnosticos')
         .select('id')
@@ -116,7 +107,6 @@ export default function ResultadosD1Page() {
 
       if (!aulaData) return
 
-      // Carregar presenças
       const { data: presencasData } = await supabase
         .from('base_presencas')
         .select('aluno_id, presente')
@@ -124,20 +114,17 @@ export default function ResultadosD1Page() {
 
       const presencasMap = new Map(presencasData?.map(p => [p.aluno_id, p.presente]) || [])
 
-      // Carregar questões do D1
       const { data: questoesData } = await supabase
         .from('base_diagnostico_questoes')
         .select('id, numero')
         .eq('diagnostico_id', diagD1.id)
         .order('numero')
 
-      // Carregar respostas
       const { data: respostasData } = await supabase
         .from('base_respostas_diagnostico')
         .select('aluno_id, questao_id, resposta')
         .eq('aula_id', aulaData.id)
 
-      // Montar resultados dos alunos
       const alunosComResultados = alunosData.map(aluno => {
         const presente = presencasMap.get(aluno.id) ?? true
         const grupo = gruposMap.get(aluno.id) || '-'
@@ -171,7 +158,6 @@ export default function ResultadosD1Page() {
 
       setAlunos(alunosComResultados)
 
-      // Calcular estatísticas
       const presentes = alunosComResultados.filter(a => a.presente)
       const somaAcertos = presentes.reduce((acc, a) => acc + a.totalAcertos, 0)
       
@@ -194,26 +180,26 @@ export default function ResultadosD1Page() {
   function getRespostaIcon(resposta: string) {
     switch (resposta) {
       case 'acertou':
-        return <span className="text-green-500">✅</span>
+        return <span className="text-green-600">✅</span>
       case 'parcial':
-        return <span className="text-yellow-500">⚠️</span>
+        return <span className="text-yellow-600">⚠️</span>
       case 'errou':
-        return <span className="text-red-500">❌</span>
+        return <span className="text-red-600">❌</span>
       default:
-        return <span className="text-gray-300">—</span>
+        return <span className="text-gray-400">—</span>
     }
   }
 
   function getGrupoStyle(grupo: string) {
     switch (grupo) {
       case 'A':
-        return 'bg-red-100 text-red-700'
+        return 'bg-red-100 text-red-800 border-red-300'
       case 'B':
-        return 'bg-yellow-100 text-yellow-700'
+        return 'bg-yellow-100 text-yellow-800 border-yellow-300'
       case 'C':
-        return 'bg-green-100 text-green-700'
+        return 'bg-green-100 text-green-800 border-green-300'
       default:
-        return 'bg-gray-100 text-gray-500'
+        return 'bg-gray-100 text-gray-600 border-gray-300'
     }
   }
 
@@ -227,7 +213,6 @@ export default function ResultadosD1Page() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Link
           href="/admin/base/diagnosticos"
@@ -237,41 +222,42 @@ export default function ResultadosD1Page() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Resultados D1</h1>
-          <p className="text-gray-500 mt-1">
+          <p className="text-gray-600 mt-1">
             Habilidades Fundamentais - {turma?.nome}
           </p>
         </div>
       </div>
 
-      {/* Estatísticas */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <p className="text-sm text-gray-500">Total</p>
-          <p className="text-2xl font-bold text-gray-900">{estatisticas.total}</p>
+          <p className="text-sm font-medium text-gray-600">Total</p>
+          <p className="text-3xl font-bold text-gray-900">{estatisticas.total}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <p className="text-sm text-gray-500">Presentes</p>
-          <p className="text-2xl font-bold text-green-600">{estatisticas.presentes}</p>
+          <p className="text-sm font-medium text-gray-600">Presentes</p>
+          <p className="text-3xl font-bold text-green-700">{estatisticas.presentes}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <p className="text-sm text-gray-500">Média Acertos</p>
-          <p className="text-2xl font-bold text-indigo-600">{estatisticas.mediaAcertos}/6</p>
+          <p className="text-sm font-medium text-gray-600">Média Acertos</p>
+          <p className="text-3xl font-bold text-indigo-700">{estatisticas.mediaAcertos}/6</p>
         </div>
-        <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center">
-          <p className="text-sm text-red-600">Grupo A</p>
-          <p className="text-2xl font-bold text-red-700">{estatisticas.grupoA}</p>
+        <div className="bg-red-50 rounded-xl border-2 border-red-300 p-4 text-center">
+          <p className="text-sm font-medium text-red-700">Grupo A</p>
+          <p className="text-3xl font-bold text-red-800">{estatisticas.grupoA}</p>
+          <p className="text-xs text-red-600">Apoio</p>
         </div>
-        <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4 text-center">
-          <p className="text-sm text-yellow-600">Grupo B</p>
-          <p className="text-2xl font-bold text-yellow-700">{estatisticas.grupoB}</p>
+        <div className="bg-yellow-50 rounded-xl border-2 border-yellow-300 p-4 text-center">
+          <p className="text-sm font-medium text-yellow-700">Grupo B</p>
+          <p className="text-3xl font-bold text-yellow-800">{estatisticas.grupoB}</p>
+          <p className="text-xs text-yellow-600">Adaptação</p>
         </div>
-        <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center">
-          <p className="text-sm text-green-600">Grupo C</p>
-          <p className="text-2xl font-bold text-green-700">{estatisticas.grupoC}</p>
+        <div className="bg-green-50 rounded-xl border-2 border-green-300 p-4 text-center">
+          <p className="text-sm font-medium text-green-700">Grupo C</p>
+          <p className="text-3xl font-bold text-green-800">{estatisticas.grupoC}</p>
+          <p className="text-xs text-green-600">Regular</p>
         </div>
       </div>
 
-      {/* Tabela de Resultados */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Resultados por Aluno</h2>
@@ -281,16 +267,16 @@ export default function ResultadosD1Page() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Aluno</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Presença</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Q1</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Q2</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Q3</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Q4</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Q5</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Q6</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Acertos</th>
-                <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">Grupo</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Aluno</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Presença</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Q1</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Q2</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Q3</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Q4</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Q5</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Q6</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Acertos</th>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Grupo</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -301,9 +287,9 @@ export default function ResultadosD1Page() {
                   </td>
                   <td className="px-3 py-3 text-center">
                     {aluno.presente ? (
-                      <CheckCircle className="w-5 h-5 text-green-500 mx-auto" />
+                      <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />
                     ) : (
-                      <XCircle className="w-5 h-5 text-red-500 mx-auto" />
+                      <XCircle className="w-5 h-5 text-red-600 mx-auto" />
                     )}
                   </td>
                   <td className="px-3 py-3 text-center">{getRespostaIcon(aluno.respostas.q1)}</td>
@@ -313,10 +299,10 @@ export default function ResultadosD1Page() {
                   <td className="px-3 py-3 text-center">{getRespostaIcon(aluno.respostas.q5)}</td>
                   <td className="px-3 py-3 text-center">{getRespostaIcon(aluno.respostas.q6)}</td>
                   <td className="px-3 py-3 text-center">
-                    <span className="font-medium">{aluno.totalAcertos}/6</span>
+                    <span className="font-bold text-gray-900">{aluno.totalAcertos}/6</span>
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <span className={`inline-flex px-2 py-1 rounded text-xs font-bold ${getGrupoStyle(aluno.grupo)}`}>
+                    <span className={`inline-flex px-3 py-1 rounded-lg text-sm font-bold border ${getGrupoStyle(aluno.grupo)}`}>
                       {aluno.grupo}
                     </span>
                   </td>
@@ -327,36 +313,34 @@ export default function ResultadosD1Page() {
         </div>
       </div>
 
-      {/* Legenda */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h4 className="font-medium text-gray-900 mb-3">Legenda</h4>
-        <div className="flex flex-wrap gap-6">
-          <div className="flex items-center gap-2">
-            <span>✅</span>
-            <span className="text-sm text-gray-600">Acertou</span>
+        <h4 className="font-semibold text-gray-900 mb-3">Legenda</h4>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
+            <span className="text-xl">✅</span>
+            <span className="text-sm font-medium text-green-800">Acertou</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span>⚠️</span>
-            <span className="text-sm text-gray-600">Parcial</span>
+          <div className="flex items-center gap-3 p-2 bg-yellow-50 rounded-lg">
+            <span className="text-xl">⚠️</span>
+            <span className="text-sm font-medium text-yellow-800">Parcial</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span>❌</span>
-            <span className="text-sm text-gray-600">Errou</span>
+          <div className="flex items-center gap-3 p-2 bg-red-50 rounded-lg">
+            <span className="text-xl">❌</span>
+            <span className="text-sm font-medium text-red-800">Errou</span>
           </div>
         </div>
       </div>
 
-      {/* Ações */}
       <div className="flex gap-4">
         <Link
           href={`/admin/base/diagnosticos/d1/lancar?turma=${turmaId}`}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
         >
           Editar Lançamento
         </Link>
         <Link
           href="/admin/base/mapa"
-          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          className="px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors font-medium"
         >
           Ver Mapa da Turma
         </Link>
