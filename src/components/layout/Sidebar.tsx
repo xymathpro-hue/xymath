@@ -28,7 +28,8 @@ import {
   Brain,
   ChevronDown,
   ChevronRight,
-  Lock
+  Lock,
+  Target
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -113,11 +114,15 @@ const menuGroups: MenuGroup[] = [
     ]
   },
   {
-    id: 'insights',
-    title: 'Análise Avançada',
-    icon: Brain,
+    id: 'metodo-base',
+    title: 'Método BASE',
+    icon: Target,
+    adminOnly: true,
     items: [
-      { href: '/admin/xy-insights', label: 'XY Insights', icon: Brain, adminOnly: true },
+      { href: '/admin/base', label: 'Painel BASE', icon: Target, adminOnly: true },
+      { href: '/admin/base/turmas', label: 'Turmas BASE', icon: Users, adminOnly: true },
+      { href: '/admin/base/diagnosticos', label: 'Diagnósticos', icon: ClipboardList, adminOnly: true },
+      { href: '/admin/base/mapa', label: 'Mapa da Turma', icon: BarChart3, adminOnly: true },
     ]
   },
 ]
@@ -129,6 +134,7 @@ const adminGroup: MenuGroup = {
   adminOnly: true,
   items: [
     { href: '/admin', label: 'Painel Admin', icon: Shield },
+    { href: '/admin/xy-insights', label: 'XY Insights', icon: Brain },
   ]
 }
 
@@ -187,7 +193,6 @@ export function Sidebar() {
   }
 
   const renderMenuGroup = (group: MenuGroup) => {
-    // Pular grupo admin para não-admins
     if (group.adminOnly && !isAdmin) return null
 
     const isExpanded = expandedGroups.includes(group.id)
@@ -229,7 +234,6 @@ export function Sidebar() {
               const isLocked = item.adminOnly && !isAdmin
 
               if (isLocked) {
-                // Item bloqueado para não-admins
                 return (
                   <div
                     key={item.href}
