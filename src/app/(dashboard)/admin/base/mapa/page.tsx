@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -7,8 +6,6 @@ import Link from 'next/link'
 import { 
   ArrowLeft, 
   Users,
-  Filter,
-  Download,
   RefreshCw
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
@@ -99,7 +96,6 @@ export default function MapaTurmaPage() {
     
     setLoading(true)
     try {
-      // Carregar alunos da turma
       const { data: alunosData } = await supabase
         .from('alunos')
         .select('id, nome')
@@ -109,7 +105,6 @@ export default function MapaTurmaPage() {
 
       if (!alunosData) return
 
-      // Carregar grupos dos alunos
       const bimestre = Math.ceil((new Date().getMonth() + 1) / 3)
       const anoLetivo = new Date().getFullYear()
 
@@ -122,7 +117,6 @@ export default function MapaTurmaPage() {
 
       const gruposMap = new Map(gruposData?.map(g => [g.aluno_id, g.grupo]) || [])
 
-      // Carregar habilidades dos alunos
       const alunoIds = alunosData.map(a => a.id)
       const { data: habilidadesData } = await supabase
         .from('base_alunos_habilidades')
@@ -130,7 +124,6 @@ export default function MapaTurmaPage() {
         .in('aluno_id', alunoIds)
         .eq('ano_letivo', anoLetivo)
 
-      // Montar estrutura dos alunos
       const alunosComDados = alunosData.map(aluno => {
         const habilidadesAluno: { [codigo: string]: { status: string, percentual: number } } = {}
         
@@ -159,30 +152,30 @@ export default function MapaTurmaPage() {
   }
 
   function getStatusIcon(status: string | undefined) {
-    if (!status) return <span className="text-gray-300">—</span>
+    if (!status) return <span className="text-gray-400">—</span>
     
     switch (status) {
       case 'desenvolvida':
-        return <span className="text-green-500 text-lg">✅</span>
+        return <span className="text-green-600 text-lg">✅</span>
       case 'em_desenvolvimento':
-        return <span className="text-yellow-500 text-lg">🟡</span>
+        return <span className="text-yellow-600 text-lg">🟡</span>
       case 'nao_desenvolvida':
-        return <span className="text-red-500 text-lg">❌</span>
+        return <span className="text-red-600 text-lg">❌</span>
       default:
-        return <span className="text-gray-300">—</span>
+        return <span className="text-gray-400">—</span>
     }
   }
 
   function getGrupoStyle(grupo: string) {
     switch (grupo) {
       case 'A':
-        return 'bg-red-100 text-red-700 border-red-200'
+        return 'bg-red-100 text-red-800 border-red-300'
       case 'B':
-        return 'bg-yellow-100 text-yellow-700 border-yellow-200'
+        return 'bg-yellow-100 text-yellow-800 border-yellow-300'
       case 'C':
-        return 'bg-green-100 text-green-700 border-green-200'
+        return 'bg-green-100 text-green-800 border-green-300'
       default:
-        return 'bg-gray-100 text-gray-500 border-gray-200'
+        return 'bg-gray-100 text-gray-600 border-gray-300'
     }
   }
 
@@ -197,6 +190,7 @@ export default function MapaTurmaPage() {
   const grupoA = alunos.filter(a => a.grupo === 'A').length
   const grupoB = alunos.filter(a => a.grupo === 'B').length
   const grupoC = alunos.filter(a => a.grupo === 'C').length
+  const semGrupo = alunos.filter(a => a.grupo === '-').length
 
   if (loading && turmas.length === 0) {
     return (
@@ -233,7 +227,7 @@ export default function MapaTurmaPage() {
               <select
                 value={turmaSelecionada}
                 onChange={(e) => setTurmaSelecionada(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
               >
                 {turmas.map((turma) => (
                   <option key={turma.id} value={turma.id}>
@@ -250,12 +244,12 @@ export default function MapaTurmaPage() {
               <select
                 value={filtroGrupo}
                 onChange={(e) => setFiltroGrupo(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
               >
-                <option value="todos">Todos</option>
-                <option value="A">Grupo A (Apoio)</option>
-                <option value="B">Grupo B (Adaptação)</option>
-                <option value="C">Grupo C (Regular)</option>
+                <option value="todos">Todos ({totalAlunos})</option>
+                <option value="A">Grupo A - Apoio ({grupoA})</option>
+                <option value="B">Grupo B - Adaptação ({grupoB})</option>
+                <option value="C">Grupo C - Regular ({grupoC})</option>
               </select>
             </div>
 
@@ -270,34 +264,45 @@ export default function MapaTurmaPage() {
         </div>
       ) : (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
-          <p className="text-yellow-700">
+          <p className="text-yellow-800">
             Nenhuma turma configurada para o Método BASE.{' '}
-            <Link href="/admin/base/turmas" className="text-yellow-800 underline font-medium">
+            <Link href="/admin/base/turmas" className="text-yellow-900 underline font-medium">
               Configurar turmas
             </Link>
           </p>
         </div>
       )}
 
-      {/* Estatísticas */}
+      {/* Estatísticas com Legenda */}
       {turmaAtual && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <p className="text-sm text-gray-500">Total</p>
-            <p className="text-2xl font-bold text-gray-900">{totalAlunos}</p>
+            <p className="text-sm font-medium text-gray-600">Total</p>
+            <p className="text-3xl font-bold text-gray-900">{totalAlunos}</p>
+            <p className="text-xs text-gray-500">alunos</p>
           </div>
-          <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center">
-            <p className="text-sm text-red-600">Grupo A</p>
-            <p className="text-2xl font-bold text-red-700">{grupoA}</p>
+          <div className="bg-red-50 rounded-xl border-2 border-red-300 p-4 text-center">
+            <p className="text-sm font-medium text-red-700">Grupo A</p>
+            <p className="text-3xl font-bold text-red-800">{grupoA}</p>
+            <p className="text-xs text-red-600">Apoio Intensivo</p>
           </div>
-          <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4 text-center">
-            <p className="text-sm text-yellow-600">Grupo B</p>
-            <p className="text-2xl font-bold text-yellow-700">{grupoB}</p>
+          <div className="bg-yellow-50 rounded-xl border-2 border-yellow-300 p-4 text-center">
+            <p className="text-sm font-medium text-yellow-700">Grupo B</p>
+            <p className="text-3xl font-bold text-yellow-800">{grupoB}</p>
+            <p className="text-xs text-yellow-600">Adaptação</p>
           </div>
-          <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center">
-            <p className="text-sm text-green-600">Grupo C</p>
-            <p className="text-2xl font-bold text-green-700">{grupoC}</p>
+          <div className="bg-green-50 rounded-xl border-2 border-green-300 p-4 text-center">
+            <p className="text-sm font-medium text-green-700">Grupo C</p>
+            <p className="text-3xl font-bold text-green-800">{grupoC}</p>
+            <p className="text-xs text-green-600">Regular</p>
           </div>
+          {semGrupo > 0 && (
+            <div className="bg-gray-50 rounded-xl border border-gray-300 p-4 text-center">
+              <p className="text-sm font-medium text-gray-600">Sem Grupo</p>
+              <p className="text-3xl font-bold text-gray-700">{semGrupo}</p>
+              <p className="text-xs text-gray-500">Pendente D1</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -308,7 +313,7 @@ export default function MapaTurmaPage() {
             <h2 className="font-semibold text-gray-900">
               Mapa de Habilidades - {turmaAtual.nome}
             </h2>
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-600">
               {alunosFiltrados.length} alunos
             </span>
           </div>
@@ -320,7 +325,7 @@ export default function MapaTurmaPage() {
           ) : alunosFiltrados.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p>Nenhum aluno encontrado</p>
+              <p className="font-medium text-gray-700">Nenhum aluno encontrado</p>
               <p className="text-sm mt-1">Configure os diagnósticos primeiro</p>
             </div>
           ) : (
@@ -328,19 +333,19 @@ export default function MapaTurmaPage() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[200px]">
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[200px]">
                       Aluno
                     </th>
-                    <th className="px-3 py-3 text-center text-sm font-medium text-gray-700 w-16">
+                    <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700 w-16">
                       Grupo
                     </th>
                     {habilidadesPrioritarias.map((hab) => (
                       <th 
                         key={hab.codigo} 
-                        className="px-3 py-3 text-center text-xs font-medium text-gray-700 min-w-[80px]"
+                        className="px-3 py-3 text-center text-xs font-semibold text-gray-700 min-w-[80px]"
                         title={hab.nome}
                       >
-                        {hab.nome.substring(0, 8)}...
+                        {hab.nome.length > 10 ? hab.nome.substring(0, 10) + '...' : hab.nome}
                       </th>
                     ))}
                   </tr>
@@ -352,7 +357,7 @@ export default function MapaTurmaPage() {
                         {aluno.nome}
                       </td>
                       <td className="px-3 py-3 text-center">
-                        <span className={`inline-flex px-2 py-1 rounded text-xs font-bold border ${getGrupoStyle(aluno.grupo)}`}>
+                        <span className={`inline-flex px-3 py-1 rounded-lg text-sm font-bold border ${getGrupoStyle(aluno.grupo)}`}>
                           {aluno.grupo}
                         </span>
                       </td>
@@ -372,23 +377,35 @@ export default function MapaTurmaPage() {
 
       {/* Legenda */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h4 className="font-medium text-gray-900 mb-3">Legenda</h4>
-        <div className="flex flex-wrap gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">✅</span>
-            <span className="text-sm text-gray-600">Desenvolvida (76-100%)</span>
+        <h4 className="font-semibold text-gray-900 mb-3">Legenda</h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
+            <span className="text-xl">✅</span>
+            <div>
+              <p className="text-sm font-medium text-green-800">Desenvolvida</p>
+              <p className="text-xs text-green-600">76-100%</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🟡</span>
-            <span className="text-sm text-gray-600">Em desenvolvimento (41-75%)</span>
+          <div className="flex items-center gap-3 p-2 bg-yellow-50 rounded-lg">
+            <span className="text-xl">🟡</span>
+            <div>
+              <p className="text-sm font-medium text-yellow-800">Em desenvolvimento</p>
+              <p className="text-xs text-yellow-600">41-75%</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-lg">❌</span>
-            <span className="text-sm text-gray-600">Não desenvolvida (0-40%)</span>
+          <div className="flex items-center gap-3 p-2 bg-red-50 rounded-lg">
+            <span className="text-xl">❌</span>
+            <div>
+              <p className="text-sm font-medium text-red-800">Não desenvolvida</p>
+              <p className="text-xs text-red-600">0-40%</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-lg text-gray-300">—</span>
-            <span className="text-sm text-gray-600">Não avaliada</span>
+          <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+            <span className="text-xl text-gray-400">—</span>
+            <div>
+              <p className="text-sm font-medium text-gray-700">Não avaliada</p>
+              <p className="text-xs text-gray-500">Sem dados</p>
+            </div>
           </div>
         </div>
       </div>
