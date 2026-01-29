@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -561,4 +560,4 @@ export default function LancarD1Page() {
       </div>
     </div>
   )
-              }
+}
