@@ -48,6 +48,7 @@ export default function LancarDiagnosticoPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [alunoAtualIndex, setAlunoAtualIndex] = useState(0)
   const [modoVisualizacao, setModoVisualizacao] = useState<'individual' | 'grid'>('grid')
+  const [aulaExistenteId, setAulaExistenteId] = useState<string | null>(null)
 
   useEffect(() => {
     if (turmaId && codigo) {
@@ -57,6 +58,7 @@ export default function LancarDiagnosticoPage() {
 
   async function carregarDados() {
     try {
+      // Carregar diagnóstico
       const { data: diagData } = await supabase
         .from('base_diagnosticos')
         .select('id, nome')
@@ -70,6 +72,7 @@ export default function LancarDiagnosticoPage() {
       }
       setDiagnostico(diagData)
 
+      // Carregar questões
       const { data: questoesData } = await supabase
         .from('base_diagnostico_questoes')
         .select('id, numero, enunciado, tipo, o_que_testa')
@@ -78,6 +81,7 @@ export default function LancarDiagnosticoPage() {
 
       setQuestoes(questoesData || [])
 
+      // Carregar turma
       const { data: turmaData } = await supabase
         .from('turmas')
         .select('id, nome')
@@ -86,6 +90,7 @@ export default function LancarDiagnosticoPage() {
 
       setTurma(turmaData)
 
+      // Carregar alunos
       const { data: alunosData } = await supabase
         .from('alunos')
         .select('id, nome')
@@ -93,16 +98,67 @@ export default function LancarDiagnosticoPage() {
         .eq('ativo', true)
         .order('nome')
 
+      // Inicializar respostas vazias
       const respostasIniciais: { [key: string]: string } = {}
       questoesData?.forEach(q => {
         respostasIniciais[`q${q.numero}`] = ''
       })
 
-      const alunosFormatados = (alunosData || []).map(aluno => ({
+      let alunosFormatados = (alunosData || []).map(aluno => ({
         ...aluno,
         respostas: { ...respostasIniciais },
         presente: true
       }))
+
+      // Verificar se já existe uma aula para este diagnóstico nesta turma
+      const { data: aulaExistente } = await supabase
+        .from('base_aulas')
+        .select('id')
+        .eq('turma_id', turmaId)
+        .eq('diagnostico_id', diagData.id)
+        .eq('tipo', 'diagnostico')
+        .order('data_aula', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (aulaExistente) {
+        setAulaExistenteId(aulaExistente.id)
+
+        // Carregar presenças existentes
+        const { data: presencasData } = await supabase
+          .from('base_presencas')
+          .select('aluno_id, presente')
+          .eq('aula_id', aulaExistente.id)
+
+        const presencasMap = new Map(presencasData?.map(p => [p.aluno_id, p.presente]) || [])
+
+        // Carregar respostas existentes
+        const { data: respostasData } = await supabase
+          .from('base_respostas_diagnostico')
+          .select('aluno_id, questao_id, resposta')
+          .eq('aula_id', aulaExistente.id)
+
+        // Atualizar alunos com dados existentes
+        alunosFormatados = alunosFormatados.map(aluno => {
+          const presente = presencasMap.has(aluno.id) ? presencasMap.get(aluno.id) : true
+          const respostas = { ...respostasIniciais }
+
+          questoesData?.forEach(questao => {
+            const respostaExistente = respostasData?.find(
+              r => r.aluno_id === aluno.id && r.questao_id === questao.id
+            )
+            if (respostaExistente) {
+              respostas[`q${questao.numero}`] = respostaExistente.resposta
+            }
+          })
+
+          return {
+            ...aluno,
+            respostas,
+            presente: presente ?? true
+          }
+        })
+      }
 
       setAlunos(alunosFormatados)
     } catch (error) {
@@ -155,26 +211,14 @@ export default function LancarDiagnosticoPage() {
 
     try {
       const hoje = new Date().toISOString().split('T')[0]
-
-      // Verificar se já existe uma aula para este diagnóstico nesta turma hoje
-      const { data: aulaExistente } = await supabase
-        .from('base_aulas')
-        .select('id')
-        .eq('turma_id', turmaId)
-        .eq('diagnostico_id', diagnostico?.id)
-        .eq('data_aula', hoje)
-        .single()
-
       let aulaId: string
 
-      if (aulaExistente) {
-        // Atualizar aula existente
-        aulaId = aulaExistente.id
+      if (aulaExistenteId) {
+        // Usar aula existente
+        aulaId = aulaExistenteId
         await supabase
           .from('base_aulas')
-          .update({
-            status: 'realizada'
-          })
+          .update({ status: 'realizada' })
           .eq('id', aulaId)
       } else {
         // Criar nova aula
@@ -295,7 +339,9 @@ export default function LancarDiagnosticoPage() {
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">Lançar {codigo} - {diagnostico.nome}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {aulaExistenteId ? 'Editar' : 'Lançar'} {codigo} - {diagnostico.nome}
+          </h1>
           <p className="text-gray-500 mt-1">{turma.nome}</p>
         </div>
       </div>
@@ -565,4 +611,4 @@ export default function LancarDiagnosticoPage() {
       </div>
     </div>
   )
-                                                                             }
+}
