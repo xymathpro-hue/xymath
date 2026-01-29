@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -58,7 +57,6 @@ export default function LancarDiagnosticoPage() {
 
   async function carregarDados() {
     try {
-      // Carregar diagnóstico
       const { data: diagData } = await supabase
         .from('base_diagnosticos')
         .select('id, nome')
@@ -72,7 +70,6 @@ export default function LancarDiagnosticoPage() {
       }
       setDiagnostico(diagData)
 
-      // Carregar questões
       const { data: questoesData } = await supabase
         .from('base_diagnostico_questoes')
         .select('id, numero, enunciado, tipo, o_que_testa')
@@ -81,7 +78,6 @@ export default function LancarDiagnosticoPage() {
 
       setQuestoes(questoesData || [])
 
-      // Carregar turma
       const { data: turmaData } = await supabase
         .from('turmas')
         .select('id, nome')
@@ -90,7 +86,6 @@ export default function LancarDiagnosticoPage() {
 
       setTurma(turmaData)
 
-      // Carregar alunos
       const { data: alunosData } = await supabase
         .from('alunos')
         .select('id, nome')
@@ -161,23 +156,44 @@ export default function LancarDiagnosticoPage() {
     try {
       const hoje = new Date().toISOString().split('T')[0]
 
-      // Criar a aula
-      const { data: aula, error: aulaError } = await supabase
+      // Verificar se já existe uma aula para este diagnóstico nesta turma hoje
+      const { data: aulaExistente } = await supabase
         .from('base_aulas')
-        .upsert({
-          turma_id: turmaId,
-          usuario_id: usuario?.id,
-          data_aula: hoje,
-          tipo: 'diagnostico',
-          diagnostico_id: diagnostico?.id,
-          status: 'realizada'
-        }, {
-          onConflict: 'turma_id,data_aula'
-        })
-        .select()
+        .select('id')
+        .eq('turma_id', turmaId)
+        .eq('diagnostico_id', diagnostico?.id)
+        .eq('data_aula', hoje)
         .single()
 
-      if (aulaError) throw aulaError
+      let aulaId: string
+
+      if (aulaExistente) {
+        // Atualizar aula existente
+        aulaId = aulaExistente.id
+        await supabase
+          .from('base_aulas')
+          .update({
+            status: 'realizada'
+          })
+          .eq('id', aulaId)
+      } else {
+        // Criar nova aula
+        const { data: novaAula, error: aulaError } = await supabase
+          .from('base_aulas')
+          .insert({
+            turma_id: turmaId,
+            usuario_id: usuario?.id,
+            data_aula: hoje,
+            tipo: 'diagnostico',
+            diagnostico_id: diagnostico?.id,
+            status: 'realizada'
+          })
+          .select()
+          .single()
+
+        if (aulaError) throw aulaError
+        aulaId = novaAula.id
+      }
 
       // Salvar presenças e respostas
       for (const aluno of alunos) {
@@ -185,7 +201,7 @@ export default function LancarDiagnosticoPage() {
         await supabase
           .from('base_presencas')
           .upsert({
-            aula_id: aula.id,
+            aula_id: aulaId,
             aluno_id: aluno.id,
             presente: aluno.presente
           }, {
@@ -202,7 +218,7 @@ export default function LancarDiagnosticoPage() {
               await supabase
                 .from('base_respostas_diagnostico')
                 .upsert({
-                  aula_id: aula.id,
+                  aula_id: aulaId,
                   aluno_id: aluno.id,
                   questao_id: questao.id,
                   resposta: resposta
@@ -271,7 +287,6 @@ export default function LancarDiagnosticoPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Link
           href="/admin/base/diagnosticos"
@@ -285,7 +300,6 @@ export default function LancarDiagnosticoPage() {
         </div>
       </div>
 
-      {/* Resumo */}
       <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-6">
@@ -330,7 +344,6 @@ export default function LancarDiagnosticoPage() {
         </div>
       </div>
 
-      {/* Mensagem */}
       {message && (
         <div className={`p-4 rounded-lg flex items-center gap-3 ${
           message.type === 'success' 
@@ -342,7 +355,6 @@ export default function LancarDiagnosticoPage() {
         </div>
       )}
 
-      {/* Modo Grade */}
       {modoVisualizacao === 'grid' && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
@@ -426,7 +438,6 @@ export default function LancarDiagnosticoPage() {
         </div>
       )}
 
-      {/* Modo Individual */}
       {modoVisualizacao === 'individual' && alunoAtual && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-6">
@@ -509,7 +520,6 @@ export default function LancarDiagnosticoPage() {
         </div>
       )}
 
-      {/* Legenda dos Grupos (só para D1) */}
       {codigo === 'D1' && (
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <h4 className="font-medium text-gray-900 mb-3">Legenda dos Grupos</h4>
@@ -539,7 +549,6 @@ export default function LancarDiagnosticoPage() {
         </div>
       )}
 
-      {/* Botão Salvar */}
       <div className="flex justify-end">
         <button
           onClick={salvarLancamento}
@@ -556,4 +565,4 @@ export default function LancarDiagnosticoPage() {
       </div>
     </div>
   )
-          }
+                                                                             }
