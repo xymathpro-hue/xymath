@@ -123,6 +123,7 @@ const menuGroups: MenuGroup[] = [
       { href: '/admin/base/turmas', label: 'Turmas BASE', icon: Users, adminOnly: true },
       { href: '/admin/base/diagnosticos', label: 'Diagnósticos', icon: ClipboardList, adminOnly: true },
       { href: '/admin/base/mapa', label: 'Mapa da Turma', icon: BarChart3, adminOnly: true },
+      { href: '/admin/base/relatorios', label: 'Relatórios', icon: PieChart, adminOnly: true },
     ]
   },
 ]
