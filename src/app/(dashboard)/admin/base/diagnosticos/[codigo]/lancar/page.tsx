@@ -1,7 +1,7 @@
 // src/app/(dashboard)/admin/base/diagnosticos/[codigo]/lancar/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -13,7 +13,9 @@ import {
   AlertCircle,
   Clock,
   Users,
-  HelpCircle
+  HelpCircle,
+  X,
+  UserX
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
@@ -42,7 +44,7 @@ interface Turma {
 interface Resposta {
   aluno_id: string
   questao_numero: number
-  acertou: 'sim' | 'parcial' | 'nao' | 'branco'
+  acertou: 'sim' | 'parcial' | 'nao' | 'branco' | 'faltou'
   tipo_erro?: string
 }
 
@@ -68,6 +70,13 @@ const tiposErro = [
   { codigo: 'E5', nome: 'Branco', descricao: 'Não tentou' },
 ]
 
+const opcoesResposta = [
+  { valor: 'sim', icone: '✓', label: 'Acertou', cor: 'bg-green-500 hover:bg-green-600 text-white' },
+  { valor: 'parcial', icone: '½', label: 'Parcial', cor: 'bg-yellow-500 hover:bg-yellow-600 text-white' },
+  { valor: 'nao', icone: '✗', label: 'Errou', cor: 'bg-red-500 hover:bg-red-600 text-white' },
+  { valor: 'branco', icone: '-', label: 'Branco', cor: 'bg-gray-400 hover:bg-gray-500 text-white' },
+]
+
 export default function LancarDiagnosticoPage() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -80,17 +89,33 @@ export default function LancarDiagnosticoPage() {
   const [diagnostico, setDiagnostico] = useState<Diagnostico | null>(null)
   const [turma, setTurma] = useState<Turma | null>(null)
   const [alunos, setAlunos] = useState<Aluno[]>([])
+  const [alunosFaltaram, setAlunosFaltaram] = useState<Set<string>>(new Set())
   const [respostas, setRespostas] = useState<Map<string, Resposta>>(new Map())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [alunoExpandido, setAlunoExpandido] = useState<string | null>(null)
+  
+  // Estado para popup de seleção
+  const [popupAberto, setPopupAberto] = useState<{alunoId: string, questao: number} | null>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (turmaId) {
       carregarDados()
     }
   }, [codigo, turmaId])
+
+  // Fechar popup ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+        setPopupAberto(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   async function carregarDados() {
     try {
@@ -141,6 +166,8 @@ export default function LancarDiagnosticoPage() {
 
       if (respostasExistentes && respostasExistentes.length > 0) {
         const novasRespostas = new Map<string, Resposta>()
+        const novosFaltaram = new Set<string>()
+        
         respostasExistentes.forEach(r => {
           const key = `${r.aluno_id}-${r.questao_numero}`
           novasRespostas.set(key, {
@@ -149,8 +176,14 @@ export default function LancarDiagnosticoPage() {
             acertou: r.acertou || 'branco',
             tipo_erro: r.tipo_erro
           })
+          
+          // Verificar se aluno faltou (todas as respostas são 'faltou')
+          if (r.acertou === 'faltou') {
+            novosFaltaram.add(r.aluno_id)
+          }
         })
         setRespostas(novasRespostas)
+        setAlunosFaltaram(novosFaltaram)
       }
 
     } catch (err) {
@@ -169,7 +202,7 @@ export default function LancarDiagnosticoPage() {
     return respostas.get(getRespostaKey(alunoId, questao))
   }
 
-  function setResposta(alunoId: string, questao: number, acertou: 'sim' | 'parcial' | 'nao' | 'branco', tipoErro?: string) {
+  function setRespostaValue(alunoId: string, questao: number, acertou: 'sim' | 'parcial' | 'nao' | 'branco' | 'faltou', tipoErro?: string) {
     const key = getRespostaKey(alunoId, questao)
     const novasRespostas = new Map(respostas)
     novasRespostas.set(key, {
@@ -179,24 +212,35 @@ export default function LancarDiagnosticoPage() {
       tipo_erro: acertou === 'nao' ? tipoErro : undefined
     })
     setRespostas(novasRespostas)
+    setPopupAberto(null)
   }
 
-  function toggleResposta(alunoId: string, questao: number) {
-    const atual = getResposta(alunoId, questao)
-    const proximoEstado: Record<string, 'sim' | 'parcial' | 'nao' | 'branco'> = {
-      'undefined': 'sim',
-      'sim': 'parcial',
-      'parcial': 'nao',
-      'nao': 'branco',
-      'branco': 'sim'
-    }
-    const novoEstado = proximoEstado[atual?.acertou || 'undefined']
-    setResposta(alunoId, questao, novoEstado)
+  function marcarAlunoFaltou(alunoId: string) {
+    const novosFaltaram = new Set(alunosFaltaram)
     
-    // Se errou, expandir para mostrar tipo de erro
-    if (novoEstado === 'nao') {
-      setAlunoExpandido(alunoId)
+    if (novosFaltaram.has(alunoId)) {
+      // Desmarcar falta - limpar respostas
+      novosFaltaram.delete(alunoId)
+      const novasRespostas = new Map(respostas)
+      estruturaQuestoes.forEach(q => {
+        novasRespostas.delete(getRespostaKey(alunoId, q.numero))
+      })
+      setRespostas(novasRespostas)
+    } else {
+      // Marcar como faltou - setar todas as questões como 'faltou'
+      novosFaltaram.add(alunoId)
+      const novasRespostas = new Map(respostas)
+      estruturaQuestoes.forEach(q => {
+        novasRespostas.set(getRespostaKey(alunoId, q.numero), {
+          aluno_id: alunoId,
+          questao_numero: q.numero,
+          acertou: 'faltou'
+        })
+      })
+      setRespostas(novasRespostas)
     }
+    
+    setAlunosFaltaram(novosFaltaram)
   }
 
   function getCorResposta(acertou?: string) {
@@ -204,7 +248,8 @@ export default function LancarDiagnosticoPage() {
       case 'sim': return 'bg-green-500 text-white'
       case 'parcial': return 'bg-yellow-500 text-white'
       case 'nao': return 'bg-red-500 text-white'
-      case 'branco': return 'bg-gray-300 text-gray-600'
+      case 'branco': return 'bg-gray-400 text-white'
+      case 'faltou': return 'bg-slate-600 text-white'
       default: return 'bg-gray-100 text-gray-400 border-2 border-dashed border-gray-300'
     }
   }
@@ -215,11 +260,16 @@ export default function LancarDiagnosticoPage() {
       case 'parcial': return '½'
       case 'nao': return '✗'
       case 'branco': return '-'
+      case 'faltou': return 'F'
       default: return '?'
     }
   }
 
-  function calcularTotalAcertos(alunoId: string): { acertos: number, parciais: number, erros: number, brancos: number } {
+  function calcularTotalAcertos(alunoId: string): { acertos: number, parciais: number, erros: number, brancos: number, faltou: boolean } {
+    if (alunosFaltaram.has(alunoId)) {
+      return { acertos: 0, parciais: 0, erros: 0, brancos: 0, faltou: true }
+    }
+    
     let acertos = 0, parciais = 0, erros = 0, brancos = 0
     
     estruturaQuestoes.forEach(q => {
@@ -230,10 +280,12 @@ export default function LancarDiagnosticoPage() {
       else brancos++
     })
     
-    return { acertos, parciais, erros, brancos }
+    return { acertos, parciais, erros, brancos, faltou: false }
   }
 
   function determinarGrupo(alunoId: string): string {
+    if (alunosFaltaram.has(alunoId)) return 'F'
+    
     const { acertos, parciais } = calcularTotalAcertos(alunoId)
     const pontuacao = acertos + (parciais * 0.5)
     const percentual = (pontuacao / 10) * 100
@@ -247,23 +299,33 @@ export default function LancarDiagnosticoPage() {
     if (!diagnostico || !turmaId) return
 
     setSaving(true)
+    setSaveSuccess(false)
+    setError(null)
+    
     try {
       // Preparar dados para salvar
-      const dadosParaSalvar = Array.from(respostas.values()).map(r => ({
-        diagnostico_id: diagnostico.id,
-        turma_id: turmaId,
-        aluno_id: r.aluno_id,
-        questao_numero: r.questao_numero,
-        acertou: r.acertou,
-        tipo_erro: r.tipo_erro
-      }))
+      const dadosParaSalvar = Array.from(respostas.values())
+        .filter(r => r.acertou) // Só salvar respostas preenchidas
+        .map(r => ({
+          diagnostico_id: diagnostico.id,
+          turma_id: turmaId,
+          aluno_id: r.aluno_id,
+          questao_numero: r.questao_numero,
+          acertou: r.acertou,
+          tipo_erro: r.tipo_erro || null
+        }))
 
       // Deletar respostas anteriores
-      await supabase
+      const { error: deleteError } = await supabase
         .from('base_respostas_diagnostico')
         .delete()
         .eq('diagnostico_id', diagnostico.id)
         .eq('turma_id', turmaId)
+
+      if (deleteError) {
+        console.error('Erro ao deletar:', deleteError)
+        throw new Error('Erro ao limpar respostas anteriores')
+      }
 
       // Inserir novas respostas
       if (dadosParaSalvar.length > 0) {
@@ -271,12 +333,19 @@ export default function LancarDiagnosticoPage() {
           .from('base_respostas_diagnostico')
           .insert(dadosParaSalvar)
 
-        if (insertError) throw insertError
+        if (insertError) {
+          console.error('Erro ao inserir:', insertError)
+          throw new Error(`Erro ao salvar: ${insertError.message}`)
+        }
       }
 
-      // Atualizar grupos dos alunos
+      // Atualizar grupos dos alunos (apenas os que não faltaram)
       for (const aluno of alunos) {
+        if (alunosFaltaram.has(aluno.id)) continue
+        
         const grupo = determinarGrupo(aluno.id)
+        if (grupo === 'F') continue
+        
         const bimestre = Math.ceil((new Date().getMonth() + 1) / 3)
         
         await supabase
@@ -292,12 +361,16 @@ export default function LancarDiagnosticoPage() {
           })
       }
 
-      // Redirecionar para resultados
-      router.push(`/admin/base/diagnosticos/${codigo.toLowerCase()}/resultados?turma=${turmaId}`)
+      setSaveSuccess(true)
       
-    } catch (err) {
+      // Mostrar sucesso por 2 segundos e depois redirecionar
+      setTimeout(() => {
+        router.push(`/admin/base/diagnosticos/${codigo.toLowerCase()}/resultados?turma=${turmaId}`)
+      }, 1500)
+      
+    } catch (err: any) {
       console.error('Erro ao salvar:', err)
-      setError('Erro ao salvar respostas')
+      setError(err.message || 'Erro ao salvar respostas')
     } finally {
       setSaving(false)
     }
@@ -311,7 +384,7 @@ export default function LancarDiagnosticoPage() {
     )
   }
 
-  if (error) {
+  if (error && !diagnostico) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
@@ -329,6 +402,8 @@ export default function LancarDiagnosticoPage() {
       </div>
     )
   }
+
+  const alunosPresentes = alunos.filter(a => !alunosFaltaram.has(a.id))
 
   return (
     <div className="space-y-6">
@@ -354,12 +429,21 @@ export default function LancarDiagnosticoPage() {
         <button
           onClick={salvarRespostas}
           disabled={saving}
-          className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-colors ${
+            saveSuccess 
+              ? 'bg-green-600 text-white' 
+              : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50'
+          }`}
         >
           {saving ? (
             <>
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
               <span>Salvando...</span>
+            </>
+          ) : saveSuccess ? (
+            <>
+              <CheckCircle className="w-5 h-5" />
+              <span>Salvo! Redirecionando...</span>
             </>
           ) : (
             <>
@@ -370,10 +454,23 @@ export default function LancarDiagnosticoPage() {
         </button>
       </div>
 
+      {/* Mensagem de erro */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+            <p className="text-red-700">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto">
+              <X className="w-4 h-4 text-red-500" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Legenda */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex flex-wrap items-center gap-4 text-sm">
-          <span className="font-medium text-gray-700">Clique para alternar:</span>
+          <span className="font-medium text-gray-700">Clique na célula para selecionar:</span>
           <div className="flex items-center gap-1">
             <span className="w-8 h-8 rounded-lg bg-green-500 text-white flex items-center justify-center font-bold">✓</span>
             <span className="text-gray-600">Acertou</span>
@@ -387,13 +484,17 @@ export default function LancarDiagnosticoPage() {
             <span className="text-gray-600">Errou</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="w-8 h-8 rounded-lg bg-gray-300 text-gray-600 flex items-center justify-center font-bold">-</span>
+            <span className="w-8 h-8 rounded-lg bg-gray-400 text-white flex items-center justify-center font-bold">-</span>
             <span className="text-gray-600">Branco</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-8 h-8 rounded-lg bg-slate-600 text-white flex items-center justify-center font-bold">F</span>
+            <span className="text-gray-600">Faltou</span>
           </div>
         </div>
       </div>
 
-      {/* Cabeçalho das Questões */}
+      {/* Tabela de lançamento */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -401,6 +502,9 @@ export default function LancarDiagnosticoPage() {
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left py-3 px-4 font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[200px]">
                   Aluno
+                </th>
+                <th className="py-3 px-2 text-center font-medium text-gray-700 min-w-[50px]">
+                  <UserX className="w-4 h-4 mx-auto text-gray-500" title="Faltou" />
                 </th>
                 {estruturaQuestoes.map(q => (
                   <th key={q.numero} className="py-2 px-1 text-center min-w-[44px]">
@@ -426,96 +530,97 @@ export default function LancarDiagnosticoPage() {
               {alunos.map((aluno, idx) => {
                 const totais = calcularTotalAcertos(aluno.id)
                 const grupo = determinarGrupo(aluno.id)
-                const temErro = Array.from(respostas.values()).some(
-                  r => r.aluno_id === aluno.id && r.acertou === 'nao'
-                )
+                const faltou = alunosFaltaram.has(aluno.id)
 
                 return (
-                  <>
-                    <tr 
-                      key={aluno.id}
-                      className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
-                    >
-                      <td className="py-2 px-4 sticky left-0 bg-inherit">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900 truncate max-w-[180px]">
-                            {aluno.nome}
-                          </span>
-                          {temErro && (
-                            <button
-                              onClick={() => setAlunoExpandido(alunoExpandido === aluno.id ? null : aluno.id)}
-                              className="p-1 hover:bg-gray-200 rounded"
-                              title="Ver/editar tipos de erro"
-                            >
-                              <HelpCircle className="w-4 h-4 text-red-500" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                      {estruturaQuestoes.map(q => {
-                        const resp = getResposta(aluno.id, q.numero)
-                        return (
-                          <td key={q.numero} className="py-2 px-1 text-center">
-                            <button
-                              onClick={() => toggleResposta(aluno.id, q.numero)}
-                              className={`w-10 h-10 rounded-lg font-bold text-lg transition-all ${getCorResposta(resp?.acertou)}`}
-                            >
-                              {getIconeResposta(resp?.acertou)}
-                            </button>
-                          </td>
-                        )
-                      })}
-                      <td className="py-2 px-2 text-center">
-                        <span className="font-bold text-gray-900">
-                          {totais.acertos + totais.parciais * 0.5}/10
-                        </span>
-                      </td>
-                      <td className="py-2 px-2 text-center">
-                        <span className={`inline-flex w-8 h-8 items-center justify-center rounded-full font-bold text-white ${
-                          grupo === 'A' ? 'bg-red-500' :
-                          grupo === 'B' ? 'bg-yellow-500' :
-                          'bg-green-500'
-                        }`}>
-                          {grupo}
-                        </span>
-                      </td>
-                    </tr>
+                  <tr 
+                    key={aluno.id}
+                    className={`border-b border-gray-100 hover:bg-gray-50 ${
+                      faltou ? 'bg-slate-100' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                    }`}
+                  >
+                    <td className="py-2 px-4 sticky left-0 bg-inherit">
+                      <span className={`font-medium truncate max-w-[180px] ${faltou ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                        {aluno.nome}
+                      </span>
+                    </td>
                     
-                    {/* Linha expandida para tipos de erro */}
-                    {alunoExpandido === aluno.id && temErro && (
-                      <tr className="bg-red-50">
-                        <td colSpan={13} className="py-3 px-4">
-                          <div className="space-y-2">
-                            <p className="text-sm font-medium text-red-700">Tipos de erro para {aluno.nome}:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {estruturaQuestoes.map(q => {
-                                const resp = getResposta(aluno.id, q.numero)
-                                if (resp?.acertou !== 'nao') return null
-                                
-                                return (
-                                  <div key={q.numero} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-red-200">
-                                    <span className="font-medium text-gray-700">Q{q.numero}:</span>
-                                    <select
-                                      value={resp.tipo_erro || ''}
-                                      onChange={(e) => setResposta(aluno.id, q.numero, 'nao', e.target.value)}
-                                      className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
-                                    >
-                                      <option value="">Selecione</option>
-                                      {tiposErro.map(te => (
-                                        <option key={te.codigo} value={te.codigo}>
-                                          {te.codigo} - {te.nome}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                )
-                              })}
+                    {/* Checkbox Faltou */}
+                    <td className="py-2 px-2 text-center">
+                      <button
+                        onClick={() => marcarAlunoFaltou(aluno.id)}
+                        className={`w-8 h-8 rounded border-2 flex items-center justify-center transition-all ${
+                          faltou 
+                            ? 'bg-slate-600 border-slate-600 text-white' 
+                            : 'border-gray-300 hover:border-slate-400'
+                        }`}
+                        title={faltou ? 'Desmarcar falta' : 'Marcar como faltou'}
+                      >
+                        {faltou && <span className="font-bold">F</span>}
+                      </button>
+                    </td>
+                    
+                    {estruturaQuestoes.map(q => {
+                      const resp = getResposta(aluno.id, q.numero)
+                      const isPopupAberto = popupAberto?.alunoId === aluno.id && popupAberto?.questao === q.numero
+                      
+                      return (
+                        <td key={q.numero} className="py-2 px-1 text-center relative">
+                          <button
+                            onClick={() => !faltou && setPopupAberto({ alunoId: aluno.id, questao: q.numero })}
+                            disabled={faltou}
+                            className={`w-10 h-10 rounded-lg font-bold text-lg transition-all ${
+                              faltou 
+                                ? 'bg-slate-300 text-slate-500 cursor-not-allowed' 
+                                : getCorResposta(resp?.acertou)
+                            }`}
+                          >
+                            {faltou ? 'F' : getIconeResposta(resp?.acertou)}
+                          </button>
+                          
+                          {/* Popup de seleção */}
+                          {isPopupAberto && (
+                            <div 
+                              ref={popupRef}
+                              className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 p-2"
+                            >
+                              <div className="flex gap-1">
+                                {opcoesResposta.map(op => (
+                                  <button
+                                    key={op.valor}
+                                    onClick={() => setRespostaValue(aluno.id, q.numero, op.valor as any)}
+                                    className={`w-10 h-10 rounded-lg font-bold text-lg ${op.cor} transition-all`}
+                                    title={op.label}
+                                  >
+                                    {op.icone}
+                                  </button>
+                                ))}
+                              </div>
+                              {/* Seta do popup */}
+                              <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-white"></div>
                             </div>
-                          </div>
+                          )}
                         </td>
-                      </tr>
-                    )}
-                  </>
+                      )
+                    })}
+                    
+                    <td className="py-2 px-2 text-center">
+                      <span className={`font-bold ${faltou ? 'text-gray-400' : 'text-gray-900'}`}>
+                        {faltou ? '-' : `${totais.acertos + totais.parciais * 0.5}/10`}
+                      </span>
+                    </td>
+                    
+                    <td className="py-2 px-2 text-center">
+                      <span className={`inline-flex w-8 h-8 items-center justify-center rounded-full font-bold text-white ${
+                        grupo === 'F' ? 'bg-slate-500' :
+                        grupo === 'A' ? 'bg-red-500' :
+                        grupo === 'B' ? 'bg-yellow-500' :
+                        'bg-green-500'
+                      }`}>
+                        {grupo}
+                      </span>
+                    </td>
+                  </tr>
                 )
               })}
             </tbody>
@@ -526,26 +631,30 @@ export default function LancarDiagnosticoPage() {
       {/* Resumo */}
       <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6">
         <h3 className="font-semibold text-gray-900 mb-4">📊 Resumo do Lançamento</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-white rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-gray-900">{alunos.length}</p>
-            <p className="text-sm text-gray-500">Total de alunos</p>
+            <p className="text-sm text-gray-500">Total</p>
+          </div>
+          <div className="bg-white rounded-lg p-4 text-center">
+            <p className="text-3xl font-bold text-slate-600">{alunosFaltaram.size}</p>
+            <p className="text-sm text-gray-500">Faltaram</p>
           </div>
           <div className="bg-white rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-red-600">
-              {alunos.filter(a => determinarGrupo(a.id) === 'A').length}
+              {alunosPresentes.filter(a => determinarGrupo(a.id) === 'A').length}
             </p>
             <p className="text-sm text-gray-500">Grupo A</p>
           </div>
           <div className="bg-white rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-yellow-600">
-              {alunos.filter(a => determinarGrupo(a.id) === 'B').length}
+              {alunosPresentes.filter(a => determinarGrupo(a.id) === 'B').length}
             </p>
             <p className="text-sm text-gray-500">Grupo B</p>
           </div>
           <div className="bg-white rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-green-600">
-              {alunos.filter(a => determinarGrupo(a.id) === 'C').length}
+              {alunosPresentes.filter(a => determinarGrupo(a.id) === 'C').length}
             </p>
             <p className="text-sm text-gray-500">Grupo C</p>
           </div>
