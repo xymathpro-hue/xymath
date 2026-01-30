@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -6,8 +5,7 @@ import { useSearchParams, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
   ArrowLeft, 
-  Printer,
-  Download
+  Printer
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
@@ -35,7 +33,8 @@ interface Diagnostico {
 
 export default function ImprimirDiagnosticoPage() {
   const params = useParams()
-  const codigo = (params.codigo as string).toUpperCase()
+  const codigoParam = params.codigo as string
+  const codigo = codigoParam.toUpperCase()
   const searchParams = useSearchParams()
   const turmaId = searchParams.get('turma')
   const supabase = createClient()
@@ -53,7 +52,6 @@ export default function ImprimirDiagnosticoPage() {
 
   async function carregarDados() {
     try {
-      // Carregar diagnóstico
       const { data: diagData } = await supabase
         .from('base_diagnosticos')
         .select('id, codigo, nome, descricao, tempo_estimado')
@@ -63,7 +61,6 @@ export default function ImprimirDiagnosticoPage() {
       if (diagData) {
         setDiagnostico(diagData)
 
-        // Carregar questões
         const { data: questoesData } = await supabase
           .from('base_diagnostico_questoes')
           .select('id, numero, enunciado, tipo, o_que_testa')
@@ -73,7 +70,6 @@ export default function ImprimirDiagnosticoPage() {
         setQuestoes(questoesData || [])
       }
 
-      // Carregar turma se informada
       if (turmaId) {
         const { data: turmaData } = await supabase
           .from('turmas')
@@ -83,7 +79,6 @@ export default function ImprimirDiagnosticoPage() {
 
         setTurma(turmaData)
 
-        // Carregar alunos
         const { data: alunosData } = await supabase
           .from('alunos')
           .select('id, nome')
@@ -140,7 +135,6 @@ export default function ImprimirDiagnosticoPage() {
 
   return (
     <>
-      {/* Barra de ações - não aparece na impressão */}
       <div className="print:hidden space-y-4 mb-6">
         <div className="flex items-center gap-4">
           <Link
@@ -182,10 +176,8 @@ export default function ImprimirDiagnosticoPage() {
         </div>
       </div>
 
-      {/* Conteúdo para impressão */}
       <div className="bg-white print:shadow-none shadow-sm rounded-xl print:rounded-none border print:border-0 border-gray-200 p-8 print:p-0">
         
-        {/* Cabeçalho */}
         <div className="border-b-2 border-gray-800 pb-4 mb-6">
           <div className="flex items-start justify-between">
             <div>
@@ -202,7 +194,6 @@ export default function ImprimirDiagnosticoPage() {
             </div>
           </div>
 
-          {/* Dados do aluno */}
           <div className="mt-6 grid grid-cols-2 gap-4">
             <div className="border border-gray-400 rounded p-3">
               <p className="text-sm text-gray-500 mb-1">Nome do Aluno:</p>
@@ -215,7 +206,6 @@ export default function ImprimirDiagnosticoPage() {
           </div>
         </div>
 
-        {/* Instruções */}
         <div className="bg-gray-50 print:bg-gray-100 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-gray-900 mb-2">📋 Instruções</h3>
           <ul className="text-sm text-gray-700 space-y-1">
@@ -226,9 +216,8 @@ export default function ImprimirDiagnosticoPage() {
           </ul>
         </div>
 
-        {/* Questões */}
         <div className="space-y-6">
-          {questoes.map((questao, index) => (
+          {questoes.map((questao) => (
             <div key={questao.id} className="border border-gray-300 rounded-lg p-4 print:break-inside-avoid">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -248,7 +237,6 @@ export default function ImprimirDiagnosticoPage() {
 
               <p className="text-gray-900 font-medium mb-4">{questao.enunciado}</p>
 
-              {/* Espaço para resposta */}
               {questao.tipo === 'escrito' && (
                 <div className="border-t border-gray-300 pt-3">
                   <p className="text-sm text-gray-500 mb-2">Resposta:</p>
@@ -288,7 +276,6 @@ export default function ImprimirDiagnosticoPage() {
           ))}
         </div>
 
-        {/* Rodapé com espaço para observações */}
         <div className="mt-8 pt-6 border-t-2 border-gray-300">
           <div className="grid grid-cols-2 gap-6">
             <div>
@@ -314,11 +301,10 @@ export default function ImprimirDiagnosticoPage() {
             </div>
           </div>
 
-          {/* Grupo calculado */}
           {codigo === 'D1' && (
             <div className="mt-4 p-4 bg-gray-100 print:bg-gray-50 rounded-lg">
               <p className="text-sm font-medium text-gray-700 mb-2">Classificação do Aluno (D1):</p>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 <label className="flex items-center gap-2">
                   <span className="w-5 h-5 border-2 border-red-500 rounded"></span>
                   <span className="text-sm"><strong>Grupo A</strong> - Apoio (errou 3+)</span>
@@ -336,13 +322,11 @@ export default function ImprimirDiagnosticoPage() {
           )}
         </div>
 
-        {/* Rodapé final */}
         <div className="mt-6 pt-4 border-t border-gray-200 text-center text-xs text-gray-500">
           <p>Método BASE - Base Analítica Sistematizada Educacional | xyMath</p>
         </div>
       </div>
 
-      {/* Folha de presença (opcional - para imprimir separado) */}
       {turma && alunos.length > 0 && (
         <div className="mt-8 print:mt-0 print:break-before-page bg-white print:shadow-none shadow-sm rounded-xl print:rounded-none border print:border-0 border-gray-200 p-8 print:p-0">
           <div className="border-b-2 border-gray-800 pb-4 mb-6">
@@ -402,7 +386,6 @@ export default function ImprimirDiagnosticoPage() {
         </div>
       )}
 
-      {/* CSS para impressão */}
       <style jsx global>{`
         @media print {
           body {
