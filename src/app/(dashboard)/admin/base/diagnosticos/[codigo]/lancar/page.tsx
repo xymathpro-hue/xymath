@@ -14,8 +14,7 @@ import {
   Clock,
   Users,
   HelpCircle,
-  X,
-  UserX
+  X
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
@@ -500,13 +499,11 @@ export default function LancarDiagnosticoPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[200px]">
+                <th className="text-left py-3 px-2 font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[180px] max-w-[180px]">
                   Aluno
                 </th>
-                <th className="py-3 px-2 text-center font-medium text-gray-700 min-w-[50px]">
-                  <span title="Faltou">
-                    <UserX className="w-4 h-4 mx-auto text-gray-500" />
-                  </span>
+                <th className="py-3 px-1 text-center font-medium text-gray-700 w-[50px]">
+                  <span title="Faltou" className="text-xs text-gray-500">Falta</span>
                 </th>
                 {estruturaQuestoes.map(q => (
                   <th key={q.numero} className="py-2 px-1 text-center min-w-[44px]">
@@ -541,24 +538,23 @@ export default function LancarDiagnosticoPage() {
                       faltou ? 'bg-slate-100' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                     }`}
                   >
-                    <td className="py-2 px-4 sticky left-0 bg-inherit">
-                      <span className={`font-medium truncate max-w-[180px] ${faltou ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                    <td className="py-2 px-2 sticky left-0 bg-inherit min-w-[180px] max-w-[180px]">
+                      <span className={`font-medium text-sm block truncate ${faltou ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                         {aluno.nome}
                       </span>
                     </td>
                     
-                    {/* Checkbox Faltou */}
-                    <td className="py-2 px-2 text-center">
+                    {/* Checkbox Faltou - sempre habilitado */}
+                    <td className="py-2 px-1 text-center w-[50px]">
                       <button
                         onClick={() => marcarAlunoFaltou(aluno.id)}
                         className={`w-8 h-8 rounded border-2 flex items-center justify-center transition-all ${
                           faltou 
                             ? 'bg-slate-600 border-slate-600 text-white' 
-                            : 'border-gray-300 hover:border-slate-400'
+                            : 'border-gray-300 hover:border-slate-400 hover:bg-slate-50'
                         }`}
-                        title={faltou ? 'Desmarcar falta' : 'Marcar como faltou'}
                       >
-                        {faltou && <span className="font-bold">F</span>}
+                        {faltou && <span className="font-bold text-sm">F</span>}
                       </button>
                     </td>
                     
@@ -592,7 +588,6 @@ export default function LancarDiagnosticoPage() {
                                     key={op.valor}
                                     onClick={() => setRespostaValue(aluno.id, q.numero, op.valor as any)}
                                     className={`w-10 h-10 rounded-lg font-bold text-lg ${op.cor} transition-all`}
-                                    title={op.label}
                                   >
                                     {op.icone}
                                   </button>
