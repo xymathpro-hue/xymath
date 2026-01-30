@@ -264,28 +264,33 @@ export default function LancarDiagnosticoPage() {
     }
   }
 
-  function calcularTotalAcertos(alunoId: string): { acertos: number, parciais: number, erros: number, brancos: number, faltou: boolean } {
+  function calcularTotalAcertos(alunoId: string): { acertos: number, parciais: number, erros: number, brancos: number, faltou: boolean, preenchidos: number } {
     if (alunosFaltaram.has(alunoId)) {
-      return { acertos: 0, parciais: 0, erros: 0, brancos: 0, faltou: true }
+      return { acertos: 0, parciais: 0, erros: 0, brancos: 0, faltou: true, preenchidos: 0 }
     }
     
-    let acertos = 0, parciais = 0, erros = 0, brancos = 0
+    let acertos = 0, parciais = 0, erros = 0, brancos = 0, preenchidos = 0
     
     estruturaQuestoes.forEach(q => {
       const resp = getResposta(alunoId, q.numero)
-      if (resp?.acertou === 'sim') acertos++
-      else if (resp?.acertou === 'parcial') parciais++
-      else if (resp?.acertou === 'nao') erros++
-      else brancos++
+      if (resp?.acertou === 'sim') { acertos++; preenchidos++ }
+      else if (resp?.acertou === 'parcial') { parciais++; preenchidos++ }
+      else if (resp?.acertou === 'nao') { erros++; preenchidos++ }
+      else if (resp?.acertou === 'branco') { brancos++; preenchidos++ }
+      // Se não tem resposta, não conta como preenchido
     })
     
-    return { acertos, parciais, erros, brancos, faltou: false }
+    return { acertos, parciais, erros, brancos, faltou: false, preenchidos }
   }
 
   function determinarGrupo(alunoId: string): string {
     if (alunosFaltaram.has(alunoId)) return 'F'
     
-    const { acertos, parciais } = calcularTotalAcertos(alunoId)
+    const { acertos, parciais, preenchidos } = calcularTotalAcertos(alunoId)
+    
+    // Se não preencheu nenhuma questão, não avaliado
+    if (preenchidos === 0) return '?'
+    
     const pontuacao = acertos + (parciais * 0.5)
     const percentual = (pontuacao / 10) * 100
     
@@ -610,6 +615,7 @@ export default function LancarDiagnosticoPage() {
                     <td className="py-2 px-2 text-center">
                       <span className={`inline-flex w-8 h-8 items-center justify-center rounded-full font-bold text-white ${
                         grupo === 'F' ? 'bg-slate-500' :
+                        grupo === '?' ? 'bg-gray-300 text-gray-600' :
                         grupo === 'A' ? 'bg-red-500' :
                         grupo === 'B' ? 'bg-yellow-500' :
                         'bg-green-500'
@@ -628,10 +634,16 @@ export default function LancarDiagnosticoPage() {
       {/* Resumo */}
       <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6">
         <h3 className="font-semibold text-gray-900 mb-4">📊 Resumo do Lançamento</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <div className="bg-white rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-gray-900">{alunos.length}</p>
             <p className="text-sm text-gray-500">Total</p>
+          </div>
+          <div className="bg-white rounded-lg p-4 text-center">
+            <p className="text-3xl font-bold text-gray-400">
+              {alunos.filter(a => determinarGrupo(a.id) === '?').length}
+            </p>
+            <p className="text-sm text-gray-500">Não avaliados</p>
           </div>
           <div className="bg-white rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-slate-600">{alunosFaltaram.size}</p>
