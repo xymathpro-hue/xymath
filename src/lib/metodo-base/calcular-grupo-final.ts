@@ -189,4 +189,3 @@ export function getDescricaoGrupo(grupo: string | null): string {
  * // resultado.media = 1.83
  * // resultado.diagnosticosConsiderados = 3
  */
-
