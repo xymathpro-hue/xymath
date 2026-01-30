@@ -3,10 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { 
-  ArrowLeft, 
-  Printer
-} from 'lucide-react'
+import { ArrowLeft, Printer } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
 interface Questao {
@@ -33,8 +30,7 @@ interface Diagnostico {
 
 export default function ImprimirDiagnosticoPage() {
   const params = useParams()
-  const codigoParam = params.codigo as string
-  const codigo = codigoParam.toUpperCase()
+  const codigo = (params.codigo as string).toUpperCase()
   const searchParams = useSearchParams()
   const turmaId = searchParams.get('turma')
   const supabase = createClient()
@@ -360,17 +356,13 @@ export default function ImprimirDiagnosticoPage() {
                     <span className="w-4 h-4 border border-gray-400 inline-block"></span>
                   </td>
                   {questoes.map(q => (
-                    <td key={q.id} className="border border-gray-400 px-2 py-2 text-center text-sm">
-                      
-                    </td>
+                    <td key={q.id} className="border border-gray-400 px-2 py-2 text-center text-sm"></td>
                   ))}
                   <td className="border border-gray-400 px-3 py-2 text-center text-sm font-medium">
                     /{questoes.length}
                   </td>
                   {codigo === 'D1' && (
-                    <td className="border border-gray-400 px-3 py-2 text-center">
-                      
-                    </td>
+                    <td className="border border-gray-400 px-3 py-2 text-center"></td>
                   )}
                 </tr>
               ))}
