@@ -1,23 +1,36 @@
+// src/app/(dashboard)/admin/base/diagnosticos/[codigo]/resultados/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSearchParams, useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
   ArrowLeft, 
-  CheckCircle,
-  XCircle
+  Download,
+  AlertCircle,
+  Users,
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  TrendingDown,
+  Edit,
+  Printer
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
-interface AlunoResultado {
+interface Aluno {
   id: string
   nome: string
-  presente: boolean
-  grupo: string
-  respostas: { [key: string]: string }
-  totalAcertos: number
-  percentual: number
+  matricula: string
+}
+
+interface Diagnostico {
+  id: string
+  codigo: string
+  nome: string
+  descricao: string
+  nivel: string
+  ano_escolar: string
 }
 
 interface Turma {
@@ -26,176 +39,205 @@ interface Turma {
   ano_serie: string
 }
 
+interface Resposta {
+  aluno_id: string
+  questao_numero: number
+  acertou: string
+  tipo_erro?: string
+}
+
+// Estrutura das questões por competência
+const estruturaQuestoes = [
+  { numero: 1, competencia: 'L', nome: 'Leitura', cor: 'bg-blue-500', corClara: 'bg-blue-100 text-blue-700' },
+  { numero: 2, competencia: 'L', nome: 'Leitura', cor: 'bg-blue-500', corClara: 'bg-blue-100 text-blue-700' },
+  { numero: 3, competencia: 'F', nome: 'Fluência', cor: 'bg-green-500', corClara: 'bg-green-100 text-green-700' },
+  { numero: 4, competencia: 'F', nome: 'Fluência', cor: 'bg-green-500', corClara: 'bg-green-100 text-green-700' },
+  { numero: 5, competencia: 'R', nome: 'Raciocínio', cor: 'bg-yellow-500', corClara: 'bg-yellow-100 text-yellow-700' },
+  { numero: 6, competencia: 'R', nome: 'Raciocínio', cor: 'bg-yellow-500', corClara: 'bg-yellow-100 text-yellow-700' },
+  { numero: 7, competencia: 'A', nome: 'Aplicação', cor: 'bg-orange-500', corClara: 'bg-orange-100 text-orange-700' },
+  { numero: 8, competencia: 'A', nome: 'Aplicação', cor: 'bg-orange-500', corClara: 'bg-orange-100 text-orange-700' },
+  { numero: 9, competencia: 'J', nome: 'Justificativa', cor: 'bg-purple-500', corClara: 'bg-purple-100 text-purple-700' },
+  { numero: 10, competencia: 'J', nome: 'Justificativa', cor: 'bg-purple-500', corClara: 'bg-purple-100 text-purple-700' },
+]
+
+const competencias = [
+  { codigo: 'L', nome: 'Leitura/Interpretação', cor: 'bg-blue-500', questoes: [1, 2] },
+  { codigo: 'F', nome: 'Fluência/Cálculo', cor: 'bg-green-500', questoes: [3, 4] },
+  { codigo: 'R', nome: 'Raciocínio/Compreensão', cor: 'bg-yellow-500', questoes: [5, 6] },
+  { codigo: 'A', nome: 'Aplicação/Problemas', cor: 'bg-orange-500', questoes: [7, 8] },
+  { codigo: 'J', nome: 'Justificativa/Conexão', cor: 'bg-purple-500', questoes: [9, 10] },
+]
+
+const tiposErro = [
+  { codigo: 'E1', nome: 'Leitura', descricao: 'Não entendeu o enunciado', cor: 'bg-blue-100 text-blue-700' },
+  { codigo: 'E2', nome: 'Cálculo', descricao: 'Errou a conta', cor: 'bg-green-100 text-green-700' },
+  { codigo: 'E3', nome: 'Conceito', descricao: 'Não sabe o conceito', cor: 'bg-red-100 text-red-700' },
+  { codigo: 'E4', nome: 'Estratégia', descricao: 'Caminho errado', cor: 'bg-orange-100 text-orange-700' },
+  { codigo: 'E5', nome: 'Branco', descricao: 'Não tentou', cor: 'bg-gray-100 text-gray-700' },
+]
+
 export default function ResultadosDiagnosticoPage() {
   const params = useParams()
-  const codigo = (params.codigo as string).toUpperCase()
   const searchParams = useSearchParams()
-  const turmaId = searchParams.get('turma')
   const supabase = createClient()
   
+  const codigo = (params.codigo as string).toUpperCase()
+  const turmaId = searchParams.get('turma')
+
+  const [diagnostico, setDiagnostico] = useState<Diagnostico | null>(null)
   const [turma, setTurma] = useState<Turma | null>(null)
-  const [diagnostico, setDiagnostico] = useState<{ id: string; nome: string } | null>(null)
-  const [questoes, setQuestoes] = useState<{ id: string; numero: number }[]>([])
-  const [alunos, setAlunos] = useState<AlunoResultado[]>([])
+  const [alunos, setAlunos] = useState<Aluno[]>([])
+  const [respostas, setRespostas] = useState<Resposta[]>([])
   const [loading, setLoading] = useState(true)
-  const [estatisticas, setEstatisticas] = useState({
-    total: 0,
-    presentes: 0,
-    grupoA: 0,
-    grupoB: 0,
-    grupoC: 0,
-    mediaAcertos: 0
-  })
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (turmaId && codigo) {
-      carregarResultados()
+    if (turmaId) {
+      carregarDados()
     }
-  }, [turmaId, codigo])
+  }, [codigo, turmaId])
 
-  async function carregarResultados() {
+  async function carregarDados() {
     try {
+      setLoading(true)
+      setError(null)
+
+      // Carregar diagnóstico pelo código
+      const { data: diag, error: diagError } = await supabase
+        .from('base_diagnosticos')
+        .select('*')
+        .eq('codigo', codigo)
+        .single()
+
+      if (diagError || !diag) {
+        setError(`Diagnóstico ${codigo} não encontrado`)
+        setLoading(false)
+        return
+      }
+      setDiagnostico(diag)
+
+      // Carregar turma
       const { data: turmaData } = await supabase
         .from('turmas')
         .select('id, nome, ano_serie')
         .eq('id', turmaId)
         .single()
 
-      setTurma(turmaData)
+      if (turmaData) {
+        setTurma(turmaData)
+      }
 
-      const { data: diagData } = await supabase
-        .from('base_diagnosticos')
-        .select('id, nome')
-        .eq('codigo', codigo)
-        .single()
-
-      if (!diagData) return
-      setDiagnostico(diagData)
-
-      const { data: questoesData } = await supabase
-        .from('base_diagnostico_questoes')
-        .select('id, numero')
-        .eq('diagnostico_id', diagData.id)
-        .order('numero')
-
-      setQuestoes(questoesData || [])
-
+      // Carregar alunos da turma
       const { data: alunosData } = await supabase
         .from('alunos')
-        .select('id, nome')
+        .select('id, nome, matricula')
         .eq('turma_id', turmaId)
         .eq('ativo', true)
         .order('nome')
 
-      if (!alunosData) return
+      setAlunos(alunosData || [])
 
-      const bimestre = Math.ceil((new Date().getMonth() + 1) / 3)
-      const anoLetivo = new Date().getFullYear()
-
-      const { data: gruposData } = await supabase
-        .from('base_alunos_grupo')
-        .select('aluno_id, grupo')
-        .eq('turma_id', turmaId)
-        .eq('ano_letivo', anoLetivo)
-        .eq('bimestre', bimestre)
-
-      const gruposMap = new Map(gruposData?.map(g => [g.aluno_id, g.grupo]) || [])
-
-      const { data: aulaData } = await supabase
-        .from('base_aulas')
-        .select('id')
-        .eq('turma_id', turmaId)
-        .eq('diagnostico_id', diagData.id)
-        .eq('tipo', 'diagnostico')
-        .order('data_aula', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (!aulaData) return
-
-      const { data: presencasData } = await supabase
-        .from('base_presencas')
-        .select('aluno_id, presente')
-        .eq('aula_id', aulaData.id)
-
-      const presencasMap = new Map(presencasData?.map(p => [p.aluno_id, p.presente]) || [])
-
+      // Carregar respostas
       const { data: respostasData } = await supabase
         .from('base_respostas_diagnostico')
-        .select('aluno_id, questao_id, resposta')
-        .eq('aula_id', aulaData.id)
+        .select('*')
+        .eq('diagnostico_id', diag.id)
+        .eq('turma_id', turmaId)
 
-      const totalQuestoes = questoesData?.length || 6
+      setRespostas(respostasData || [])
 
-      const alunosComResultados = alunosData.map(aluno => {
-        const presente = presencasMap.get(aluno.id) ?? true
-        const grupo = gruposMap.get(aluno.id) || '-'
-        
-        const respostas: { [key: string]: string } = {}
-        let totalAcertos = 0
-
-        if (questoesData) {
-          questoesData.forEach(questao => {
-            const resposta = respostasData?.find(
-              r => r.aluno_id === aluno.id && r.questao_id === questao.id
-            )
-            respostas[`q${questao.numero}`] = resposta?.resposta || ''
-            if (resposta?.resposta === 'acertou') totalAcertos++
-          })
-        }
-
-        const percentual = presente ? Math.round((totalAcertos / totalQuestoes) * 100) : 0
-
-        return {
-          ...aluno,
-          presente,
-          grupo,
-          respostas,
-          totalAcertos,
-          percentual
-        }
-      })
-
-      setAlunos(alunosComResultados)
-
-      const presentes = alunosComResultados.filter(a => a.presente)
-      const somaAcertos = presentes.reduce((acc, a) => acc + a.totalAcertos, 0)
-      
-      setEstatisticas({
-        total: alunosComResultados.length,
-        presentes: presentes.length,
-        grupoA: alunosComResultados.filter(a => a.grupo === 'A').length,
-        grupoB: alunosComResultados.filter(a => a.grupo === 'B').length,
-        grupoC: alunosComResultados.filter(a => a.grupo === 'C').length,
-        mediaAcertos: presentes.length > 0 ? Math.round(somaAcertos / presentes.length * 10) / 10 : 0
-      })
-
-    } catch (error) {
-      console.error('Erro ao carregar resultados:', error)
+    } catch (err) {
+      console.error('Erro ao carregar dados:', err)
+      setError('Erro ao carregar dados')
     } finally {
       setLoading(false)
     }
   }
 
-  function getRespostaIcon(resposta: string) {
-    switch (resposta) {
-      case 'acertou':
-        return <span className="text-green-600">✅</span>
-      case 'parcial':
-        return <span className="text-yellow-600">⚠️</span>
-      case 'errou':
-        return <span className="text-red-600">❌</span>
-      default:
-        return <span className="text-gray-400">—</span>
+  // Funções de cálculo
+  function getRespostaAluno(alunoId: string, questao: number): Resposta | undefined {
+    return respostas.find(r => r.aluno_id === alunoId && r.questao_numero === questao)
+  }
+
+  function calcularPontuacaoAluno(alunoId: string): number {
+    let pontos = 0
+    estruturaQuestoes.forEach(q => {
+      const resp = getRespostaAluno(alunoId, q.numero)
+      if (resp?.acertou === 'sim') pontos += 1
+      else if (resp?.acertou === 'parcial') pontos += 0.5
+    })
+    return pontos
+  }
+
+  function determinarGrupo(alunoId: string): string {
+    const pontuacao = calcularPontuacaoAluno(alunoId)
+    const percentual = (pontuacao / 10) * 100
+    if (percentual <= 40) return 'A'
+    if (percentual <= 70) return 'B'
+    return 'C'
+  }
+
+  function calcularDesempenhoCompetencia(competenciaCodigo: string): { acertos: number, total: number, percentual: number } {
+    const questoesComp = estruturaQuestoes.filter(q => q.competencia === competenciaCodigo)
+    let acertos = 0
+    let total = 0
+
+    alunos.forEach(aluno => {
+      questoesComp.forEach(q => {
+        const resp = getRespostaAluno(aluno.id, q.numero)
+        if (resp) {
+          total++
+          if (resp.acertou === 'sim') acertos += 1
+          else if (resp.acertou === 'parcial') acertos += 0.5
+        }
+      })
+    })
+
+    return {
+      acertos,
+      total,
+      percentual: total > 0 ? Math.round((acertos / total) * 100) : 0
     }
   }
 
-  function getGrupoStyle(grupo: string) {
+  function calcularDistribuicaoErros(): { codigo: string, nome: string, quantidade: number }[] {
+    const contagem: Record<string, number> = {}
+    
+    respostas.forEach(r => {
+      if (r.tipo_erro) {
+        contagem[r.tipo_erro] = (contagem[r.tipo_erro] || 0) + 1
+      }
+    })
+
+    return tiposErro.map(te => ({
+      codigo: te.codigo,
+      nome: te.nome,
+      quantidade: contagem[te.codigo] || 0
+    })).filter(e => e.quantidade > 0).sort((a, b) => b.quantidade - a.quantidade)
+  }
+
+  function calcularDistribuicaoGrupos(): { grupo: string, quantidade: number, percentual: number }[] {
+    const grupos = { A: 0, B: 0, C: 0 }
+    
+    alunos.forEach(aluno => {
+      const grupo = determinarGrupo(aluno.id)
+      grupos[grupo as keyof typeof grupos]++
+    })
+
+    const total = alunos.length
+    return [
+      { grupo: 'A', quantidade: grupos.A, percentual: total > 0 ? Math.round((grupos.A / total) * 100) : 0 },
+      { grupo: 'B', quantidade: grupos.B, percentual: total > 0 ? Math.round((grupos.B / total) * 100) : 0 },
+      { grupo: 'C', quantidade: grupos.C, percentual: total > 0 ? Math.round((grupos.C / total) * 100) : 0 },
+    ]
+  }
+
+  function getCorGrupo(grupo: string) {
     switch (grupo) {
-      case 'A': return 'bg-red-100 text-red-800 border-red-300'
-      case 'B': return 'bg-yellow-100 text-yellow-800 border-yellow-300'
-      case 'C': return 'bg-green-100 text-green-800 border-green-300'
-      default: return 'bg-gray-100 text-gray-600 border-gray-300'
+      case 'A': return 'bg-red-500'
+      case 'B': return 'bg-yellow-500'
+      case 'C': return 'bg-green-500'
+      default: return 'bg-gray-500'
     }
   }
 
@@ -207,136 +249,307 @@ export default function ResultadosDiagnosticoPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Link href="/admin/base/diagnosticos" className="p-2 hover:bg-gray-100 rounded-lg">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-900">Resultados</h1>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-6 h-6 text-red-500" />
+            <p className="text-red-700">{error}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (respostas.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Link href="/admin/base/diagnosticos" className="p-2 hover:bg-gray-100 rounded-lg">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-900">Resultados - {diagnostico?.codigo}</h1>
+        </div>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-6 h-6 text-yellow-500" />
+            <div>
+              <p className="text-yellow-700 font-medium">Nenhuma resposta lançada</p>
+              <p className="text-yellow-600 text-sm mt-1">
+                <Link href={`/admin/base/diagnosticos/${codigo.toLowerCase()}/lancar?turma=${turmaId}`} className="underline">
+                  Clique aqui para lançar as respostas
+                </Link>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const distribuicaoGrupos = calcularDistribuicaoGrupos()
+  const distribuicaoErros = calcularDistribuicaoErros()
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link
-          href="/admin/base/diagnosticos"
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Resultados {codigo}</h1>
-          <p className="text-gray-600 mt-1">
-            {diagnostico?.nome} - {turma?.nome}
-          </p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/admin/base/diagnosticos"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Resultados - {diagnostico?.codigo}
+            </h1>
+            <p className="text-gray-500 mt-1">
+              {turma?.nome} • {alunos.length} alunos
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Link
+            href={`/admin/base/diagnosticos/${codigo.toLowerCase()}/lancar?turma=${turmaId}`}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <Edit className="w-4 h-4" />
+            <span>Editar</span>
+          </Link>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Imprimir</span>
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <p className="text-sm font-medium text-gray-600">Total</p>
-          <p className="text-3xl font-bold text-gray-900">{estatisticas.total}</p>
+      {/* Cards de Resumo */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Users className="w-6 h-6 text-indigo-600" />
+            <span className="text-sm text-gray-500">Total de Alunos</span>
+          </div>
+          <p className="text-3xl font-bold text-gray-900">{alunos.length}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <p className="text-sm font-medium text-gray-600">Presentes</p>
-          <p className="text-3xl font-bold text-green-700">{estatisticas.presentes}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <p className="text-sm font-medium text-gray-600">Média Acertos</p>
-          <p className="text-3xl font-bold text-indigo-700">{estatisticas.mediaAcertos}/{questoes.length}</p>
-        </div>
-        <div className="bg-red-50 rounded-xl border-2 border-red-300 p-4 text-center">
-          <p className="text-sm font-medium text-red-700">Grupo A</p>
-          <p className="text-3xl font-bold text-red-800">{estatisticas.grupoA}</p>
-          <p className="text-xs text-red-600">Apoio</p>
-        </div>
-        <div className="bg-yellow-50 rounded-xl border-2 border-yellow-300 p-4 text-center">
-          <p className="text-sm font-medium text-yellow-700">Grupo B</p>
-          <p className="text-3xl font-bold text-yellow-800">{estatisticas.grupoB}</p>
-          <p className="text-xs text-yellow-600">Adaptação</p>
-        </div>
-        <div className="bg-green-50 rounded-xl border-2 border-green-300 p-4 text-center">
-          <p className="text-sm font-medium text-green-700">Grupo C</p>
-          <p className="text-3xl font-bold text-green-800">{estatisticas.grupoC}</p>
-          <p className="text-xs text-green-600">Regular</p>
+
+        {distribuicaoGrupos.map(g => (
+          <div key={g.grupo} className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`w-6 h-6 rounded-full ${getCorGrupo(g.grupo)}`}></div>
+              <span className="text-sm text-gray-500">Grupo {g.grupo}</span>
+            </div>
+            <p className="text-3xl font-bold text-gray-900">{g.quantidade}</p>
+            <p className="text-sm text-gray-500">{g.percentual}% da turma</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Desempenho por Competência */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-indigo-600" />
+          Desempenho por Competência
+        </h2>
+        
+        <div className="space-y-4">
+          {competencias.map(comp => {
+            const desempenho = calcularDesempenhoCompetencia(comp.codigo)
+            return (
+              <div key={comp.codigo} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-8 h-8 rounded-lg ${comp.cor} text-white flex items-center justify-center font-bold text-sm`}>
+                      {comp.codigo}
+                    </span>
+                    <span className="font-medium text-gray-700">{comp.nome}</span>
+                  </div>
+                  <span className="font-bold text-gray-900">{desempenho.percentual}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-4">
+                  <div
+                    className={`${comp.cor} h-4 rounded-full transition-all duration-500`}
+                    style={{ width: `${desempenho.percentual}%` }}
+                  ></div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
+      {/* Distribuição de Tipos de Erro */}
+      {distribuicaoErros.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <PieChart className="w-5 h-5 text-red-600" />
+            Tipos de Erro Mais Frequentes
+          </h2>
+          
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {distribuicaoErros.map(erro => {
+              const tipoErro = tiposErro.find(te => te.codigo === erro.codigo)
+              return (
+                <div key={erro.codigo} className={`rounded-lg p-4 ${tipoErro?.cor || 'bg-gray-100'}`}>
+                  <p className="text-2xl font-bold">{erro.quantidade}</p>
+                  <p className="text-sm font-medium">{erro.codigo} - {erro.nome}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Tabela de Resultados por Aluno */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200">
-          <h2 className="font-semibold text-gray-900">Resultados por Aluno</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Resultados por Aluno</h2>
         </div>
-
+        
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Aluno</th>
-                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Presença</th>
-                {questoes.map(q => (
-                  <th key={q.id} className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Q{q.numero}</th>
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Aluno</th>
+                {estruturaQuestoes.map(q => (
+                  <th key={q.numero} className="py-2 px-1 text-center min-w-[40px]">
+                    <div className="flex flex-col items-center">
+                      <span className={`text-xs px-1 py-0.5 rounded ${q.corClara}`}>
+                        {q.competencia}
+                      </span>
+                      <span className="text-xs text-gray-500">Q{q.numero}</span>
+                    </div>
+                  </th>
                 ))}
-                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Acertos</th>
-                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700">Grupo</th>
+                <th className="py-3 px-2 text-center font-medium text-gray-700">Nota</th>
+                <th className="py-3 px-2 text-center font-medium text-gray-700">Grupo</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {alunos.map((aluno) => (
-                <tr key={aluno.id} className={!aluno.presente ? 'bg-gray-50 opacity-60' : ''}>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                    {aluno.nome}
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    {aluno.presente ? (
-                      <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-600 mx-auto" />
-                    )}
-                  </td>
-                  {questoes.map(q => (
-                    <td key={q.id} className="px-3 py-3 text-center">
-                      {getRespostaIcon(aluno.respostas[`q${q.numero}`])}
+            <tbody>
+              {alunos.map((aluno, idx) => {
+                const pontuacao = calcularPontuacaoAluno(aluno.id)
+                const grupo = determinarGrupo(aluno.id)
+                
+                return (
+                  <tr 
+                    key={aluno.id}
+                    className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                  >
+                    <td className="py-2 px-4">
+                      <span className="font-medium text-gray-900">{aluno.nome}</span>
                     </td>
-                  ))}
-                  <td className="px-3 py-3 text-center">
-                    <span className="font-bold text-gray-900">{aluno.totalAcertos}/{questoes.length}</span>
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <span className={`inline-flex px-3 py-1 rounded-lg text-sm font-bold border ${getGrupoStyle(aluno.grupo)}`}>
-                      {aluno.grupo}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+                    {estruturaQuestoes.map(q => {
+                      const resp = getRespostaAluno(aluno.id, q.numero)
+                      let bgColor = 'bg-gray-100'
+                      let icon = '-'
+                      
+                      if (resp?.acertou === 'sim') {
+                        bgColor = 'bg-green-500 text-white'
+                        icon = '✓'
+                      } else if (resp?.acertou === 'parcial') {
+                        bgColor = 'bg-yellow-500 text-white'
+                        icon = '½'
+                      } else if (resp?.acertou === 'nao') {
+                        bgColor = 'bg-red-500 text-white'
+                        icon = '✗'
+                      } else if (resp?.acertou === 'branco') {
+                        bgColor = 'bg-gray-300'
+                        icon = '-'
+                      }
+                      
+                      return (
+                        <td key={q.numero} className="py-2 px-1 text-center">
+                          <span className={`inline-flex w-7 h-7 items-center justify-center rounded text-sm font-bold ${bgColor}`}>
+                            {icon}
+                          </span>
+                        </td>
+                      )
+                    })}
+                    <td className="py-2 px-2 text-center">
+                      <span className="font-bold text-gray-900">{pontuacao}/10</span>
+                    </td>
+                    <td className="py-2 px-2 text-center">
+                      <span className={`inline-flex w-8 h-8 items-center justify-center rounded-full font-bold text-white ${getCorGrupo(grupo)}`}>
+                        {grupo}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h4 className="font-semibold text-gray-900 mb-3">Legenda</h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
-            <span className="text-xl">✅</span>
-            <span className="text-sm font-medium text-green-800">Acertou</span>
+      {/* Recomendações */}
+      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6">
+        <h3 className="font-semibold text-gray-900 mb-4">📋 Recomendações</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg p-4 border-l-4 border-red-500">
+            <h4 className="font-medium text-red-700 mb-2">Grupo A ({distribuicaoGrupos[0].quantidade} alunos)</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Atividades de reforço básico</li>
+              <li>• Material concreto e visual</li>
+              <li>• Acompanhamento individualizado</li>
+            </ul>
           </div>
-          <div className="flex items-center gap-3 p-2 bg-yellow-50 rounded-lg">
-            <span className="text-xl">⚠️</span>
-            <span className="text-sm font-medium text-yellow-800">Parcial</span>
+          
+          <div className="bg-white rounded-lg p-4 border-l-4 border-yellow-500">
+            <h4 className="font-medium text-yellow-700 mb-2">Grupo B ({distribuicaoGrupos[1].quantidade} alunos)</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Consolidação dos conceitos</li>
+              <li>• Exercícios de fixação</li>
+              <li>• Trabalho em pares</li>
+            </ul>
           </div>
-          <div className="flex items-center gap-3 p-2 bg-red-50 rounded-lg">
-            <span className="text-xl">❌</span>
-            <span className="text-sm font-medium text-red-800">Errou</span>
+          
+          <div className="bg-white rounded-lg p-4 border-l-4 border-green-500">
+            <h4 className="font-medium text-green-700 mb-2">Grupo C ({distribuicaoGrupos[2].quantidade} alunos)</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• Atividades de aprofundamento</li>
+              <li>• Desafios e problemas extras</li>
+              <li>• Monitoria para colegas</li>
+            </ul>
           </div>
         </div>
       </div>
 
-      <div className="flex gap-4">
-        <Link
-          href={`/admin/base/diagnosticos/${codigo.toLowerCase()}/lancar?turma=${turmaId}`}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-        >
-          Editar Lançamento
-        </Link>
-        <Link
-          href="/admin/base/mapa"
-          className="px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-        >
-          Ver Mapa da Turma
-        </Link>
+      {/* Legenda */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <h4 className="font-medium text-gray-900 mb-3">Legenda</h4>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded bg-green-500 text-white flex items-center justify-center font-bold">✓</span>
+            <span className="text-gray-600">Acertou</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded bg-yellow-500 text-white flex items-center justify-center font-bold">½</span>
+            <span className="text-gray-600">Parcial</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded bg-red-500 text-white flex items-center justify-center font-bold">✗</span>
+            <span className="text-gray-600">Errou</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded bg-gray-300 flex items-center justify-center font-bold">-</span>
+            <span className="text-gray-600">Branco</span>
+          </div>
+        </div>
       </div>
     </div>
   )
-        }
+}
