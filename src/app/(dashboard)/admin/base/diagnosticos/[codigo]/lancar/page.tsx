@@ -504,7 +504,9 @@ export default function LancarDiagnosticoPage() {
                   Aluno
                 </th>
                 <th className="py-3 px-2 text-center font-medium text-gray-700 min-w-[50px]">
-                  <UserX className="w-4 h-4 mx-auto text-gray-500" title="Faltou" />
+                  <span title="Faltou">
+                    <UserX className="w-4 h-4 mx-auto text-gray-500" />
+                  </span>
                 </th>
                 {estruturaQuestoes.map(q => (
                   <th key={q.numero} className="py-2 px-1 text-center min-w-[44px]">
