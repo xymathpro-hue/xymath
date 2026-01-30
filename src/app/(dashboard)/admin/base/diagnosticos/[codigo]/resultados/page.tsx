@@ -159,7 +159,16 @@ export default function ResultadosDiagnosticoPage() {
     return respostas.find(r => r.aluno_id === alunoId && r.questao_numero === questao)
   }
 
+  // Verificar se aluno faltou (todas as respostas são 'faltou')
+  function alunoFaltou(alunoId: string): boolean {
+    const respostasAluno = respostas.filter(r => r.aluno_id === alunoId)
+    if (respostasAluno.length === 0) return false
+    return respostasAluno.every(r => r.acertou === 'faltou')
+  }
+
   function calcularPontuacaoAluno(alunoId: string): number {
+    if (alunoFaltou(alunoId)) return 0
+    
     let pontos = 0
     estruturaQuestoes.forEach(q => {
       const resp = getRespostaAluno(alunoId, q.numero)
@@ -170,6 +179,8 @@ export default function ResultadosDiagnosticoPage() {
   }
 
   function determinarGrupo(alunoId: string): string {
+    if (alunoFaltou(alunoId)) return 'F'
+    
     const pontuacao = calcularPontuacaoAluno(alunoId)
     const percentual = (pontuacao / 10) * 100
     if (percentual <= 40) return 'A'
