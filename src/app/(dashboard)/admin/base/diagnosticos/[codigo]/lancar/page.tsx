@@ -58,7 +58,6 @@ export default function LancarDiagnosticoPage() {
 
   async function carregarDados() {
     try {
-      // Carregar diagnóstico
       const { data: diagData } = await supabase
         .from('base_diagnosticos')
         .select('id, nome')
@@ -72,7 +71,6 @@ export default function LancarDiagnosticoPage() {
       }
       setDiagnostico(diagData)
 
-      // Carregar questões
       const { data: questoesData } = await supabase
         .from('base_diagnostico_questoes')
         .select('id, numero, enunciado, tipo, o_que_testa')
@@ -81,7 +79,6 @@ export default function LancarDiagnosticoPage() {
 
       setQuestoes(questoesData || [])
 
-      // Carregar turma
       const { data: turmaData } = await supabase
         .from('turmas')
         .select('id, nome')
@@ -90,7 +87,6 @@ export default function LancarDiagnosticoPage() {
 
       setTurma(turmaData)
 
-      // Carregar alunos
       const { data: alunosData } = await supabase
         .from('alunos')
         .select('id, nome')
@@ -98,7 +94,6 @@ export default function LancarDiagnosticoPage() {
         .eq('ativo', true)
         .order('nome')
 
-      // Inicializar respostas vazias
       const respostasIniciais: { [key: string]: string } = {}
       questoesData?.forEach(q => {
         respostasIniciais[`q${q.numero}`] = ''
@@ -110,7 +105,6 @@ export default function LancarDiagnosticoPage() {
         presente: true
       }))
 
-      // Verificar se já existe uma aula para este diagnóstico nesta turma
       const { data: aulaExistente } = await supabase
         .from('base_aulas')
         .select('id')
@@ -124,7 +118,6 @@ export default function LancarDiagnosticoPage() {
       if (aulaExistente) {
         setAulaExistenteId(aulaExistente.id)
 
-        // Carregar presenças existentes
         const { data: presencasData } = await supabase
           .from('base_presencas')
           .select('aluno_id, presente')
@@ -132,13 +125,11 @@ export default function LancarDiagnosticoPage() {
 
         const presencasMap = new Map(presencasData?.map(p => [p.aluno_id, p.presente]) || [])
 
-        // Carregar respostas existentes
         const { data: respostasData } = await supabase
           .from('base_respostas_diagnostico')
           .select('aluno_id, questao_id, resposta')
           .eq('aula_id', aulaExistente.id)
 
-        // Atualizar alunos com dados existentes
         alunosFormatados = alunosFormatados.map(aluno => {
           const presente = presencasMap.has(aluno.id) ? presencasMap.get(aluno.id) : true
           const respostas = { ...respostasIniciais }
@@ -214,14 +205,12 @@ export default function LancarDiagnosticoPage() {
       let aulaId: string
 
       if (aulaExistenteId) {
-        // Usar aula existente
         aulaId = aulaExistenteId
         await supabase
           .from('base_aulas')
           .update({ status: 'realizada' })
           .eq('id', aulaId)
       } else {
-        // Criar nova aula
         const { data: novaAula, error: aulaError } = await supabase
           .from('base_aulas')
           .insert({
@@ -239,9 +228,7 @@ export default function LancarDiagnosticoPage() {
         aulaId = novaAula.id
       }
 
-      // Salvar presenças e respostas
       for (const aluno of alunos) {
-        // Salvar presença
         await supabase
           .from('base_presencas')
           .upsert({
@@ -252,7 +239,6 @@ export default function LancarDiagnosticoPage() {
             onConflict: 'aula_id,aluno_id'
           })
 
-        // Salvar respostas (só se presente)
         if (aluno.presente && questoes.length > 0) {
           for (const questao of questoes) {
             const respostaKey = `q${questao.numero}`
@@ -272,7 +258,6 @@ export default function LancarDiagnosticoPage() {
             }
           }
 
-          // Calcular e salvar grupo (só para D1)
           if (codigo === 'D1') {
             const grupo = calcularGrupo(aluno.respostas)
             if (grupo !== '-') {
@@ -611,4 +596,4 @@ export default function LancarDiagnosticoPage() {
       </div>
     </div>
   )
-}
+              }
