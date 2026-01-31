@@ -1,3 +1,4 @@
+// src/app/(dashboard)/admin/base/mapa/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -6,20 +7,19 @@ import Link from 'next/link'
 import { 
   ArrowLeft, 
   Users,
-  RefreshCw
+  Download,
+  Filter,
+  ChevronDown,
+  AlertTriangle,
+  TrendingUp,
+  Info
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
 interface Aluno {
   id: string
   nome: string
-  grupo: string
-  habilidades: {
-    [codigo: string]: {
-      status: string
-      percentual: number
-    }
-  }
+  matricula: string
 }
 
 interface Turma {
@@ -28,27 +28,48 @@ interface Turma {
   ano_serie: string
 }
 
-const habilidadesPrioritarias = [
-  { codigo: 'LEITURA', nome: 'Leitura de números' },
-  { codigo: 'ESCRITA', nome: 'Escrita de números' },
-  { codigo: 'ADICAO', nome: 'Adição' },
-  { codigo: 'SUBTRACAO', nome: 'Subtração' },
-  { codigo: 'MULTIPLICACAO', nome: 'Multiplicação' },
-  { codigo: 'DIVISAO', nome: 'Divisão' },
-  { codigo: 'FRACAO', nome: 'Frações' },
-  { codigo: 'GEOMETRIA', nome: 'Geometria' },
+interface Diagnostico {
+  id: string
+  codigo: string
+  nome: string
+  nivel: string
+  ano_escolar: string
+  ordem: number
+}
+
+interface Resposta {
+  aluno_id: string
+  diagnostico_id: string
+  questao_numero: number
+  acertou: string
+  tipo_erro?: string
+}
+
+// Competências
+const competencias = [
+  { codigo: 'L', nome: 'Leitura', questoes: [1, 2], cor: 'bg-blue-500', corClara: 'bg-blue-100 text-blue-700' },
+  { codigo: 'F', nome: 'Fluência', questoes: [3, 4], cor: 'bg-green-500', corClara: 'bg-green-100 text-green-700' },
+  { codigo: 'R', nome: 'Raciocínio', questoes: [5, 6], cor: 'bg-yellow-500', corClara: 'bg-yellow-100 text-yellow-700' },
+  { codigo: 'A', nome: 'Aplicação', questoes: [7, 8], cor: 'bg-orange-500', corClara: 'bg-orange-100 text-orange-700' },
+  { codigo: 'J', nome: 'Justificativa', questoes: [9, 10], cor: 'bg-purple-500', corClara: 'bg-purple-100 text-purple-700' },
 ]
 
-export default function MapaTurmaPage() {
+// Pesos para cálculo do grupo final
+const PESOS: Record<string, number> = { 'D1': 3, 'D2': 2, 'D3': 1 }
+const GRUPO_PARA_PONTOS: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3 }
+
+export default function MapaCalorPage() {
   const searchParams = useSearchParams()
   const turmaIdParam = searchParams.get('turma')
   const supabase = createClient()
-  
+
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [turmaSelecionada, setTurmaSelecionada] = useState<string>(turmaIdParam || '')
+  const [diagnosticos, setDiagnosticos] = useState<Diagnostico[]>([])
   const [alunos, setAlunos] = useState<Aluno[]>([])
+  const [respostas, setRespostas] = useState<Resposta[]>([])
   const [loading, setLoading] = useState(true)
-  const [filtroGrupo, setFiltroGrupo] = useState<string>('todos')
+  const [viewMode, setViewMode] = useState<'competencia' | 'diagnostico'>('competencia')
 
   useEffect(() => {
     carregarTurmas()
@@ -56,7 +77,7 @@ export default function MapaTurmaPage() {
 
   useEffect(() => {
     if (turmaSelecionada) {
-      carregarMapa()
+      carregarDadosTurma()
     }
   }, [turmaSelecionada])
 
@@ -86,111 +107,170 @@ export default function MapaTurmaPage() {
       }
     } catch (error) {
       console.error('Erro ao carregar turmas:', error)
-    } finally {
-      setLoading(false)
     }
   }
 
-  async function carregarMapa() {
-    if (!turmaSelecionada) return
-    
-    setLoading(true)
+  async function carregarDadosTurma() {
     try {
+      setLoading(true)
+
+      // Pegar ano da turma
+      const turma = turmas.find(t => t.id === turmaSelecionada)
+      const anoMatch = turma?.ano_serie.match(/(\d+)/)
+      const anoEscolar = anoMatch ? anoMatch[1] : '7'
+
+      // Carregar diagnósticos do ano
+      const { data: diagsData } = await supabase
+        .from('base_diagnosticos')
+        .select('*')
+        .eq('ano_escolar', anoEscolar)
+        .order('ordem')
+
+      setDiagnosticos(diagsData || [])
+
+      // Carregar alunos
       const { data: alunosData } = await supabase
         .from('alunos')
-        .select('id, nome')
+        .select('id, nome, matricula')
         .eq('turma_id', turmaSelecionada)
         .eq('ativo', true)
         .order('nome')
 
-      if (!alunosData) return
+      setAlunos(alunosData || [])
 
-      const bimestre = Math.ceil((new Date().getMonth() + 1) / 3)
-      const anoLetivo = new Date().getFullYear()
+      // Carregar todas as respostas dos diagnósticos dessa turma
+      if (diagsData && diagsData.length > 0) {
+        const diagIds = diagsData.map(d => d.id)
+        const { data: respostasData } = await supabase
+          .from('base_respostas_diagnostico')
+          .select('*')
+          .eq('turma_id', turmaSelecionada)
+          .in('diagnostico_id', diagIds)
 
-      const { data: gruposData } = await supabase
-        .from('base_alunos_grupo')
-        .select('aluno_id, grupo')
-        .eq('turma_id', turmaSelecionada)
-        .eq('ano_letivo', anoLetivo)
-        .eq('bimestre', bimestre)
+        setRespostas(respostasData || [])
+      }
 
-      const gruposMap = new Map(gruposData?.map(g => [g.aluno_id, g.grupo]) || [])
-
-      const alunoIds = alunosData.map(a => a.id)
-      const { data: habilidadesData } = await supabase
-        .from('base_alunos_habilidades')
-        .select('aluno_id, habilidade_codigo, status, percentual_acerto')
-        .in('aluno_id', alunoIds)
-        .eq('ano_letivo', anoLetivo)
-
-      const alunosComDados = alunosData.map(aluno => {
-        const habilidadesAluno: { [codigo: string]: { status: string, percentual: number } } = {}
-        
-        habilidadesData
-          ?.filter(h => h.aluno_id === aluno.id)
-          .forEach(h => {
-            habilidadesAluno[h.habilidade_codigo] = {
-              status: h.status,
-              percentual: h.percentual_acerto
-            }
-          })
-
-        return {
-          ...aluno,
-          grupo: gruposMap.get(aluno.id) || '-',
-          habilidades: habilidadesAluno
-        }
-      })
-
-      setAlunos(alunosComDados)
     } catch (error) {
-      console.error('Erro ao carregar mapa:', error)
+      console.error('Erro ao carregar dados:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  function getStatusIcon(status: string | undefined) {
-    if (!status) return <span className="text-gray-400">—</span>
+  // Funções de cálculo
+  function getRespostasAluno(alunoId: string, diagnosticoId: string): Resposta[] {
+    return respostas.filter(r => r.aluno_id === alunoId && r.diagnostico_id === diagnosticoId)
+  }
+
+  function alunoFaltou(alunoId: string, diagnosticoId: string): boolean {
+    const resps = getRespostasAluno(alunoId, diagnosticoId)
+    if (resps.length === 0) return false
+    return resps.every(r => r.acertou === 'faltou')
+  }
+
+  function calcularDesempenhoCompetencia(alunoId: string, diagnosticoId: string, competenciaCodigo: string): number | null {
+    if (alunoFaltou(alunoId, diagnosticoId)) return null
     
-    switch (status) {
-      case 'desenvolvida':
-        return <span className="text-green-600 text-lg">✅</span>
-      case 'em_desenvolvimento':
-        return <span className="text-yellow-600 text-lg">🟡</span>
-      case 'nao_desenvolvida':
-        return <span className="text-red-600 text-lg">❌</span>
-      default:
-        return <span className="text-gray-400">—</span>
-    }
+    const comp = competencias.find(c => c.codigo === competenciaCodigo)
+    if (!comp) return null
+
+    const resps = getRespostasAluno(alunoId, diagnosticoId)
+    if (resps.length === 0) return null
+
+    let acertos = 0
+    let total = 0
+
+    comp.questoes.forEach(qNum => {
+      const resp = resps.find(r => r.questao_numero === qNum)
+      if (resp && resp.acertou !== 'faltou') {
+        total++
+        if (resp.acertou === 'sim') acertos += 1
+        else if (resp.acertou === 'parcial') acertos += 0.5
+      }
+    })
+
+    if (total === 0) return null
+    return (acertos / total) * 100
   }
 
-  function getGrupoStyle(grupo: string) {
+  function calcularGrupoDiagnostico(alunoId: string, diagnosticoId: string): string {
+    if (alunoFaltou(alunoId, diagnosticoId)) return 'F'
+    
+    const resps = getRespostasAluno(alunoId, diagnosticoId)
+    if (resps.length === 0) return '?'
+
+    let acertos = 0
+    resps.forEach(r => {
+      if (r.acertou === 'sim') acertos += 1
+      else if (r.acertou === 'parcial') acertos += 0.5
+    })
+
+    const percentual = (acertos / 10) * 100
+    if (percentual <= 40) return 'A'
+    if (percentual <= 70) return 'B'
+    return 'C'
+  }
+
+  function calcularGrupoFinal(alunoId: string): { grupo: string, media: number | null } {
+    let somaPonderada = 0
+    let somaPesos = 0
+
+    diagnosticos.forEach(diag => {
+      const grupo = calcularGrupoDiagnostico(alunoId, diag.id)
+      const diagNum = diag.codigo.split('-')[0] // D1-7 -> D1
+      const peso = PESOS[diagNum] || 1
+
+      if (grupo !== 'F' && grupo !== '?' && GRUPO_PARA_PONTOS[grupo]) {
+        somaPonderada += GRUPO_PARA_PONTOS[grupo] * peso
+        somaPesos += peso
+      }
+    })
+
+    if (somaPesos === 0) return { grupo: '?', media: null }
+
+    const media = somaPonderada / somaPesos
+    let grupoFinal: string
+    if (media <= 1.5) grupoFinal = 'A'
+    else if (media <= 2.5) grupoFinal = 'B'
+    else grupoFinal = 'C'
+
+    return { grupo: grupoFinal, media: Math.round(media * 100) / 100 }
+  }
+
+  function getCorDesempenho(percentual: number | null): string {
+    if (percentual === null) return 'bg-gray-200'
+    if (percentual >= 70) return 'bg-green-500'
+    if (percentual >= 40) return 'bg-yellow-500'
+    return 'bg-red-500'
+  }
+
+  function getIconeDesempenho(percentual: number | null): string {
+    if (percentual === null) return '-'
+    if (percentual >= 70) return '✅'
+    if (percentual >= 40) return '🟡'
+    return '❌'
+  }
+
+  function getCorGrupo(grupo: string): string {
     switch (grupo) {
-      case 'A':
-        return 'bg-red-100 text-red-800 border-red-300'
-      case 'B':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300'
-      case 'C':
-        return 'bg-green-100 text-green-800 border-green-300'
-      default:
-        return 'bg-gray-100 text-gray-600 border-gray-300'
+      case 'A': return 'bg-red-500 text-white'
+      case 'B': return 'bg-yellow-500 text-white'
+      case 'C': return 'bg-green-500 text-white'
+      case 'F': return 'bg-slate-500 text-white'
+      default: return 'bg-gray-300 text-gray-600'
     }
   }
-
-  const alunosFiltrados = filtroGrupo === 'todos' 
-    ? alunos 
-    : alunos.filter(a => a.grupo === filtroGrupo)
 
   const turmaAtual = turmas.find(t => t.id === turmaSelecionada)
 
   // Estatísticas
-  const totalAlunos = alunos.length
-  const grupoA = alunos.filter(a => a.grupo === 'A').length
-  const grupoB = alunos.filter(a => a.grupo === 'B').length
-  const grupoC = alunos.filter(a => a.grupo === 'C').length
-  const semGrupo = alunos.filter(a => a.grupo === '-').length
+  const estatisticas = {
+    total: alunos.length,
+    grupoA: alunos.filter(a => calcularGrupoFinal(a.id).grupo === 'A').length,
+    grupoB: alunos.filter(a => calcularGrupoFinal(a.id).grupo === 'B').length,
+    grupoC: alunos.filter(a => calcularGrupoFinal(a.id).grupo === 'C').length,
+    naoAvaliados: alunos.filter(a => calcularGrupoFinal(a.id).grupo === '?').length,
+  }
 
   if (loading && turmas.length === 0) {
     return (
@@ -203,212 +283,363 @@ export default function MapaTurmaPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link
-          href="/admin/base"
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">Mapa da Turma</h1>
-          <p className="text-gray-500 mt-1">Visualize ❌🟡✅ por habilidade</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/admin/base"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Mapa de Calor</h1>
+            <p className="text-gray-500 mt-1">Visualização por competência e diagnóstico</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode(viewMode === 'competencia' ? 'diagnostico' : 'competencia')}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+          >
+            <Filter className="w-4 h-4" />
+            {viewMode === 'competencia' ? 'Por Competência' : 'Por Diagnóstico'}
+          </button>
         </div>
       </div>
 
       {/* Seletor de Turma */}
-      {turmas.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Turma
-              </label>
-              <select
-                value={turmaSelecionada}
-                onChange={(e) => setTurmaSelecionada(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
-              >
-                {turmas.map((turma) => (
-                  <option key={turma.id} value={turma.id}>
-                    {turma.nome} - {turma.ano_serie}
-                  </option>
-                ))}
-              </select>
-            </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Selecione a turma
+        </label>
+        <select
+          value={turmaSelecionada}
+          onChange={(e) => setTurmaSelecionada(e.target.value)}
+          className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900 bg-white"
+        >
+          {turmas.map((turma) => (
+            <option key={turma.id} value={turma.id}>
+              {turma.nome} - {turma.ano_serie}
+            </option>
+          ))}
+        </select>
+      </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Filtrar por Grupo
-              </label>
-              <select
-                value={filtroGrupo}
-                onChange={(e) => setFiltroGrupo(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
-              >
-                <option value="todos">Todos ({totalAlunos})</option>
-                <option value="A">Grupo A - Apoio ({grupoA})</option>
-                <option value="B">Grupo B - Adaptação ({grupoB})</option>
-                <option value="C">Grupo C - Regular ({grupoC})</option>
-              </select>
-            </div>
+      {/* Cards de Estatísticas */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <p className="text-3xl font-bold text-gray-900">{estatisticas.total}</p>
+          <p className="text-sm text-gray-500">Total</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <p className="text-3xl font-bold text-red-600">{estatisticas.grupoA}</p>
+          <p className="text-sm text-gray-500">Grupo A</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <p className="text-3xl font-bold text-yellow-600">{estatisticas.grupoB}</p>
+          <p className="text-sm text-gray-500">Grupo B</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <p className="text-3xl font-bold text-green-600">{estatisticas.grupoC}</p>
+          <p className="text-sm text-gray-500">Grupo C</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <p className="text-3xl font-bold text-gray-400">{estatisticas.naoAvaliados}</p>
+          <p className="text-sm text-gray-500">Não avaliados</p>
+        </div>
+      </div>
 
-            <button
-              onClick={carregarMapa}
-              className="mt-6 p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Atualizar"
-            >
-              <RefreshCw className="w-5 h-5 text-gray-600" />
-            </button>
-          </div>
+      {loading ? (
+        <div className="flex items-center justify-center min-h-[200px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
         </div>
       ) : (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
-          <p className="text-yellow-800">
-            Nenhuma turma configurada para o Método BASE.{' '}
-            <Link href="/admin/base/turmas" className="text-yellow-900 underline font-medium">
-              Configurar turmas
-            </Link>
-          </p>
-        </div>
-      )}
-
-      {/* Estatísticas com Legenda */}
-      {turmaAtual && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <p className="text-sm font-medium text-gray-600">Total</p>
-            <p className="text-3xl font-bold text-gray-900">{totalAlunos}</p>
-            <p className="text-xs text-gray-500">alunos</p>
-          </div>
-          <div className="bg-red-50 rounded-xl border-2 border-red-300 p-4 text-center">
-            <p className="text-sm font-medium text-red-700">Grupo A</p>
-            <p className="text-3xl font-bold text-red-800">{grupoA}</p>
-            <p className="text-xs text-red-600">Apoio Intensivo</p>
-          </div>
-          <div className="bg-yellow-50 rounded-xl border-2 border-yellow-300 p-4 text-center">
-            <p className="text-sm font-medium text-yellow-700">Grupo B</p>
-            <p className="text-3xl font-bold text-yellow-800">{grupoB}</p>
-            <p className="text-xs text-yellow-600">Adaptação</p>
-          </div>
-          <div className="bg-green-50 rounded-xl border-2 border-green-300 p-4 text-center">
-            <p className="text-sm font-medium text-green-700">Grupo C</p>
-            <p className="text-3xl font-bold text-green-800">{grupoC}</p>
-            <p className="text-xs text-green-600">Regular</p>
-          </div>
-          {semGrupo > 0 && (
-            <div className="bg-gray-50 rounded-xl border border-gray-300 p-4 text-center">
-              <p className="text-sm font-medium text-gray-600">Sem Grupo</p>
-              <p className="text-3xl font-bold text-gray-700">{semGrupo}</p>
-              <p className="text-xs text-gray-500">Pendente D1</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Mapa de Calor */}
-      {turmaAtual && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">
-              Mapa de Habilidades - {turmaAtual.nome}
-            </h2>
-            <span className="text-sm text-gray-600">
-              {alunosFiltrados.length} alunos
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            </div>
-          ) : alunosFiltrados.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="font-medium text-gray-700">Nenhum aluno encontrado</p>
-              <p className="text-sm mt-1">Configure os diagnósticos primeiro</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[200px]">
-                      Aluno
-                    </th>
-                    <th className="px-3 py-3 text-center text-sm font-semibold text-gray-700 w-16">
-                      Grupo
-                    </th>
-                    {habilidadesPrioritarias.map((hab) => (
-                      <th 
-                        key={hab.codigo} 
-                        className="px-3 py-3 text-center text-xs font-semibold text-gray-700 min-w-[80px]"
-                        title={hab.nome}
-                      >
-                        {hab.nome.length > 10 ? hab.nome.substring(0, 10) + '...' : hab.nome}
+        <>
+          {/* Mapa de Calor por Competência */}
+          {viewMode === 'competencia' && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="font-semibold text-gray-900">Desempenho por Competência</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  ✅ ≥70% | 🟡 40-69% | ❌ &lt;40%
+                </p>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left py-3 px-4 font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[180px]">
+                        Aluno
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {alunosFiltrados.map((aluno) => (
-                    <tr key={aluno.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white">
-                        {aluno.nome}
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        <span className={`inline-flex px-3 py-1 rounded-lg text-sm font-bold border ${getGrupoStyle(aluno.grupo)}`}>
-                          {aluno.grupo}
-                        </span>
-                      </td>
-                      {habilidadesPrioritarias.map((hab) => (
-                        <td key={hab.codigo} className="px-3 py-3 text-center">
-                          {getStatusIcon(aluno.habilidades[hab.codigo]?.status)}
-                        </td>
+                      {diagnosticos.map(diag => (
+                        <th key={diag.id} colSpan={5} className="py-2 px-1 text-center border-l border-gray-200">
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            diag.nivel === 'facil' ? 'bg-green-100 text-green-700' :
+                            diag.nivel === 'medio' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {diag.codigo}
+                          </span>
+                        </th>
                       ))}
+                      <th className="py-3 px-2 text-center border-l border-gray-300 font-medium text-gray-700 min-w-[70px]">
+                        Grupo Final
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="sticky left-0 bg-gray-50"></th>
+                      {diagnosticos.map(diag => (
+                        competencias.map(comp => (
+                          <th key={`${diag.id}-${comp.codigo}`} className="py-1 px-1 text-center">
+                            <span className={`text-xs px-1 py-0.5 rounded ${comp.corClara}`}>
+                              {comp.codigo}
+                            </span>
+                          </th>
+                        ))
+                      ))}
+                      <th className="border-l border-gray-300"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {alunos.map((aluno, idx) => {
+                      const grupoFinal = calcularGrupoFinal(aluno.id)
+                      
+                      return (
+                        <tr 
+                          key={aluno.id}
+                          className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                        >
+                          <td className="py-2 px-4 sticky left-0 bg-inherit">
+                            <span className="font-medium text-gray-900 text-sm truncate block max-w-[170px]">
+                              {aluno.nome}
+                            </span>
+                          </td>
+                          
+                          {diagnosticos.map(diag => (
+                            competencias.map(comp => {
+                              const desempenho = calcularDesempenhoCompetencia(aluno.id, diag.id, comp.codigo)
+                              const faltou = alunoFaltou(aluno.id, diag.id)
+                              
+                              return (
+                                <td key={`${diag.id}-${comp.codigo}`} className="py-1 px-1 text-center">
+                                  {faltou ? (
+                                    <span className="inline-flex w-8 h-8 items-center justify-center rounded bg-slate-300 text-slate-600 text-xs">
+                                      F
+                                    </span>
+                                  ) : (
+                                    <span 
+                                      className={`inline-flex w-8 h-8 items-center justify-center rounded text-sm ${getCorDesempenho(desempenho)} text-white`}
+                                      title={desempenho !== null ? `${Math.round(desempenho)}%` : 'Não avaliado'}
+                                    >
+                                      {getIconeDesempenho(desempenho)}
+                                    </span>
+                                  )}
+                                </td>
+                              )
+                            })
+                          ))}
+                          
+                          <td className="py-2 px-2 text-center border-l border-gray-300">
+                            <div className="flex flex-col items-center">
+                              <span className={`inline-flex w-8 h-8 items-center justify-center rounded-full font-bold ${getCorGrupo(grupoFinal.grupo)}`}>
+                                {grupoFinal.grupo}
+                              </span>
+                              {grupoFinal.media && (
+                                <span className="text-xs text-gray-500 mt-1">
+                                  {grupoFinal.media}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
-        </div>
+
+          {/* Mapa por Diagnóstico */}
+          {viewMode === 'diagnostico' && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="font-semibold text-gray-900">Grupo por Diagnóstico</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Visualização simplificada do grupo em cada diagnóstico
+                </p>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left py-3 px-4 font-medium text-gray-700 sticky left-0 bg-gray-50 min-w-[180px]">
+                        Aluno
+                      </th>
+                      {diagnosticos.map(diag => (
+                        <th key={diag.id} className="py-3 px-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              diag.nivel === 'facil' ? 'bg-green-100 text-green-700' :
+                              diag.nivel === 'medio' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {diag.codigo}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              Peso {PESOS[diag.codigo.split('-')[0]]}x
+                            </span>
+                          </div>
+                        </th>
+                      ))}
+                      <th className="py-3 px-4 text-center border-l border-gray-300 font-medium text-gray-700">
+                        Grupo Final
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {alunos.map((aluno, idx) => {
+                      const grupoFinal = calcularGrupoFinal(aluno.id)
+                      
+                      return (
+                        <tr 
+                          key={aluno.id}
+                          className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                        >
+                          <td className="py-3 px-4 sticky left-0 bg-inherit">
+                            <span className="font-medium text-gray-900 text-sm truncate block max-w-[170px]">
+                              {aluno.nome}
+                            </span>
+                          </td>
+                          
+                          {diagnosticos.map(diag => {
+                            const grupo = calcularGrupoDiagnostico(aluno.id, diag.id)
+                            
+                            return (
+                              <td key={diag.id} className="py-3 px-4 text-center">
+                                <span className={`inline-flex w-10 h-10 items-center justify-center rounded-full font-bold ${getCorGrupo(grupo)}`}>
+                                  {grupo}
+                                </span>
+                              </td>
+                            )
+                          })}
+                          
+                          <td className="py-3 px-4 text-center border-l border-gray-300">
+                            <div className="flex flex-col items-center">
+                              <span className={`inline-flex w-12 h-12 items-center justify-center rounded-full font-bold text-lg ${getCorGrupo(grupoFinal.grupo)}`}>
+                                {grupoFinal.grupo}
+                              </span>
+                              {grupoFinal.media && (
+                                <span className="text-xs text-gray-500 mt-1">
+                                  Média: {grupoFinal.media}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Legenda */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h4 className="font-semibold text-gray-900 mb-3">Legenda</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
-            <span className="text-xl">✅</span>
-            <div>
-              <p className="text-sm font-medium text-green-800">Desenvolvida</p>
-              <p className="text-xs text-green-600">76-100%</p>
+        <h3 className="font-medium text-gray-900 mb-3">Legenda</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div>
+            <p className="font-medium text-gray-700 mb-2">Desempenho</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-green-500 rounded flex items-center justify-center text-white text-xs">✅</span>
+                <span>≥70% (Consolidado)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-yellow-500 rounded flex items-center justify-center text-white text-xs">🟡</span>
+                <span>40-69% (Em desenvolvimento)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-red-500 rounded flex items-center justify-center text-white text-xs">❌</span>
+                <span>&lt;40% (Precisa reforço)</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-2 bg-yellow-50 rounded-lg">
-            <span className="text-xl">🟡</span>
-            <div>
-              <p className="text-sm font-medium text-yellow-800">Em desenvolvimento</p>
-              <p className="text-xs text-yellow-600">41-75%</p>
+          
+          <div>
+            <p className="font-medium text-gray-700 mb-2">Grupos</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">A</span>
+                <span>Reforço intensivo</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center text-white text-xs font-bold">B</span>
+                <span>Em desenvolvimento</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">C</span>
+                <span>Consolidado</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-2 bg-red-50 rounded-lg">
-            <span className="text-xl">❌</span>
-            <div>
-              <p className="text-sm font-medium text-red-800">Não desenvolvida</p>
-              <p className="text-xs text-red-600">0-40%</p>
+          
+          <div>
+            <p className="font-medium text-gray-700 mb-2">Status</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-slate-500 rounded flex items-center justify-center text-white text-xs font-bold">F</span>
+                <span>Faltou</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-gray-300 rounded flex items-center justify-center text-gray-600 text-xs font-bold">?</span>
+                <span>Não avaliado</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
-            <span className="text-xl text-gray-400">—</span>
-            <div>
-              <p className="text-sm font-medium text-gray-700">Não avaliada</p>
-              <p className="text-xs text-gray-500">Sem dados</p>
+          
+          <div>
+            <p className="font-medium text-gray-700 mb-2">Pesos (Grupo Final)</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-green-600 font-bold">D1</span>
+                <span>Peso 3x (Fácil)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-yellow-600 font-bold">D2</span>
+                <span>Peso 2x (Médio)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-red-600 font-bold">D3</span>
+                <span>Peso 1x (Difícil)</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Alertas */}
+      {estatisticas.grupoA > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-500 mt-0.5" />
+            <div>
+              <p className="font-medium text-red-700">
+                {estatisticas.grupoA} aluno(s) no Grupo A precisam de atenção especial
+              </p>
+              <p className="text-sm text-red-600 mt-1">
+                Recomendação: Aplicar fichas de reforço e acompanhamento individualizado.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
