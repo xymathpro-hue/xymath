@@ -1,3 +1,4 @@
+// src/app/(dashboard)/admin/base/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -9,9 +10,12 @@ import {
   FileText, 
   Calendar,
   AlertTriangle,
+  CheckCircle,
+  Clock,
   ChevronRight,
   BookOpen,
   Target,
+  TrendingUp,
   Settings
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
@@ -21,6 +25,9 @@ interface Turma {
   id: string
   nome: string
   ano_serie: string
+  _count?: {
+    alunos: number
+  }
 }
 
 interface EstatisticasBase {
@@ -48,6 +55,7 @@ export default function MetodoBasePage() {
 
   async function carregarDados() {
     try {
+      // Carregar turmas configuradas para o BASE
       const { data: configTurmas } = await supabase
         .from('base_turmas_config')
         .select(`
@@ -66,6 +74,7 @@ export default function MetodoBasePage() {
           .filter(Boolean)
         setTurmasBase(turmas)
         
+        // Carregar contagem de alunos
         let totalAlunos = 0
         for (const turma of turmas) {
           const { count } = await supabase
@@ -76,11 +85,13 @@ export default function MetodoBasePage() {
           totalAlunos += count || 0
         }
 
+        // Carregar aulas realizadas
         const { count: aulasCount } = await supabase
           .from('base_aulas')
           .select('*', { count: 'exact', head: true })
           .eq('status', 'realizada')
 
+        // Carregar diagnósticos aplicados
         const { count: diagCount } = await supabase
           .from('base_aulas')
           .select('*', { count: 'exact', head: true })
@@ -113,8 +124,15 @@ export default function MetodoBasePage() {
       href: '/admin/base/diagnosticos',
       icon: ClipboardCheck,
       title: 'Diagnósticos',
-      description: 'Aplicar e lançar D1, D2, D3, D4',
+      description: 'Aplicar e lançar D1, D2, D3',
       color: 'bg-green-500'
+    },
+    {
+      href: '/admin/base/questoes',
+      icon: FileText,
+      title: 'Questões',
+      description: 'Cadastrar questões dos diagnósticos',
+      color: 'bg-cyan-500'
     },
     {
       href: '/admin/base/mapa',
@@ -170,6 +188,7 @@ export default function MetodoBasePage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Método BASE</h1>
@@ -184,6 +203,7 @@ export default function MetodoBasePage() {
         </Link>
       </div>
 
+      {/* Cards de Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center gap-4">
@@ -234,6 +254,7 @@ export default function MetodoBasePage() {
         </div>
       </div>
 
+      {/* Aviso de Configuração Inicial */}
       {estatisticas.turmasAtivas === 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
           <div className="flex items-start gap-4">
@@ -258,6 +279,7 @@ export default function MetodoBasePage() {
         </div>
       )}
 
+      {/* Menu Principal */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {menuItems.map((item) => (
           <Link
@@ -280,6 +302,7 @@ export default function MetodoBasePage() {
         ))}
       </div>
 
+      {/* Turmas Ativas */}
       {turmasBase.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200">
           <div className="p-6 border-b border-gray-200">
@@ -308,6 +331,7 @@ export default function MetodoBasePage() {
         </div>
       )}
 
+      {/* Fluxo de Trabalho */}
       <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6">
         <h2 className="font-semibold text-gray-900 mb-4">📋 Fluxo de Trabalho Recomendado</h2>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -339,6 +363,7 @@ export default function MetodoBasePage() {
         </div>
       </div>
 
+      {/* Rodapé */}
       <div className="text-center text-sm text-gray-500 py-4">
         <p>Método BASE - Base Analítica Sistematizada Educacional</p>
         <p>Acesso exclusivo do administrador</p>
