@@ -33,6 +33,14 @@ interface Alerta {
   resolvido: boolean
 }
 
+const NOMES_COMPETENCIAS: { [key: string]: string } = {
+  L: 'Leitura/Interpretação',
+  F: 'Fluência/Cálculo',
+  R: 'Raciocínio/Compreensão',
+  A: 'Aplicação/Problemas',
+  J: 'Justificativa/Conexão'
+}
+
 export default function AlertasPage() {
   const router = useRouter()
   const supabase = createBrowserClient(
@@ -95,7 +103,6 @@ export default function AlertasPage() {
     try {
       const alertasGerados: Alerta[] = []
 
-      // Buscar alunos da turma
       const { data: alunos } = await supabase
         .from('alunos')
         .select('id, nome')
@@ -106,16 +113,14 @@ export default function AlertasPage() {
       const turmaInfo = turmas.find(t => t.id === turmaSelecionada)
       const anoEscolar = turmaInfo?.ano_escolar || '7'
 
-      // Buscar diagnósticos
       const { data: diagnosticos } = await supabase
         .from('base_diagnosticos')
         .select('id, codigo')
         .eq('ano_escolar', anoEscolar)
         .order('ordem')
 
-      // ALERTA 1: Alunos com desempenho crítico (Grupo A com menos de 25%)
+      // ALERTA 1: Alunos com desempenho crítico
       let alunosCriticos = 0
-      const alunosCriticosDetalhes: string[] = []
 
       for (const alunoId of alunosIds) {
         const { data: respostas } = await supabase
@@ -130,8 +135,6 @@ export default function AlertasPage() {
 
           if (percentual < 25) {
             alunosCriticos++
-            const aluno = alunos?.find(a => a.id === alunoId)
-            if (aluno) alunosCriticosDetalhes.push(aluno.nome)
           }
         }
       }
@@ -150,7 +153,7 @@ export default function AlertasPage() {
         })
       }
 
-      // ALERTA 2: Muitos alunos no Grupo A (mais de 40% da turma)
+      // ALERTA 2: Muitos alunos no Grupo A
       let grupoA = 0
       for (const alunoId of alunosIds) {
         const { data: respostas } = await supabase
@@ -197,7 +200,7 @@ export default function AlertasPage() {
         })
       }
 
-      // ALERTA 3: Queda de desempenho entre diagnósticos
+      // ALERTA 3: Queda de desempenho
       if (diagnosticos && diagnosticos.length >= 2) {
         const ultimoDiag = diagnosticos[diagnosticos.length - 1]
         const penultimoDiag = diagnosticos[diagnosticos.length - 2]
@@ -267,13 +270,7 @@ export default function AlertasPage() {
           const percentual = (totalAcertos / totalRespostas) * 100
           
           if (percentual < 40) {
-            const nomeCompetencia = {
-              L: 'Leitura/Interpretação',
-              F: 'Fluência/Cálculo',
-              R: 'Raciocínio/Compreensão',
-              A: 'Aplicação/Problemas',
-              J: 'Justificativa/Conexão'
-            }[comp]
+            const nomeCompetencia = NOMES_COMPETENCIAS[comp] || 'esta competência'
 
             alertasGerados.push({
               id: `info-comp-${comp}`,
@@ -368,7 +365,6 @@ export default function AlertasPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
           <button
             onClick={() => router.back()}
@@ -382,7 +378,6 @@ export default function AlertasPage() {
           <p className="text-gray-600 mt-1">Situações que requerem atenção e intervenção</p>
         </div>
 
-        {/* Seletor de Turma */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Selecione a turma
@@ -407,7 +402,6 @@ export default function AlertasPage() {
           </div>
         ) : (
           <>
-            {/* Cards de Resumo */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <button
                 onClick={() => setFiltroTipo('todos')}
@@ -462,7 +456,6 @@ export default function AlertasPage() {
               </button>
             </div>
 
-            {/* Lista de Alertas */}
             {alertasFiltrados.length > 0 ? (
               <div className="space-y-4">
                 {alertasFiltrados.map((alerta) => {
@@ -534,4 +527,4 @@ export default function AlertasPage() {
       </div>
     </div>
   )
-          }
+}
