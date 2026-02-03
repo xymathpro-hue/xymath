@@ -1,9 +1,8 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 import { 
   ArrowLeft, 
   Users, 
@@ -37,7 +36,10 @@ interface EstatisticasTurma {
 
 export default function RelatorioTurmaPage() {
   const router = useRouter()
-  const supabase = createClientComponentClient()
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [turmaSelecionada, setTurmaSelecionada] = useState<string>('')
