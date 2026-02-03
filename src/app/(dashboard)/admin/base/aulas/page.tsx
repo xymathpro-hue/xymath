@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -32,7 +31,7 @@ interface DistribuicaoGrupos {
 
 interface Aula {
   id: string
-  ano_escolar: string // '6', '7', '8', '9', 'EM1', 'EM2', 'EM3'
+  ano_escolar: string
   numero: number
   titulo: string
   descricao: string
@@ -100,7 +99,6 @@ export default function AulasPage() {
   const [loading, setLoading] = useState(true)
   const [fichaAtiva, setFichaAtiva] = useState<'amarela' | 'azul' | 'verde'>('amarela')
 
-  // Aulas mockadas por ano escolar - SUBSTITUIR quando receber o planejamento pedagógico
   const [aulasDisponiveis] = useState<Aula[]>([
     // 6º ANO
     {
@@ -236,9 +234,6 @@ export default function AulasPage() {
     // ENSINO MÉDIO - 3ª SÉRIE
     {
       id: 'em3-1',
-      ano_escolar: 'EM3',
-      numero: 1,
-      titulo: 'id: 'em3-1',
       ano_escolar: 'EM3',
       numero: 1,
       titulo: 'Matemática Financeira',
@@ -674,4 +669,4 @@ export default function AulasPage() {
       </div>
     </div>
   )
-                                                                                                      }
+}
