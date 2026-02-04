@@ -26,43 +26,60 @@ import {
   ScanLine,
   Target,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  MoreHorizontal
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 
-const menuItems = [
+// 🏠 ITENS PRINCIPAIS (sempre visíveis)
+const mainItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/minha-semana', label: 'Minha Semana', icon: Calendar },
+  { href: '/alertas', label: 'Alertas', icon: Bell },
+]
+
+// 👥 GESTÃO ESSENCIAL
+const gestaoItems = [
   { href: '/turmas', label: 'Turmas', icon: Users },
   { href: '/alunos', label: 'Alunos', icon: GraduationCap },
   { href: '/atividades', label: 'Atividades', icon: ClipboardList },
   { href: '/notas', label: 'Notas', icon: Calculator },
-  { href: '/alertas', label: 'Alertas', icon: Bell },
+]
+
+// 📚 CONTEÚDO
+const conteudoItems = [
   { href: '/questoes', label: 'Banco de Questões', icon: BookOpen },
   { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
-  { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
-  { href: '/simulados', label: 'Simulados', icon: FileText },
-  { href: '/resultados', label: 'Resultados', icon: BarChart3 },
-  { href: '/avaliacoes-rede', label: 'Avaliações de Rede', icon: FileSpreadsheet },
-  { href: '/gestao-horarios', label: 'Gestão de Horários', icon: Clock },
-  { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
-  { href: '/relatorios', label: 'Relatórios', icon: PieChart },
-  { href: '/correcao-automatica', label: 'Correção Automática', icon: ScanLine },
-  { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
 ]
 
+// 🎯 MÉTODO BASE (expansível)
 const metodoBaseItems = [
-  { href: '/admin/base', label: 'Painel BASE', icon: Target },
-  { href: '/admin/base/turmas', label: 'Turmas BASE', icon: Users },
+  { href: '/admin/base', label: 'Painel', icon: LayoutDashboard },
   { href: '/admin/base/diagnosticos', label: 'Diagnósticos', icon: ClipboardList },
   { href: '/admin/base/mapa', label: 'Mapa de Calor', icon: Flame },
-  { href: '/admin/base/questoes', label: 'Questões', icon: FileText },
   { href: '/admin/base/relatorios', label: 'Relatórios', icon: PieChart },
+  { href: '/admin/base/aulas', label: 'Aulas & Fichas', icon: FileText },
+  { href: '/admin/base/alertas', label: 'Alertas BASE', icon: Bell },
+  { href: '/admin/base/agenda', label: 'Agenda', icon: Calendar },
 ]
 
+// ➕ MAIS (funcionalidades secundárias)
+const maisItems = [
+  { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
+  { href: '/simulados', label: 'Simulados', icon: FileSpreadsheet },
+  { href: '/avaliacoes-rede', label: 'Avaliações de Rede', icon: FileSpreadsheet },
+  { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
+  { href: '/correcao-automatica', label: 'Correção Automática', icon: ScanLine },
+  { href: '/resultados', label: 'Resultados', icon: BarChart3 },
+  { href: '/relatorios', label: 'Relatórios Gerais', icon: PieChart },
+  { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
+  { href: '/gestao-horarios', label: 'Gestão de Horários', icon: Clock },
+]
+
+// 🛡️ ADMINISTRAÇÃO (apenas para admins)
 const adminItems = [
   { href: '/admin', label: 'Painel Admin', icon: Shield },
 ]
@@ -73,6 +90,7 @@ export function Sidebar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [metodoBaseOpen, setMetodoBaseOpen] = useState(false)
+  const [maisOpen, setMaisOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
   const supabase = createClient()
 
@@ -82,6 +100,11 @@ export function Sidebar() {
     }
     if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/base')) {
       setAdminOpen(true)
+    }
+    // Auto-expandir "Mais" se estiver em uma dessas páginas
+    const maisRoutes = maisItems.map(item => item.href)
+    if (maisRoutes.some(route => pathname.startsWith(route))) {
+      setMaisOpen(true)
     }
   }, [pathname])
 
@@ -105,6 +128,7 @@ export function Sidebar() {
 
   const NavContent = () => (
     <>
+      {/* Logo */}
       <div className="px-6 py-6 border-b border-gray-200">
         <Link href="/dashboard" className="flex items-center gap-2">
           <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
@@ -115,7 +139,32 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => {
+        {/* 🏠 PRINCIPAIS */}
+        {mainItems.map((item) => {
+          const isActive = pathname === item.href
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={clsx(
+                'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+                isActive 
+                  ? 'bg-indigo-50 text-indigo-600' 
+                  : 'text-gray-600 hover:bg-gray-100'
+              )}
+            >
+              <item.icon className="w-5 h-5" />
+              <span className="font-medium">{item.label}</span>
+            </Link>
+          )
+        })}
+
+        {/* Divisor */}
+        <div className="border-t border-gray-200 my-4"></div>
+
+        {/* 👥 GESTÃO */}
+        {gestaoItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
             <Link
@@ -134,9 +183,37 @@ export function Sidebar() {
             </Link>
           )
         })}
-        
+
+        {/* Divisor */}
+        <div className="border-t border-gray-200 my-4"></div>
+
+        {/* 📚 CONTEÚDO */}
+        {conteudoItems.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={clsx(
+                'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+                isActive 
+                  ? 'bg-indigo-50 text-indigo-600' 
+                  : 'text-gray-600 hover:bg-gray-100'
+              )}
+            >
+              <item.icon className="w-5 h-5" />
+              <span className="font-medium">{item.label}</span>
+            </Link>
+          )
+        })}
+
+        {/* Divisor */}
+        <div className="border-t border-gray-200 my-4"></div>
+
+        {/* 🎯 MÉTODO BASE (apenas para admins) */}
         {isAdmin && (
-          <div className="pt-4 border-t border-gray-200 mt-4">
+          <div>
             <button
               onClick={() => setMetodoBaseOpen(!metodoBaseOpen)}
               className={clsx(
@@ -156,7 +233,7 @@ export function Sidebar() {
             {metodoBaseOpen && (
               <div className="ml-4 mt-1 space-y-1">
                 {metodoBaseItems.map((item) => {
-                  const isActive = pathname === item.href
+                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                   return (
                     <Link
                       key={item.href}
@@ -179,51 +256,80 @@ export function Sidebar() {
           </div>
         )}
 
-        {isAdmin && (
-          <div className="pt-2">
-            <button
-              onClick={() => setAdminOpen(!adminOpen)}
-              className={clsx(
-                'flex items-center justify-between w-full px-4 py-3 rounded-lg transition-colors',
-                pathname === '/admin' 
-                  ? 'bg-indigo-50 text-indigo-600' 
-                  : 'text-gray-600 hover:bg-gray-100'
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <Shield className="w-5 h-5" />
-                <span className="font-medium">Administração</span>
-              </div>
-              {adminOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </button>
-            
-            {adminOpen && (
-              <div className="ml-4 mt-1 space-y-1">
-                {adminItems.map((item) => {
-                  const isActive = pathname === item.href
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={clsx(
-                        'flex items-center gap-3 px-4 py-2 rounded-lg transition-colors text-sm',
-                        isActive 
-                          ? 'bg-indigo-100 text-indigo-700' 
-                          : 'text-gray-600 hover:bg-gray-100'
-                      )}
-                    >
-                      <item.icon className="w-4 h-4" />
-                      <span className="font-medium">{item.label}</span>
-                    </Link>
-                  )
-                })}
-              </div>
+        {/* Divisor */}
+        <div className="border-t border-gray-200 my-4"></div>
+
+        {/* ➕ MAIS */}
+        <div>
+          <button
+            onClick={() => setMaisOpen(!maisOpen)}
+            className={clsx(
+              'flex items-center justify-between w-full px-4 py-3 rounded-lg transition-colors',
+              maisOpen
+                ? 'bg-gray-100 text-gray-900' 
+                : 'text-gray-600 hover:bg-gray-100'
             )}
-          </div>
-        )}
+          >
+            <div className="flex items-center gap-3">
+              <MoreHorizontal className="w-5 h-5" />
+              <span className="font-medium">Mais</span>
+            </div>
+            {maisOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </button>
+          
+          {maisOpen && (
+            <div className="ml-4 mt-1 space-y-1">
+              {maisItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={clsx(
+                      'flex items-center gap-3 px-4 py-2 rounded-lg transition-colors text-sm',
+                      isActive 
+                        ? 'bg-gray-200 text-gray-900' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    )}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    <span className="font-medium">{item.label}</span>
+                  </Link>
+                )
+              })}
+
+              {/* 🛡️ ADMINISTRAÇÃO dentro de Mais */}
+              {isAdmin && (
+                <>
+                  <div className="border-t border-gray-200 my-2"></div>
+                  {adminItems.map((item) => {
+                    const isActive = pathname === item.href
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={clsx(
+                          'flex items-center gap-3 px-4 py-2 rounded-lg transition-colors text-sm',
+                          isActive 
+                            ? 'bg-indigo-100 text-indigo-700' 
+                            : 'text-gray-600 hover:bg-gray-100'
+                        )}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        <span className="font-medium">{item.label}</span>
+                      </Link>
+                    )
+                  })}
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </nav>
 
+      {/* Rodapé com usuário */}
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center gap-3 px-4 py-3 mb-2">
           <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
@@ -249,6 +355,7 @@ export function Sidebar() {
 
   return (
     <>
+      {/* Mobile menu button */}
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -258,10 +365,12 @@ export function Sidebar() {
         </button>
       </div>
 
+      {/* Mobile backdrop */}
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileMenuOpen(false)} />
       )}
 
+      {/* Mobile sidebar */}
       <aside className={clsx(
         'lg:hidden fixed top-0 left-0 h-full w-72 bg-white z-50 transform transition-transform duration-200',
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
@@ -271,6 +380,7 @@ export function Sidebar() {
         </div>
       </aside>
 
+      {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:fixed lg:inset-y-0 lg:left-0 bg-white border-r border-gray-200">
         <NavContent />
       </aside>
