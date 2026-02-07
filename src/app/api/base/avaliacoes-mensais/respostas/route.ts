@@ -1,11 +1,11 @@
+// src/app/api/base/avaliacoes-mensais/respostas/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createClient()
     const body = await request.json()
 
     const {
@@ -62,8 +62,6 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    // Trigger automático já reclassificou os alunos!
-
     return NextResponse.json({
       success: true,
       message: 'Respostas salvas e alunos reclassificados!',
@@ -81,7 +79,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const avaliacao_id = searchParams.get('avaliacao_id')
 
