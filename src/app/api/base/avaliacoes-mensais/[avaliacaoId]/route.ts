@@ -1,13 +1,14 @@
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { avaliacaoId: string } }
+  context: { params: Promise<{ avaliacaoId: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const { avaliacaoId } = params
+    const { avaliacaoId } = await context.params
 
     const { data, error } = await supabase
       .from('base_avaliacoes_mensais')
