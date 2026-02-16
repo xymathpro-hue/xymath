@@ -17,7 +17,6 @@ import {
   Clock,
   Flame,
   FileUp,
-  PieChart,
   Shield,
   Bell,
   FileSpreadsheet,
@@ -56,7 +55,7 @@ const conteudoItems = [
   { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
 ]
 
-// 🎯 MÉTODO BASE (NOVO - usando as páginas que criamos)
+// 🎯 MÉTODO BASE
 const metodoBaseItems = [
   { href: '/base/turmas', label: 'Minhas Turmas', icon: GraduationCap },
   { href: '/base/dashboard/11111111-1111-1111-1111-111111111111', label: 'Dashboard', icon: LayoutDashboard },
@@ -66,20 +65,17 @@ const metodoBaseItems = [
   { href: '/base/notas/calcular/11111111-1111-1111-1111-111111111111', label: 'Calcular Notas', icon: Calculator },
 ]
 
-// ➕ MAIS (funcionalidades secundárias)
+// ➕ MAIS (otimizado - sem duplicados)
 const maisItems = [
   { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
   { href: '/simulados', label: 'Simulados', icon: FileSpreadsheet },
   { href: '/avaliacoes-rede', label: 'Avaliações de Rede', icon: FileSpreadsheet },
   { href: '/importar-pdf', label: 'Importar PDF', icon: FileUp },
   { href: '/correcao-automatica', label: 'Correção Automática', icon: ScanLine },
-  { href: '/resultados', label: 'Resultados', icon: BarChart3 },
-  { href: '/relatorios', label: 'Relatórios Gerais', icon: PieChart },
-  { href: '/mapa-calor', label: 'Mapa de Calor', icon: Flame },
   { href: '/gestao-horarios', label: 'Gestão de Horários', icon: Clock },
 ]
 
-// 🛡️ ADMINISTRAÇÃO (apenas para admins)
+// 🛡️ ADMINISTRAÇÃO
 const adminItems = [
   { href: '/admin', label: 'Painel Admin', icon: Shield },
 ]
