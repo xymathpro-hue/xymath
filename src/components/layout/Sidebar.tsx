@@ -27,7 +27,8 @@ import {
   Target,
   ChevronDown,
   ChevronRight,
-  MoreHorizontal
+  MoreHorizontal,
+  FileEdit
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
@@ -55,15 +56,14 @@ const conteudoItems = [
   { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
 ]
 
-// 🎯 MÉTODO BASE (expansível)
+// 🎯 MÉTODO BASE (NOVO - usando as páginas que criamos)
 const metodoBaseItems = [
-  { href: '/admin/base', label: 'Painel', icon: LayoutDashboard },
-  { href: '/admin/base/diagnosticos', label: 'Diagnósticos', icon: ClipboardList },
-  { href: '/admin/base/mapa', label: 'Mapa de Calor', icon: Flame },
-  { href: '/admin/base/relatorios', label: 'Relatórios', icon: PieChart },
-  { href: '/admin/base/aulas', label: 'Aulas & Fichas', icon: FileText },
-  { href: '/admin/base/alertas', label: 'Alertas BASE', icon: Bell },
-  { href: '/admin/base/agenda', label: 'Agenda', icon: Calendar },
+  { href: '/base/turmas', label: 'Minhas Turmas', icon: GraduationCap },
+  { href: '/base/dashboard/11111111-1111-1111-1111-111111111111', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/base/avaliacoes/11111111-1111-1111-1111-111111111111', label: 'Avaliações', icon: ClipboardList },
+  { href: '/base/atividades/11111111-1111-1111-1111-111111111111', label: 'Atividades', icon: FileEdit },
+  { href: '/base/heat-map/11111111-1111-1111-1111-111111111111', label: 'Heat Map', icon: Flame },
+  { href: '/base/notas/calcular/11111111-1111-1111-1111-111111111111', label: 'Calcular Notas', icon: Calculator },
 ]
 
 // ➕ MAIS (funcionalidades secundárias)
@@ -89,19 +89,14 @@ export function Sidebar() {
   const { usuario, signOut } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
-  const [metodoBaseOpen, setMetodoBaseOpen] = useState(false)
+  const [metodoBaseOpen, setMetodoBaseOpen] = useState(true)
   const [maisOpen, setMaisOpen] = useState(false)
-  const [adminOpen, setAdminOpen] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
-    if (pathname.startsWith('/admin/base')) {
+    if (pathname.startsWith('/base')) {
       setMetodoBaseOpen(true)
     }
-    if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/base')) {
-      setAdminOpen(true)
-    }
-    // Auto-expandir "Mais" se estiver em uma dessas páginas
     const maisRoutes = maisItems.map(item => item.href)
     if (maisRoutes.some(route => pathname.startsWith(route))) {
       setMaisOpen(true)
@@ -211,50 +206,48 @@ export function Sidebar() {
         {/* Divisor */}
         <div className="border-t border-gray-200 my-4"></div>
 
-        {/* 🎯 MÉTODO BASE (apenas para admins) */}
-        {isAdmin && (
-          <div>
-            <button
-              onClick={() => setMetodoBaseOpen(!metodoBaseOpen)}
-              className={clsx(
-                'flex items-center justify-between w-full px-4 py-3 rounded-lg transition-colors',
-                pathname.startsWith('/admin/base')
-                  ? 'bg-purple-50 text-purple-600' 
-                  : 'text-gray-600 hover:bg-gray-100'
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <Target className="w-5 h-5" />
-                <span className="font-medium">Método BASE</span>
-              </div>
-              {metodoBaseOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </button>
-            
-            {metodoBaseOpen && (
-              <div className="ml-4 mt-1 space-y-1">
-                {metodoBaseItems.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={clsx(
-                        'flex items-center gap-3 px-4 py-2 rounded-lg transition-colors text-sm',
-                        isActive 
-                          ? 'bg-purple-100 text-purple-700' 
-                          : 'text-gray-600 hover:bg-gray-100'
-                      )}
-                    >
-                      <item.icon className="w-4 h-4" />
-                      <span className="font-medium">{item.label}</span>
-                    </Link>
-                  )
-                })}
-              </div>
+        {/* 🎯 MÉTODO BASE */}
+        <div>
+          <button
+            onClick={() => setMetodoBaseOpen(!metodoBaseOpen)}
+            className={clsx(
+              'flex items-center justify-between w-full px-4 py-3 rounded-lg transition-colors',
+              pathname.startsWith('/base')
+                ? 'bg-purple-50 text-purple-600' 
+                : 'text-gray-600 hover:bg-gray-100'
             )}
-          </div>
-        )}
+          >
+            <div className="flex items-center gap-3">
+              <Target className="w-5 h-5" />
+              <span className="font-medium">Método BASE</span>
+            </div>
+            {metodoBaseOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </button>
+          
+          {metodoBaseOpen && (
+            <div className="ml-4 mt-1 space-y-1">
+              {metodoBaseItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href.split('/').slice(0, 4).join('/'))
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={clsx(
+                      'flex items-center gap-3 px-4 py-2 rounded-lg transition-colors text-sm',
+                      isActive 
+                        ? 'bg-purple-100 text-purple-700' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    )}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    <span className="font-medium">{item.label}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Divisor */}
         <div className="border-t border-gray-200 my-4"></div>
@@ -299,7 +292,7 @@ export function Sidebar() {
                 )
               })}
 
-              {/* 🛡️ ADMINISTRAÇÃO dentro de Mais */}
+              {/* 🛡️ ADMINISTRAÇÃO */}
               {isAdmin && (
                 <>
                   <div className="border-t border-gray-200 my-2"></div>
@@ -329,7 +322,7 @@ export function Sidebar() {
         </div>
       </nav>
 
-      {/* Rodapé com usuário */}
+      {/* Rodapé */}
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center gap-3 px-4 py-3 mb-2">
           <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
