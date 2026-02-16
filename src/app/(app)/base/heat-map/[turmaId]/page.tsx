@@ -1,3 +1,5 @@
+// src/app/(app)/base/heat-map/[turmaId]/page.tsx
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -47,10 +49,10 @@ export default function HeatMapPage() {
     return 'bg-red-500 text-white'
   }
 
-  const calcularMediaCompetencia = (comp: 'comp_l' | 'comp_f' | 'comp_r' | 'comp_a' | 'comp_j') => {
+  const calcularMediaCompetencia = (comp: 'comp_l' | 'comp_f' | 'comp_r' | 'comp_a' | 'comp_j'): number => {
     if (data.length === 0) return 0
     const soma = data.reduce((acc, aluno) => acc + (aluno[comp] || 0), 0)
-    return (soma / data.length).toFixed(1)
+    return parseFloat((soma / data.length).toFixed(1))
   }
 
   if (loading) {
@@ -186,11 +188,11 @@ export default function HeatMapPage() {
               <tr className="border-t-2 border-gray-400 bg-gray-50 font-bold">
                 <td className="px-4 py-3 sticky left-0 bg-gray-50">MÉDIA DA TURMA</td>
                 <td className="px-4 py-3 text-center">-</td>
-                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_l')}%</td>
-                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_f')}%</td>
-                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_r')}%</td>
-                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_a')}%</td>
-                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_j')}%</td>
+                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_l').toFixed(1)}%</td>
+                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_f').toFixed(1)}%</td>
+                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_r').toFixed(1)}%</td>
+                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_a').toFixed(1)}%</td>
+                <td className="px-4 py-3 text-center">{calcularMediaCompetencia('comp_j').toFixed(1)}%</td>
               </tr>
             </tbody>
           </table>
@@ -201,19 +203,19 @@ export default function HeatMapPage() {
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h3 className="font-semibold mb-2">💡 Análise Rápida:</h3>
         <ul className="space-y-1 text-sm">
-          {parseFloat(calcularMediaCompetencia('comp_l')) < 50 && (
+          {calcularMediaCompetencia('comp_l') < 50 && (
             <li>⚠️ <strong>Leitura (L)</strong> está crítica na turma</li>
           )}
-          {parseFloat(calcularMediaCompetencia('comp_f')) < 50 && (
+          {calcularMediaCompetencia('comp_f') < 50 && (
             <li>⚠️ <strong>Fluência (F)</strong> precisa de atenção</li>
           )}
-          {parseFloat(calcularMediaCompetencia('comp_r')) < 50 && (
+          {calcularMediaCompetencia('comp_r') < 50 && (
             <li>⚠️ <strong>Raciocínio (R)</strong> é a maior dificuldade</li>
           )}
-          {parseFloat(calcularMediaCompetencia('comp_a')) < 50 && (
+          {calcularMediaCompetencia('comp_a') < 50 && (
             <li>⚠️ <strong>Aplicação (A)</strong> requer reforço</li>
           )}
-          {parseFloat(calcularMediaCompetencia('comp_j')) < 50 && (
+          {calcularMediaCompetencia('comp_j') < 50 && (
             <li>⚠️ <strong>Justificativa (J)</strong> precisa ser trabalhada</li>
           )}
         </ul>
