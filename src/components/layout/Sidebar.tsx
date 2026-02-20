@@ -27,14 +27,15 @@ import {
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
-  FileEdit
+  FileEdit,
+  Activity
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 
-// 🏠 ITENS PRINCIPAIS (sempre visíveis)
+// 🏠 ITENS PRINCIPAIS
 const mainItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/minha-semana', label: 'Minha Semana', icon: Calendar },
@@ -55,9 +56,10 @@ const conteudoItems = [
   { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
 ]
 
-// 🎯 MÉTODO BASE
+// 🎯 MÉTODO BASE (COM DIAGNÓSTICOS)
 const metodoBaseItems = [
   { href: '/base/turmas', label: 'Minhas Turmas', icon: GraduationCap },
+  { href: '/base/diagnosticos/11111111-1111-1111-1111-111111111111', label: 'Diagnósticos D1/D2/D3', icon: Activity },
   { href: '/base/dashboard/11111111-1111-1111-1111-111111111111', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/base/avaliacoes/11111111-1111-1111-1111-111111111111', label: 'Avaliações', icon: ClipboardList },
   { href: '/base/atividades/11111111-1111-1111-1111-111111111111', label: 'Atividades', icon: FileEdit },
@@ -65,7 +67,7 @@ const metodoBaseItems = [
   { href: '/base/notas/calcular/11111111-1111-1111-1111-111111111111', label: 'Calcular Notas', icon: Calculator },
 ]
 
-// ➕ MAIS (otimizado - sem duplicados)
+// ➕ MAIS
 const maisItems = [
   { href: '/listas', label: 'Listas de Exercícios', icon: FileText },
   { href: '/simulados', label: 'Simulados', icon: FileSpreadsheet },
@@ -151,7 +153,6 @@ export function Sidebar() {
           )
         })}
 
-        {/* Divisor */}
         <div className="border-t border-gray-200 my-4"></div>
 
         {/* 👥 GESTÃO */}
@@ -175,7 +176,6 @@ export function Sidebar() {
           )
         })}
 
-        {/* Divisor */}
         <div className="border-t border-gray-200 my-4"></div>
 
         {/* 📚 CONTEÚDO */}
@@ -199,7 +199,6 @@ export function Sidebar() {
           )
         })}
 
-        {/* Divisor */}
         <div className="border-t border-gray-200 my-4"></div>
 
         {/* 🎯 MÉTODO BASE */}
@@ -245,7 +244,6 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* Divisor */}
         <div className="border-t border-gray-200 my-4"></div>
 
         {/* ➕ MAIS */}
@@ -288,7 +286,6 @@ export function Sidebar() {
                 )
               })}
 
-              {/* 🛡️ ADMINISTRAÇÃO */}
               {isAdmin && (
                 <>
                   <div className="border-t border-gray-200 my-2"></div>
@@ -344,7 +341,6 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile menu button */}
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -354,12 +350,10 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* Mobile backdrop */}
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileMenuOpen(false)} />
       )}
 
-      {/* Mobile sidebar */}
       <aside className={clsx(
         'lg:hidden fixed top-0 left-0 h-full w-72 bg-white z-50 transform transition-transform duration-200',
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
@@ -369,7 +363,6 @@ export function Sidebar() {
         </div>
       </aside>
 
-      {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:fixed lg:inset-y-0 lg:left-0 bg-white border-r border-gray-200">
         <NavContent />
       </aside>
