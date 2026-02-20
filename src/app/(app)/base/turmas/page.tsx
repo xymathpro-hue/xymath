@@ -34,14 +34,11 @@ export default function TurmasBASEPage() {
       const response = await fetch('/api/turmas?ano_letivo=2026')
       const { data } = await response.json()
       
-      // Para cada turma, buscar total de alunos e diagnósticos
       const turmasComDados = await Promise.all(
         data.map(async (turma: Turma) => {
-          // Buscar alunos
           const resAlunos = await fetch(`/api/alunos?turma_id=${turma.id}`)
           const { data: alunos } = await resAlunos.json()
           
-          // Buscar diagnósticos
           const resDiag = await fetch(`/api/base/diagnosticos?turma_id=${turma.id}`)
           const { data: diagnosticos } = await resDiag.json()
           
@@ -55,10 +52,9 @@ export default function TurmasBASEPage() {
       
       setTurmas(turmasComDados)
       
-      // Calcular estatísticas
       const stats = {
         total_turmas: turmasComDados.length,
-        usando_base: turmasComDados.filter(t => t.total_diagnosticos > 0).length,
+        usando_base: turmasComDados.filter(t => (t.total_diagnosticos || 0) > 0).length,
         total_alunos: turmasComDados.reduce((sum, t) => sum + (t.total_alunos || 0), 0),
         avaliacoes_aplicadas: turmasComDados.reduce((sum, t) => sum + (t.total_diagnosticos || 0), 0)
       }
@@ -86,7 +82,6 @@ export default function TurmasBASEPage() {
         <p className="text-gray-600">Gerencie suas turmas e acompanhe o progresso BASE</p>
       </div>
 
-      {/* Cards de Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="text-sm text-gray-600">Total de Turmas</div>
@@ -106,7 +101,6 @@ export default function TurmasBASEPage() {
         </div>
       </div>
 
-      {/* Lista de Turmas */}
       {turmas.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <div className="text-6xl mb-4">🎓</div>
@@ -117,13 +111,12 @@ export default function TurmasBASEPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {turmas.map((turma) => (
             <div key={turma.id} className="bg-white rounded-lg shadow p-6">
-              {/* Header do Card */}
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-bold">{turma.nome}</h3>
                   <p className="text-sm text-gray-600">{turma.ano_escolar}º ano - {turma.ano_letivo}</p>
                 </div>
-                {turma.total_diagnosticos > 0 ? (
+                {(turma.total_diagnosticos || 0) > 0 ? (
                   <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-sm font-medium">
                     Ativo
                   </span>
@@ -134,7 +127,6 @@ export default function TurmasBASEPage() {
                 )}
               </div>
 
-              {/* Estatísticas da Turma */}
               <div className="mb-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Alunos:</span>
@@ -146,7 +138,6 @@ export default function TurmasBASEPage() {
                 </div>
               </div>
 
-              {/* Ações */}
               <div className="space-y-2">
                 <Link
                   href={`/base/diagnosticos/${turma.id}`}
@@ -172,7 +163,6 @@ export default function TurmasBASEPage() {
         </div>
       )}
 
-      {/* Card de Ajuda */}
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
         <h3 className="font-semibold text-lg mb-3">💡 Como usar o Método BASE</h3>
         <ol className="space-y-2 text-sm">
