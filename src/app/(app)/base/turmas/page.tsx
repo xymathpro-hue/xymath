@@ -1,10 +1,7 @@
-// src/app/(app)/base/turmas/page.tsx
-
 'use client'
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 
 interface Turma {
   id: string
@@ -16,7 +13,6 @@ interface Turma {
 }
 
 export default function TurmasBASEPage() {
-  const router = useRouter()
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [loading, setLoading] = useState(true)
   const [deletando, setDeletando] = useState<string | null>(null)
@@ -78,7 +74,6 @@ export default function TurmasBASEPage() {
     try {
       setDeletando(turmaId)
       
-      // Deletar do Supabase (cascade vai deletar alunos automaticamente)
       const response = await fetch(`/api/turmas/${turmaId}`, {
         method: 'DELETE'
       })
@@ -86,7 +81,7 @@ export default function TurmasBASEPage() {
       if (!response.ok) throw new Error('Erro ao deletar')
 
       alert('✅ Turma deletada com sucesso!')
-      carregarTurmas() // Recarregar lista
+      carregarTurmas()
     } catch (err) {
       alert('❌ Erro ao deletar turma')
       console.error(err)
@@ -152,7 +147,6 @@ export default function TurmasBASEPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {turmas.map((turma) => (
             <div key={turma.id} className="bg-white rounded-lg shadow p-6 relative">
-              {/* Botão Excluir */}
               <button
                 onClick={() => deletarTurma(turma.id, turma.nome)}
                 disabled={deletando === turma.id}
@@ -227,12 +221,3 @@ export default function TurmasBASEPage() {
     </div>
   )
 }
-```
-
----
-
-## **3️⃣ CRIAR API PARA DELETAR TURMA**
-
-**Caminho:**
-```
-src/app/api/turmas/[turmaId]/route.ts
