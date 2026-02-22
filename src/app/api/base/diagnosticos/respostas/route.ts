@@ -26,21 +26,33 @@ export async function POST(request: NextRequest) {
 
     if (diagError) throw diagError
 
-    // Preparar respostas com turma_id
+    // Preparar respostas com turma_id e 10 questões
     const respostasComTurma = respostas.map((r: any) => ({
       diagnostico_id,
       aluno_id: r.aluno_id,
       turma_id: diagnostico.turma_id,
-      acertos_L: r.acertos_L,
-      acertos_F: r.acertos_F,
-      acertos_R: r.acertos_R,
-      acertos_A: r.acertos_A,
-      acertos_J: r.acertos_J,
-      total_L: r.total_L || 2,
-      total_F: r.total_F || 2,
-      total_R: r.total_R || 2,
-      total_A: r.total_A || 2,
-      total_J: r.total_J || 2
+      faltou: r.faltou || false,
+      questao_1: r.questao_1 || 0,
+      questao_2: r.questao_2 || 0,
+      questao_3: r.questao_3 || 0,
+      questao_4: r.questao_4 || 0,
+      questao_5: r.questao_5 || 0,
+      questao_6: r.questao_6 || 0,
+      questao_7: r.questao_7 || 0,
+      questao_8: r.questao_8 || 0,
+      questao_9: r.questao_9 || 0,
+      questao_10: r.questao_10 || 0,
+      // Manter compatibilidade com sistema antigo (opcional)
+      acertos_L: 0,
+      acertos_F: 0,
+      acertos_R: 0,
+      acertos_A: 0,
+      acertos_J: 0,
+      total_L: 2,
+      total_F: 2,
+      total_R: 2,
+      total_A: 2,
+      total_J: 2
     }))
 
     // Inserir respostas (upsert)
