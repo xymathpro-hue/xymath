@@ -1,5 +1,3 @@
-// src/app/api/turmas/[turmaId]/route.ts
-
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 
@@ -27,13 +25,3 @@ export async function DELETE(
     )
   }
 }
-```
-
----
-
-**Estrutura correta:**
-```
-src/app/api/turmas/
-├── route.ts (POST e GET)
-└── [turmaId]/
-    └── route.ts (DELETE)
