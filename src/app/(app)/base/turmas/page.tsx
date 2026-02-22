@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 interface Turma {
   id: string
@@ -15,8 +16,10 @@ interface Turma {
 }
 
 export default function TurmasBASEPage() {
+  const router = useRouter()
   const [turmas, setTurmas] = useState<Turma[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletando, setDeletando] = useState<string | null>(null)
   const [estatisticas, setEstatisticas] = useState({
     total_turmas: 0,
     usando_base: 0,
@@ -67,6 +70,31 @@ export default function TurmasBASEPage() {
     }
   }
 
+  async function deletarTurma(turmaId: string, turmaNome: string) {
+    const confirma = confirm(`⚠️ Tem certeza que deseja excluir a turma "${turmaNome}"?\n\nISTO VAI DELETAR:\n- Todos os alunos\n- Todos os diagnósticos\n- Todas as avaliações\n\nEsta ação NÃO pode ser desfeita!`)
+    
+    if (!confirma) return
+
+    try {
+      setDeletando(turmaId)
+      
+      // Deletar do Supabase (cascade vai deletar alunos automaticamente)
+      const response = await fetch(`/api/turmas/${turmaId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) throw new Error('Erro ao deletar')
+
+      alert('✅ Turma deletada com sucesso!')
+      carregarTurmas() // Recarregar lista
+    } catch (err) {
+      alert('❌ Erro ao deletar turma')
+      console.error(err)
+    } finally {
+      setDeletando(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -77,9 +105,17 @@ export default function TurmasBASEPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Turmas - Método BASE</h1>
-        <p className="text-gray-600">Gerencie suas turmas e acompanhe o progresso BASE</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Turmas - Método BASE</h1>
+          <p className="text-gray-600">Gerencie suas turmas e acompanhe o progresso BASE</p>
+        </div>
+        <Link
+          href="/turmas/criar"
+          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+        >
+          ➕ Nova Turma
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -105,13 +141,28 @@ export default function TurmasBASEPage() {
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <div className="text-6xl mb-4">🎓</div>
           <p className="text-lg text-gray-600">Nenhuma turma cadastrada</p>
-          <p className="text-sm text-gray-500">Crie turmas na seção "Turmas" do sistema</p>
+          <Link
+            href="/turmas/criar"
+            className="inline-block mt-4 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+          >
+            Criar Primeira Turma
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {turmas.map((turma) => (
-            <div key={turma.id} className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-start justify-between mb-4">
+            <div key={turma.id} className="bg-white rounded-lg shadow p-6 relative">
+              {/* Botão Excluir */}
+              <button
+                onClick={() => deletarTurma(turma.id, turma.nome)}
+                disabled={deletando === turma.id}
+                className="absolute top-4 right-4 p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                title="Excluir turma"
+              >
+                {deletando === turma.id ? '⏳' : '🗑️'}
+              </button>
+
+              <div className="flex items-start justify-between mb-4 pr-8">
                 <div>
                   <h3 className="text-xl font-bold">{turma.nome}</h3>
                   <p className="text-sm text-gray-600">{turma.ano_escolar}º ano - {turma.ano_letivo}</p>
@@ -176,3 +227,12 @@ export default function TurmasBASEPage() {
     </div>
   )
 }
+```
+
+---
+
+## **3️⃣ CRIAR API PARA DELETAR TURMA**
+
+**Caminho:**
+```
+src/app/api/turmas/[turmaId]/route.ts
