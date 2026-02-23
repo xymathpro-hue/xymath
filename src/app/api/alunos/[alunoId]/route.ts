@@ -53,6 +53,23 @@ export async function DELETE(
     const supabase = await createClient()
     const { alunoId } = await context.params
 
+    // PEGAR TURMA_ID ANTES DE DELETAR
+    const { data: alunoData } = await supabase
+      .from('alunos')
+      .select('turma_id')
+      .eq('id', alunoId)
+      .single()
+
+    if (!alunoData) {
+      return NextResponse.json(
+        { error: 'Aluno não encontrado' },
+        { status: 404 }
+      )
+    }
+
+    const turma_id = alunoData.turma_id
+
+    // DELETAR ALUNO
     const { error } = await supabase
       .from('alunos')
       .delete()
@@ -60,9 +77,28 @@ export async function DELETE(
 
     if (error) throw error
 
+    // REORDENAR TODOS OS ALUNOS DA TURMA
+    const { data: todosAlunos } = await supabase
+      .from('alunos')
+      .select('id, nome_completo')
+      .eq('turma_id', turma_id)
+
+    if (todosAlunos && todosAlunos.length > 0) {
+      // ORDENAR ALFABETICAMENTE
+      todosAlunos.sort((a, b) => a.nome_completo.localeCompare(b.nome_completo, 'pt-BR'))
+
+      // ATUALIZAR NÚMEROS
+      for (let i = 0; i < todosAlunos.length; i++) {
+        await supabase
+          .from('alunos')
+          .update({ numero_chamada: i + 1 })
+          .eq('id', todosAlunos[i].id)
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Aluno deletado com sucesso'
+      message: 'Aluno deletado e numeração reordenada'
     })
   } catch (error: any) {
     console.error('Erro ao deletar aluno:', error)
