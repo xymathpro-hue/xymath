@@ -46,6 +46,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // VERIFICAR SE JÁ EXISTE ALUNO COM ESSE NOME NA TURMA
+    const { data: alunoExistente } = await supabase
+      .from('alunos')
+      .select('id, nome_completo')
+      .eq('turma_id', turma_id)
+      .ilike('nome_completo', nome_completo.trim())
+      .single()
+
+    if (alunoExistente) {
+      return NextResponse.json(
+        { error: 'Aluno já pertence a esta turma' },
+        { status: 409 }
+      )
+    }
+
     const { data: alunosExistentes } = await supabase
       .from('alunos')
       .select('id, nome_completo')
