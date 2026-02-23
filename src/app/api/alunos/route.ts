@@ -51,7 +51,10 @@ export async function POST(request: NextRequest) {
       .select('id, nome_completo')
       .eq('turma_id', turma_id)
 
-    const todosAlunos = [...(alunosExistentes || []), { nome_completo }]
+    const todosAlunos = [
+      ...(alunosExistentes || []),
+      { nome_completo, id: null }
+    ]
     
     todosAlunos.sort((a, b) => a.nome_completo.localeCompare(b.nome_completo, 'pt-BR'))
     
@@ -73,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     const alunosParaAtualizar = todosAlunos
       .slice(numeroNovo)
-      .filter(a => a.id)
+      .filter((a): a is { id: string; nome_completo: string } => a.id !== null)
       .map((a, idx) => ({
         id: a.id,
         numero_chamada: numeroNovo + idx + 1
