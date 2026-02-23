@@ -3,11 +3,11 @@ import { createClient } from '@/lib/supabase-server'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { alunoId: string } }
+  context: { params: Promise<{ alunoId: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const alunoId = params.alunoId
+    const { alunoId } = await context.params
     const body = await request.json()
 
     const { nome_completo, tem_laudo, observacoes } = body
@@ -47,11 +47,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { alunoId: string } }
+  context: { params: Promise<{ alunoId: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const alunoId = params.alunoId
+    const { alunoId } = await context.params
 
     const { error } = await supabase
       .from('alunos')
