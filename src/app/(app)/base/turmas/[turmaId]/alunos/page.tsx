@@ -20,7 +20,6 @@ export default function AlunosPage() {
   const [showModal, setShowModal] = useState(false)
   const [formData, setFormData] = useState({
     nome_completo: '',
-    numero_chamada: 1,
     tem_laudo: false,
     observacoes: ''
   })
@@ -43,6 +42,11 @@ export default function AlunosPage() {
   }
 
   async function adicionarAluno() {
+    if (!formData.nome_completo.trim()) {
+      alert('⚠️ Digite o nome do aluno')
+      return
+    }
+
     try {
       const response = await fetch('/api/alunos', {
         method: 'POST',
@@ -57,7 +61,7 @@ export default function AlunosPage() {
 
       alert('✅ Aluno adicionado!')
       setShowModal(false)
-      setFormData({ nome_completo: '', numero_chamada: alunos.length + 1, tem_laudo: false, observacoes: '' })
+      setFormData({ nome_completo: '', tem_laudo: false, observacoes: '' })
       carregarAlunos()
     } catch (err) {
       alert('❌ Erro ao adicionar aluno')
@@ -74,7 +78,7 @@ export default function AlunosPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6 bg-gray-50 min-h-screen">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-700">Alunos da Turma</h1>
         <button
@@ -85,7 +89,7 @@ export default function AlunosPage() {
         </button>
       </div>
 
-      <div className="bg-gray-50 rounded-lg shadow overflow-hidden border border-gray-200">
+      <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
         <table className="w-full">
           <thead className="bg-gray-100 border-b border-gray-200">
             <tr>
@@ -127,24 +131,18 @@ export default function AlunosPage() {
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2 text-gray-600">Nome Completo</label>
+                <label className="block text-sm font-medium mb-2 text-gray-600">Nome Completo *</label>
                 <input
                   type="text"
                   value={formData.nome_completo}
                   onChange={(e) => setFormData({ ...formData, nome_completo: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
                   placeholder="João da Silva"
+                  autoFocus
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-600">Número de Chamada</label>
-                <input
-                  type="number"
-                  value={formData.numero_chamada}
-                  onChange={(e) => setFormData({ ...formData, numero_chamada: parseInt(e.target.value) })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
-                />
+                <p className="text-xs text-gray-500 mt-1">
+                  O número de chamada será gerado automaticamente em ordem alfabética
+                </p>
               </div>
 
               <div>
