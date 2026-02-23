@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const body = await request.json()
 
-    const { turma_id, nome_completo, numero_chamada, tem_laudo, observacoes } = body
+    const { turma_id, nome_completo, tem_laudo, observacoes } = body
 
     if (!turma_id || !nome_completo) {
       return NextResponse.json(
@@ -46,12 +46,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const { data: alunosExistentes } = await supabase
+      .from('alunos')
+      .select('id, nome_completo')
+      .eq('turma_id', turma_id)
+
+    const todosAlunos = [...(alunosExistentes || []), { nome_completo }]
+    
+    todosAlunos.sort((a, b) => a.nome_completo.localeCompare(b.nome_completo, 'pt-BR'))
+    
+    const numeroNovo = todosAlunos.findIndex(a => a.nome_completo === nome_completo) + 1
+
     const { data, error } = await supabase
       .from('alunos')
       .insert({
         turma_id,
         nome_completo,
-        numero_chamada: numero_chamada || 1,
+        numero_chamada: numeroNovo,
         tem_laudo: tem_laudo || false,
         observacoes
       })
@@ -59,6 +70,23 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) throw error
+
+    const alunosParaAtualizar = todosAlunos
+      .slice(numeroNovo)
+      .filter(a => a.id)
+      .map((a, idx) => ({
+        id: a.id,
+        numero_chamada: numeroNovo + idx + 1
+      }))
+
+    if (alunosParaAtualizar.length > 0) {
+      for (const aluno of alunosParaAtualizar) {
+        await supabase
+          .from('alunos')
+          .update({ numero_chamada: aluno.numero_chamada })
+          .eq('id', aluno.id)
+      }
+    }
 
     return NextResponse.json({
       success: true,
