@@ -1,3 +1,32 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase-server'
+
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { searchParams } = new URL(request.url)
+    const ano_letivo = searchParams.get('ano_letivo')
+
+    let query = supabase.from('turmas').select('*')
+
+    if (ano_letivo) {
+      query = query.eq('ano_letivo', parseInt(ano_letivo))
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return NextResponse.json({ data })
+  } catch (error: any) {
+    console.error('Erro ao buscar turmas:', error)
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    )
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -12,7 +41,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // CRIAR TURMA
     const { data: turma, error: turmaError } = await supabase
       .from('turmas')
       .insert({
@@ -25,7 +53,6 @@ export async function POST(request: NextRequest) {
 
     if (turmaError) throw turmaError
 
-    // CRIAR OS 3 DIAGNÓSTICOS AUTOMATICAMENTE
     const diagnosticos = [
       {
         turma_id: turma.id,
