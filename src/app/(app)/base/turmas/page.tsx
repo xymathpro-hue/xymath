@@ -89,6 +89,10 @@ export default function TurmasBASEPage() {
     }
   }
 
+  function irPara(url: string) {
+    window.location.href = url
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -104,9 +108,9 @@ export default function TurmasBASEPage() {
           <h1 className="text-3xl font-bold text-gray-700">Turmas - Método BASE</h1>
           <p className="text-gray-600">Gerencie suas turmas e acompanhe o progresso BASE</p>
         </div>
-        <a href="/turmas/criar" className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium no-underline">
+        <button onClick={() => irPara('/turmas/criar')} className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium cursor-pointer">
           ➕ Nova Turma
-        </a>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -132,19 +136,15 @@ export default function TurmasBASEPage() {
         <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
           <div className="text-6xl mb-4">🎓</div>
           <p className="text-lg text-gray-600">Nenhuma turma cadastrada</p>
-          <a href="/turmas/criar" className="inline-block mt-4 px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium no-underline">
+          <button onClick={() => irPara('/turmas/criar')} className="inline-block mt-4 px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium cursor-pointer">
             Criar Primeira Turma
-          </a>
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {turmas.map((turma) => (
             <div key={turma.id} className="bg-white rounded-lg shadow p-6 relative border border-gray-200">
-              <button
-                onClick={() => deletarTurma(turma.id, turma.nome)}
-                disabled={deletando === turma.id}
-                className="absolute top-4 right-4 p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
-                title="Excluir turma">
+              <button onClick={() => deletarTurma(turma.id, turma.nome)} disabled={deletando === turma.id} className="absolute top-4 right-4 p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50 cursor-pointer" title="Excluir turma">
                 {deletando === turma.id ? '⏳' : '🗑️'}
               </button>
 
@@ -165,21 +165,21 @@ export default function TurmasBASEPage() {
               </div>
 
               <div className="space-y-2">
-                <a href={`/base/turmas/${turma.id}/alunos`} className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium no-underline">
+                <button onClick={() => irPara(`/base/turmas/${turma.id}/alunos`)} className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium cursor-pointer">
                   👥 Gerenciar Alunos
-                </a>
+                </button>
                 
-                <a href={`/base/diagnosticos/${turma.id}`} className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium no-underline">
+                <button onClick={() => irPara(`/base/diagnosticos/${turma.id}`)} className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium cursor-pointer">
                   📋 Diagnósticos D1/D2/D3
-                </a>
+                </button>
                 
-                <a href={`/base/dashboard/${turma.id}`} className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium no-underline">
+                <button onClick={() => irPara(`/base/dashboard/${turma.id}`)} className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium cursor-pointer">
                   📊 Dashboard
-                </a>
+                </button>
                 
-                <a href={`/base/avaliacoes/${turma.id}`} className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium no-underline">
+                <button onClick={() => irPara(`/base/avaliacoes/${turma.id}`)} className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium cursor-pointer">
                   📝 Avaliações
-                </a>
+                </button>
               </div>
             </div>
           ))}
