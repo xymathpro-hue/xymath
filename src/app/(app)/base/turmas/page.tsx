@@ -185,17 +185,26 @@ export default function TurmasBASEPage() {
 
               <div className="space-y-2">
                 <Link
+                  href={`/base/turmas/${turma.id}/alunos`}
+                  className="block w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-center rounded-lg font-medium"
+                >
+                  👥 Gerenciar Alunos
+                </Link>
+                
+                <Link
                   href={`/base/diagnosticos/${turma.id}`}
                   className="block w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-center rounded-lg font-medium"
                 >
                   📋 Diagnósticos D1/D2/D3
                 </Link>
+                
                 <Link
                   href={`/base/dashboard/${turma.id}`}
                   className="block w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-center rounded-lg font-medium"
                 >
                   📊 Dashboard
                 </Link>
+                
                 <Link
                   href={`/base/avaliacoes/${turma.id}`}
                   className="block w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-center rounded-lg font-medium"
@@ -211,11 +220,12 @@ export default function TurmasBASEPage() {
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
         <h3 className="font-semibold text-lg mb-3">💡 Como usar o Método BASE</h3>
         <ol className="space-y-2 text-sm">
-          <li><strong>1.</strong> Escolha uma turma e acesse "Diagnósticos D1/D2/D3"</li>
-          <li><strong>2.</strong> Crie os 3 diagnósticos (D1-Fácil, D2-Médio, D3-Difícil)</li>
-          <li><strong>3.</strong> Aplique e lance as notas nas primeiras 3 semanas</li>
-          <li><strong>4.</strong> Sistema classifica automaticamente em Grupos A/B/C</li>
-          <li><strong>5.</strong> Acompanhe evolução no Dashboard e Heat Map</li>
+          <li><strong>1.</strong> Escolha uma turma e clique em "Gerenciar Alunos"</li>
+          <li><strong>2.</strong> Adicione os alunos da turma (marque se tem laudo)</li>
+          <li><strong>3.</strong> Acesse "Diagnósticos D1/D2/D3" e crie os 3 diagnósticos</li>
+          <li><strong>4.</strong> Aplique nas primeiras 3 semanas e lance as notas</li>
+          <li><strong>5.</strong> Sistema classifica automaticamente em Grupos A/B/C</li>
+          <li><strong>6.</strong> Acompanhe evolução no Dashboard e Heat Map</li>
         </ol>
       </div>
     </div>
