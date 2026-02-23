@@ -68,7 +68,7 @@ export default function AlunosPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-gray-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -76,30 +76,30 @@ export default function AlunosPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Alunos da Turma</h1>
+        <h1 className="text-3xl font-bold text-gray-700">Alunos da Turma</h1>
         <button
           onClick={() => setShowModal(true)}
-          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+          className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium"
         >
           ➕ Adicionar Aluno
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-gray-50 rounded-lg shadow overflow-hidden border border-gray-200">
         <table className="w-full">
-          <thead className="bg-gray-100">
+          <thead className="bg-gray-100 border-b border-gray-200">
             <tr>
-              <th className="px-4 py-3 text-left">Nº</th>
-              <th className="px-4 py-3 text-left">Nome</th>
-              <th className="px-4 py-3 text-center">Laudo</th>
-              <th className="px-4 py-3 text-left">Observações</th>
+              <th className="px-4 py-3 text-left text-gray-600">Nº</th>
+              <th className="px-4 py-3 text-left text-gray-600">Nome</th>
+              <th className="px-4 py-3 text-center text-gray-600">Laudo</th>
+              <th className="px-4 py-3 text-left text-gray-600">Observações</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="bg-white">
             {alunos.map((aluno) => (
-              <tr key={aluno.id} className="border-t hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium">{aluno.numero_chamada}</td>
-                <td className="px-4 py-3">{aluno.nome_completo}</td>
+              <tr key={aluno.id} className="border-t border-gray-200 hover:bg-gray-50">
+                <td className="px-4 py-3 font-medium text-gray-700">{aluno.numero_chamada}</td>
+                <td className="px-4 py-3 text-gray-700">{aluno.nome_completo}</td>
                 <td className="px-4 py-3 text-center">
                   {aluno.tem_laudo ? (
                     <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded text-sm font-medium">
@@ -123,27 +123,27 @@ export default function AlunosPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-2xl font-bold mb-4">Adicionar Aluno</h2>
+            <h2 className="text-2xl font-bold mb-4 text-gray-700">Adicionar Aluno</h2>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Nome Completo</label>
+                <label className="block text-sm font-medium mb-2 text-gray-600">Nome Completo</label>
                 <input
                   type="text"
                   value={formData.nome_completo}
                   onChange={(e) => setFormData({ ...formData, nome_completo: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
                   placeholder="João da Silva"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Número de Chamada</label>
+                <label className="block text-sm font-medium mb-2 text-gray-600">Número de Chamada</label>
                 <input
                   type="number"
                   value={formData.numero_chamada}
                   onChange={(e) => setFormData({ ...formData, numero_chamada: parseInt(e.target.value) })}
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
                 />
               </div>
 
@@ -155,16 +155,16 @@ export default function AlunosPage() {
                     onChange={(e) => setFormData({ ...formData, tem_laudo: e.target.checked })}
                     className="w-5 h-5"
                   />
-                  <span className="text-sm font-medium">Aluno possui laudo médico</span>
+                  <span className="text-sm font-medium text-gray-600">Aluno possui laudo médico</span>
                 </label>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Observações</label>
+                <label className="block text-sm font-medium mb-2 text-gray-600">Observações</label>
                 <textarea
                   value={formData.observacoes}
                   onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
                   rows={3}
                   placeholder="Ex: TDAH, Dislexia, etc."
                 />
@@ -174,13 +174,13 @@ export default function AlunosPage() {
             <div className="flex gap-4 mt-6">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg"
+                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-700"
               >
                 Cancelar
               </button>
               <button
                 onClick={adicionarAluno}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg"
               >
                 Adicionar
               </button>
