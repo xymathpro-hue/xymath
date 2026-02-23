@@ -53,7 +53,7 @@ export default function TurmasBASEPage() {
       
       const stats = {
         total_turmas: turmasComDados.length,
-        usando_base: turmasComDados.filter(t => (t.total_diagnosticos || 0) > 0).length,
+        usando_base: turmasComDados.length,
         total_alunos: turmasComDados.reduce((sum, t) => sum + (t.total_alunos || 0), 0),
         avaliacoes_aplicadas: turmasComDados.reduce((sum, t) => sum + (t.total_diagnosticos || 0), 0)
       }
@@ -93,52 +93,52 @@ export default function TurmasBASEPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-gray-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6 bg-gray-50 min-h-screen">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Turmas - Método BASE</h1>
+          <h1 className="text-3xl font-bold text-gray-700">Turmas - Método BASE</h1>
           <p className="text-gray-600">Gerencie suas turmas e acompanhe o progresso BASE</p>
         </div>
         <Link
           href="/turmas/criar"
-          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+          className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium"
         >
           ➕ Nova Turma
         </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
           <div className="text-sm text-gray-600">Total de Turmas</div>
-          <div className="text-3xl font-bold mt-2">{estatisticas.total_turmas}</div>
+          <div className="text-3xl font-bold text-gray-700 mt-2">{estatisticas.total_turmas}</div>
         </div>
-        <div className="bg-green-50 p-6 rounded-lg shadow">
-          <div className="text-sm text-green-600">Usando BASE</div>
-          <div className="text-3xl font-bold text-green-700 mt-2">{estatisticas.usando_base}</div>
+        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+          <div className="text-sm text-gray-600">Usando BASE</div>
+          <div className="text-3xl font-bold text-gray-700 mt-2">{estatisticas.usando_base}</div>
         </div>
-        <div className="bg-blue-50 p-6 rounded-lg shadow">
-          <div className="text-sm text-blue-600">Total de Alunos</div>
-          <div className="text-3xl font-bold text-blue-700 mt-2">{estatisticas.total_alunos}</div>
+        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+          <div className="text-sm text-gray-600">Total de Alunos</div>
+          <div className="text-3xl font-bold text-gray-700 mt-2">{estatisticas.total_alunos}</div>
         </div>
-        <div className="bg-purple-50 p-6 rounded-lg shadow">
-          <div className="text-sm text-purple-600">Avaliações Aplicadas</div>
-          <div className="text-3xl font-bold text-purple-700 mt-2">{estatisticas.avaliacoes_aplicadas}</div>
+        <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+          <div className="text-sm text-gray-600">Avaliações Aplicadas</div>
+          <div className="text-3xl font-bold text-gray-700 mt-2">{estatisticas.avaliacoes_aplicadas}</div>
         </div>
       </div>
 
       {turmas.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
+        <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
           <div className="text-6xl mb-4">🎓</div>
           <p className="text-lg text-gray-600">Nenhuma turma cadastrada</p>
           <Link
             href="/turmas/criar"
-            className="inline-block mt-4 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+            className="inline-block mt-4 px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium"
           >
             Criar Primeira Turma
           </Link>
@@ -146,7 +146,7 @@ export default function TurmasBASEPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {turmas.map((turma) => (
-            <div key={turma.id} className="bg-white rounded-lg shadow p-6 relative">
+            <div key={turma.id} className="bg-white rounded-lg shadow p-6 relative border border-gray-200">
               <button
                 onClick={() => deletarTurma(turma.id, turma.nome)}
                 disabled={deletando === turma.id}
@@ -156,58 +156,47 @@ export default function TurmasBASEPage() {
                 {deletando === turma.id ? '⏳' : '🗑️'}
               </button>
 
-              <div className="flex items-start justify-between mb-4 pr-8">
-                <div>
-                  <h3 className="text-xl font-bold">{turma.nome}</h3>
-                  <p className="text-sm text-gray-600">{turma.ano_escolar}º ano - {turma.ano_letivo}</p>
-                </div>
-                {(turma.total_diagnosticos || 0) > 0 ? (
-                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-sm font-medium">
-                    Ativo
-                  </span>
-                ) : (
-                  <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm font-medium">
-                    Inativo
-                  </span>
-                )}
+              <div className="mb-4 pr-8">
+                <h3 className="text-xl font-bold text-gray-700">{turma.nome}</h3>
+                <p className="text-sm text-gray-600">{turma.ano_escolar}º ano - {turma.ano_letivo}</p>
               </div>
 
               <div className="mb-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Alunos:</span>
-                  <span className="font-medium">{turma.total_alunos || 0}</span>
+                  <span className="font-medium text-gray-700">{turma.total_alunos || 0}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Diagnósticos:</span>
-                  <span className="font-medium">{turma.total_diagnosticos || 0}/3</span>
+                  <span className="font-medium text-gray-700">{turma.total_diagnosticos || 0}/3</span>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Link
                   href={`/base/turmas/${turma.id}/alunos`}
-                  className="block w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-center rounded-lg font-medium"
+                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium"
                 >
                   👥 Gerenciar Alunos
                 </Link>
                 
                 <Link
                   href={`/base/diagnosticos/${turma.id}`}
-                  className="block w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-center rounded-lg font-medium"
+                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium"
                 >
                   📋 Diagnósticos D1/D2/D3
                 </Link>
                 
                 <Link
                   href={`/base/dashboard/${turma.id}`}
-                  className="block w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-center rounded-lg font-medium"
+                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium"
                 >
                   📊 Dashboard
                 </Link>
                 
                 <Link
                   href={`/base/avaliacoes/${turma.id}`}
-                  className="block w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-center rounded-lg font-medium"
+                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium"
                 >
                   📝 Avaliações
                 </Link>
@@ -217,9 +206,9 @@ export default function TurmasBASEPage() {
         </div>
       )}
 
-      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h3 className="font-semibold text-lg mb-3">💡 Como usar o Método BASE</h3>
-        <ol className="space-y-2 text-sm">
+      <div className="mt-6 bg-white border border-gray-300 rounded-lg p-6">
+        <h3 className="font-semibold text-lg mb-3 text-gray-700">💡 Como usar o Método BASE</h3>
+        <ol className="space-y-2 text-sm text-gray-600">
           <li><strong>1.</strong> Escolha uma turma e clique em "Gerenciar Alunos"</li>
           <li><strong>2.</strong> Adicione os alunos da turma (marque se tem laudo)</li>
           <li><strong>3.</strong> Acesse "Diagnósticos D1/D2/D3" e crie os 3 diagnósticos</li>
