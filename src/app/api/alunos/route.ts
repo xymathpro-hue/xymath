@@ -1,30 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 
-export async function GET(request: NextRequest) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { alunoId: string } }
+) {
   try {
     const supabase = await createClient()
-    const { searchParams } = new URL(request.url)
-    const turma_id = searchParams.get('turma_id')
+    const alunoId = params.alunoId
+    const body = await request.json()
 
-    if (!turma_id) {
+    const { nome_completo, tem_laudo, observacoes } = body
+
+    if (!nome_completo) {
       return NextResponse.json(
-        { error: 'turma_id é obrigatório' },
+        { error: 'nome_completo é obrigatório' },
         { status: 400 }
       )
     }
 
     const { data, error } = await supabase
       .from('alunos')
-      .select('*')
-      .eq('turma_id', turma_id)
-      .order('numero_chamada', { ascending: true })
+      .update({
+        nome_completo,
+        tem_laudo: tem_laudo || false,
+        observacoes
+      })
+      .eq('id', alunoId)
+      .select()
+      .single()
 
     if (error) throw error
 
-    return NextResponse.json({ data })
+    return NextResponse.json({
+      success: true,
+      data
+    })
   } catch (error: any) {
-    console.error('Erro ao buscar alunos:', error)
+    console.error('Erro ao editar aluno:', error)
     return NextResponse.json(
       { error: error.message },
       { status: 500 }
@@ -32,71 +45,27 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { alunoId: string } }
+) {
   try {
     const supabase = await createClient()
-    const body = await request.json()
+    const alunoId = params.alunoId
 
-    const { turma_id, nome_completo, tem_laudo, observacoes } = body
-
-    if (!turma_id || !nome_completo) {
-      return NextResponse.json(
-        { error: 'Campos obrigatórios: turma_id, nome_completo' },
-        { status: 400 }
-      )
-    }
-
-    const { data: alunosExistentes } = await supabase
+    const { error } = await supabase
       .from('alunos')
-      .select('id, nome_completo')
-      .eq('turma_id', turma_id)
-
-    const todosAlunos = [
-      ...(alunosExistentes || []),
-      { nome_completo, id: null }
-    ]
-    
-    todosAlunos.sort((a, b) => a.nome_completo.localeCompare(b.nome_completo, 'pt-BR'))
-    
-    const numeroNovo = todosAlunos.findIndex(a => a.nome_completo === nome_completo) + 1
-
-    const { data, error } = await supabase
-      .from('alunos')
-      .insert({
-        turma_id,
-        nome_completo,
-        numero_chamada: numeroNovo,
-        tem_laudo: tem_laudo || false,
-        observacoes
-      })
-      .select()
-      .single()
+      .delete()
+      .eq('id', alunoId)
 
     if (error) throw error
 
-    const alunosParaAtualizar = todosAlunos
-      .slice(numeroNovo)
-      .filter((a): a is { id: string; nome_completo: string } => a.id !== null)
-      .map((a, idx) => ({
-        id: a.id,
-        numero_chamada: numeroNovo + idx + 1
-      }))
-
-    if (alunosParaAtualizar.length > 0) {
-      for (const aluno of alunosParaAtualizar) {
-        await supabase
-          .from('alunos')
-          .update({ numero_chamada: aluno.numero_chamada })
-          .eq('id', aluno.id)
-      }
-    }
-
     return NextResponse.json({
       success: true,
-      data
+      message: 'Aluno deletado com sucesso'
     })
   } catch (error: any) {
-    console.error('Erro ao criar aluno:', error)
+    console.error('Erro ao deletar aluno:', error)
     return NextResponse.json(
       { error: error.message },
       { status: 500 }
