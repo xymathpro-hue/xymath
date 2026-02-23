@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 
 interface Turma {
   id: string
@@ -105,12 +104,12 @@ export default function TurmasBASEPage() {
           <h1 className="text-3xl font-bold text-gray-700">Turmas - Método BASE</h1>
           <p className="text-gray-600">Gerencie suas turmas e acompanhe o progresso BASE</p>
         </div>
-        <Link
+        
           href="/turmas/criar"
-          className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium"
+          className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium no-underline"
         >
           ➕ Nova Turma
-        </Link>
+        </a>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -136,12 +135,12 @@ export default function TurmasBASEPage() {
         <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
           <div className="text-6xl mb-4">🎓</div>
           <p className="text-lg text-gray-600">Nenhuma turma cadastrada</p>
-          <Link
+          
             href="/turmas/criar"
-            className="inline-block mt-4 px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium"
+            className="inline-block mt-4 px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium no-underline"
           >
             Criar Primeira Turma
-          </Link>
+          </a>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -173,33 +172,33 @@ export default function TurmasBASEPage() {
               </div>
 
               <div className="space-y-2">
-                <Link
+                
                   href={`/base/turmas/${turma.id}/alunos`}
-                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium"
+                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium no-underline"
                 >
                   👥 Gerenciar Alunos
-                </Link>
+                </a>
                 
-                <Link
+                
                   href={`/base/diagnosticos/${turma.id}`}
-                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium"
+                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium no-underline"
                 >
                   📋 Diagnósticos D1/D2/D3
-                </Link>
+                </a>
                 
-                <Link
+                
                   href={`/base/dashboard/${turma.id}`}
-                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium"
+                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium no-underline"
                 >
                   📊 Dashboard
-                </Link>
+                </a>
                 
-                <Link
+                
                   href={`/base/avaliacoes/${turma.id}`}
-                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium"
+                  className="block w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-center rounded-lg font-medium no-underline"
                 >
                   📝 Avaliações
-                </Link>
+                </a>
               </div>
             </div>
           ))}
