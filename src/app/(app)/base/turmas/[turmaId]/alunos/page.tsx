@@ -139,11 +139,13 @@ export default function AlunosPage() {
   return (
     <div className="container mx-auto p-6 bg-gray-50 min-h-screen">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-700">Alunos da Turma</h1>
-        <button
-          onClick={abrirModalAdicionar}
-          className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium"
-        >
+        <div>
+          <h1 className="text-3xl font-bold text-gray-700">Alunos da Turma</h1>
+          <a href="/base/turmas" className="text-sm text-gray-600 hover:text-gray-900" style={{textDecoration: 'none'}}>
+            ← Voltar para Turmas
+          </a>
+        </div>
+        <button onClick={abrirModalAdicionar} className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium">
           ➕ Adicionar Aluno
         </button>
       </div>
@@ -180,19 +182,10 @@ export default function AlunosPage() {
                 </td>
                 <td className="px-4 py-3 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <button
-                      onClick={() => abrirModalEditar(aluno)}
-                      className="px-3 py-1 text-blue-600 hover:bg-blue-50 rounded"
-                      title="Editar aluno"
-                    >
+                    <button onClick={() => abrirModalEditar(aluno)} className="px-3 py-1 text-blue-600 hover:bg-blue-50 rounded" title="Editar aluno">
                       ✏️
                     </button>
-                    <button
-                      onClick={() => deletarAluno(aluno.id, aluno.nome_completo)}
-                      disabled={deletando === aluno.id}
-                      className="px-3 py-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
-                      title="Remover aluno"
-                    >
+                    <button onClick={() => deletarAluno(aluno.id, aluno.nome_completo)} disabled={deletando === aluno.id} className="px-3 py-1 text-red-600 hover:bg-red-50 rounded disabled:opacity-50" title="Remover aluno">
                       {deletando === aluno.id ? '⏳' : '🗑️'}
                     </button>
                   </div>
@@ -213,14 +206,7 @@ export default function AlunosPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-600">Nome Completo *</label>
-                <input
-                  type="text"
-                  value={formData.nome_completo}
-                  onChange={(e) => setFormData({ ...formData, nome_completo: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
-                  placeholder="João da Silva"
-                  autoFocus
-                />
+                <input type="text" value={formData.nome_completo} onChange={(e) => setFormData({ ...formData, nome_completo: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700" placeholder="João da Silva" autoFocus />
                 {!editando && (
                   <p className="text-xs text-gray-500 mt-1">
                     O número de chamada será gerado automaticamente em ordem alfabética
@@ -230,42 +216,22 @@ export default function AlunosPage() {
 
               <div>
                 <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.tem_laudo}
-                    onChange={(e) => setFormData({ ...formData, tem_laudo: e.target.checked })}
-                    className="w-5 h-5"
-                  />
+                  <input type="checkbox" checked={formData.tem_laudo} onChange={(e) => setFormData({ ...formData, tem_laudo: e.target.checked })} className="w-5 h-5" />
                   <span className="text-sm font-medium text-gray-600">Aluno possui laudo médico</span>
                 </label>
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-600">Observações</label>
-                <textarea
-                  value={formData.observacoes}
-                  onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
-                  rows={3}
-                  placeholder="Ex: TDAH, Dislexia, etc."
-                />
+                <textarea value={formData.observacoes} onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700" rows={3} placeholder="Ex: TDAH, Dislexia, etc." />
               </div>
             </div>
 
             <div className="flex gap-4 mt-6">
-              <button
-                onClick={() => {
-                  setShowModal(false)
-                  setEditando(null)
-                }}
-                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-700"
-              >
+              <button onClick={() => { setShowModal(false); setEditando(null); }} className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-700">
                 Cancelar
               </button>
-              <button
-                onClick={salvarAluno}
-                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg"
-              >
+              <button onClick={salvarAluno} className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg">
                 {editando ? 'Salvar' : 'Adicionar'}
               </button>
             </div>
