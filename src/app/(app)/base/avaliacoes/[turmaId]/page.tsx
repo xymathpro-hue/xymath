@@ -1,47 +1,33 @@
- 
-// src/app/(app)/base/avaliacoes/[turmaId]/page.tsx
-
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useParams } from 'next/navigation'
 
 interface Avaliacao {
   id: string
   titulo: string
-  bimestre: number
-  mes: number
   data_aplicacao: string
   total_questoes: number
-  total_respostas?: number
+  bimestre: number
 }
 
-export default function ListarAvaliacoesPage() {
+export default function AvaliacoesPage() {
   const params = useParams()
-  const router = useRouter()
   const turmaId = params.turmaId as string
   
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([])
   const [loading, setLoading] = useState(true)
-  const [criando, setCriando] = useState(false)
-  
-  // Form de criação
-  const [bimestre, setBimestre] = useState(1)
-  const [mes, setMes] = useState(1)
-  const [titulo, setTitulo] = useState('')
-  const [dataAplicacao, setDataAplicacao] = useState(new Date().toISOString().split('T')[0])
 
   useEffect(() => {
     carregarAvaliacoes()
-  }, [turmaId])
+  }, [])
 
   async function carregarAvaliacoes() {
     try {
       setLoading(true)
-      const response = await fetch(`/api/base/avaliacoes-mensais?turma_id=${turmaId}`)
-      const result = await response.json()
-      setAvaliacoes(result.data || [])
+      const response = await fetch(`/api/avaliacoes?turma_id=${turmaId}`)
+      const { data } = await response.json()
+      setAvaliacoes(data || [])
     } catch (err) {
       console.error(err)
     } finally {
@@ -49,186 +35,76 @@ export default function ListarAvaliacoesPage() {
     }
   }
 
-  async function criarAvaliacao() {
-    if (!titulo.trim()) {
-      alert('❌ Digite um título para a avaliação')
-      return
-    }
-
-    try {
-      setCriando(true)
-      
-      const response = await fetch('/api/base/avaliacoes-mensais', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          turma_id: turmaId,
-          bimestre,
-          mes,
-          titulo,
-          data_aplicacao: dataAplicacao,
-          total_questoes: 12
-        })
-      })
-
-      const result = await response.json()
-      
-      if (result.success) {
-        alert('✅ Avaliação criada!')
-        setTitulo('')
-        carregarAvaliacoes()
-      } else {
-        throw new Error(result.error || 'Erro ao criar')
-      }
-    } catch (err: any) {
-      alert(`❌ Erro: ${err.message}`)
-    } finally {
-      setCriando(false)
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-gray-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6 bg-gray-50 min-h-screen">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Avaliações Mensais BASE</h1>
-        <p className="text-gray-600">Gerencie as avaliações mensais da turma</p>
+        <h1 className="text-3xl font-bold text-gray-700">Avaliações - Método BASE</h1>
+        <a href="/base/turmas" className="text-sm text-gray-600 hover:text-gray-900" style={{textDecoration: 'none'}}>
+          ← Voltar para Turmas
+        </a>
       </div>
 
-      {/* Formulário de Criação */}
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Criar Nova Avaliação</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Bimestre */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Bimestre</label>
-            <select
-              value={bimestre}
-              onChange={(e) => setBimestre(parseInt(e.target.value))}
-              className="w-full px-4 py-2 border rounded-lg"
-            >
-              {[1, 2, 3, 4].map(b => (
-                <option key={b} value={b}>{b}º Bimestre</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Mês */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Avaliação</label>
-            <select
-              value={mes}
-              onChange={(e) => setMes(parseInt(e.target.value))}
-              className="w-full px-4 py-2 border rounded-lg"
-            >
-              <option value={1}>Mensal 1</option>
-              <option value={2}>Mensal 2</option>
-            </select>
-          </div>
-
-          {/* Data */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Data de Aplicação</label>
-            <input
-              type="date"
-              value={dataAplicacao}
-              onChange={(e) => setDataAplicacao(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg"
-            />
-          </div>
-
-          {/* Título */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Título</label>
-            <input
-              type="text"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              placeholder="Ex: Avaliação Mensal 1"
-              className="w-full px-4 py-2 border rounded-lg"
-            />
-          </div>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+        <h3 className="font-semibold text-lg mb-3 text-gray-700">📝 Avaliações BASE</h3>
+        <div className="space-y-2 text-sm text-gray-600">
+          <p>Após aplicar os diagnósticos D1, D2 e D3, você pode criar avaliações personalizadas para cada grupo (A, B, C).</p>
+          <p>As avaliações seguem os mesmos critérios de classificação do Método BASE.</p>
         </div>
-
-        <button
-          onClick={criarAvaliacao}
-          disabled={criando}
-          className="mt-4 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50"
-        >
-          {criando ? 'Criando...' : '➕ Criar Avaliação'}
-        </button>
       </div>
 
-      {/* Lista de Avaliações */}
-      <div className="bg-white rounded-lg shadow">
-        {avaliacoes.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            <div className="text-6xl mb-4">📝</div>
-            <p className="text-lg">Nenhuma avaliação criada ainda</p>
-            <p className="text-sm">Crie uma avaliação acima para começar</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-3 text-left">Título</th>
-                  <th className="px-4 py-3 text-center">Bimestre</th>
-                  <th className="px-4 py-3 text-center">Mês</th>
-                  <th className="px-4 py-3 text-center">Data</th>
-                  <th className="px-4 py-3 text-center">Questões</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                  <th className="px-4 py-3 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {avaliacoes
-                  .sort((a, b) => {
-                    if (a.bimestre !== b.bimestre) return b.bimestre - a.bimestre
-                    return b.mes - a.mes
-                  })
-                  .map((aval) => (
-                    <tr key={aval.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">{aval.titulo}</td>
-                      <td className="px-4 py-3 text-center">{aval.bimestre}º</td>
-                      <td className="px-4 py-3 text-center">M{aval.mes}</td>
-                      <td className="px-4 py-3 text-center">
-                        {new Date(aval.data_aplicacao).toLocaleDateString('pt-BR')}
-                      </td>
-                      <td className="px-4 py-3 text-center">{aval.total_questoes}</td>
-                      <td className="px-4 py-3 text-center">
-                        {aval.total_respostas ? (
-                          <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-sm">
-                            ✓ Corrigida
-                          </span>
-                        ) : (
-                          <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded text-sm">
-                            ⏳ Pendente
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Link
-                          href={`/base/avaliacoes/lancar/${aval.id}`}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium inline-block"
-                        >
-                          📝 Lançar Notas
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {avaliacoes.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
+          <div className="text-6xl mb-4">📝</div>
+          <p className="text-lg text-gray-600 mb-4">Nenhuma avaliação criada ainda</p>
+          <p className="text-sm text-gray-500 mb-6">
+            Crie avaliações personalizadas após aplicar os diagnósticos D1, D2 e D3
+          </p>
+          <a href={`/base/diagnosticos/${turmaId}`} className="inline-block px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium" style={{textDecoration: 'none'}}>
+            Ir para Diagnósticos
+          </a>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {avaliacoes.map((avaliacao) => (
+            <div key={avaliacao.id} className="bg-white rounded-lg shadow p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-700">{avaliacao.titulo}</h3>
+                  <div className="flex gap-4 mt-2 text-sm text-gray-600">
+                    <span>📅 {new Date(avaliacao.data_aplicacao).toLocaleDateString('pt-BR')}</span>
+                    <span>📊 {avaliacao.total_questoes} questões</span>
+                    <span>📚 {avaliacao.bimestre}º Bimestre</span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <a href={`/base/avaliacoes/lancar/${turmaId}/${avaliacao.id}`} className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium" style={{textDecoration: 'none'}}>
+                    Lançar Notas
+                  </a>
+                  <a href={`/base/avaliacoes/resultados/${turmaId}/${avaliacao.id}`} className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg font-medium" style={{textDecoration: 'none'}}>
+                    Ver Resultados
+                  </a>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-6 flex gap-4">
+        <a href={`/base/diagnosticos/${turmaId}`} className="px-6 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-medium" style={{textDecoration: 'none'}}>
+          Voltar para Diagnósticos
+        </a>
+        <a href={`/base/dashboard/${turmaId}`} className="px-6 py-3 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg font-medium" style={{textDecoration: 'none'}}>
+          Ver Dashboard
+        </a>
       </div>
     </div>
   )
