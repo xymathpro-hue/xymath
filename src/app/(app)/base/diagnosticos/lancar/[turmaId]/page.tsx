@@ -53,16 +53,16 @@ export default function LancarDiagnosticoPage() {
       data.forEach((aluno: Aluno) => {
         respostasIniciais.set(aluno.id, {
           aluno_id: aluno.id,
-          questao_1: 0,
-          questao_2: 0,
-          questao_3: 0,
-          questao_4: 0,
-          questao_5: 0,
-          questao_6: 0,
-          questao_7: 0,
-          questao_8: 0,
-          questao_9: 0,
-          questao_10: 0,
+          questao_1: -1,
+          questao_2: -1,
+          questao_3: -1,
+          questao_4: -1,
+          questao_5: -1,
+          questao_6: -1,
+          questao_7: -1,
+          questao_8: -1,
+          questao_9: -1,
+          questao_10: -1,
           faltou: false
         })
       })
@@ -92,7 +92,7 @@ export default function LancarDiagnosticoPage() {
     if (resposta.faltou) {
       for (let i = 1; i <= 10; i++) {
         const key = `questao_${i}` as keyof Resposta
-        resposta[key] = 0 as never
+        resposta[key] = -1 as never
       }
     }
     
@@ -104,12 +104,13 @@ export default function LancarDiagnosticoPage() {
     const resposta = respostas.get(alunoId)!
     if (resposta.faltou) return 0
     
-    return (
-      resposta.questao_1 + resposta.questao_2 + resposta.questao_3 +
-      resposta.questao_4 + resposta.questao_5 + resposta.questao_6 +
-      resposta.questao_7 + resposta.questao_8 + resposta.questao_9 +
-      resposta.questao_10
-    )
+    let total = 0
+    for (let i = 1; i <= 10; i++) {
+      const key = `questao_${i}` as keyof Resposta
+      const valor = resposta[key] as number
+      if (valor > 0) total += valor
+    }
+    return total
   }
 
   function getCorTotal(total: number): string {
@@ -122,7 +123,16 @@ export default function LancarDiagnosticoPage() {
     try {
       setSalvando(true)
       
-      const respostasArray = Array.from(respostas.values())
+      const respostasArray = Array.from(respostas.values()).map(r => {
+        const resposta = { ...r }
+        for (let i = 1; i <= 10; i++) {
+          const key = `questao_${i}` as keyof Resposta
+          if (resposta[key] === -1) {
+            resposta[key] = 0 as never
+          }
+        }
+        return resposta
+      })
       
       const response = await fetch('/api/base/diagnosticos/respostas', {
         method: 'POST',
@@ -159,7 +169,9 @@ export default function LancarDiagnosticoPage() {
     <div className="container mx-auto p-6 bg-gray-50 min-h-screen">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-700">Lançar Respostas - {tipo}</h1>
-        <p className="text-gray-600">Marque: ✓ Certo (1 pt) | ✗ Errado (0 pt) | ½ Meio (0.5 pt)</p>
+        <p className="text-gray-600">
+          Marque: ✓ Certo (1pt) | ✗ Errado (0pt) | ½ Meio (0.5pt) | ⬜ Branco (0pt - não fez)
+        </p>
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-x-auto border border-gray-200">
@@ -169,7 +181,7 @@ export default function LancarDiagnosticoPage() {
               <th className="px-3 py-3 text-left text-gray-600">Nº</th>
               <th className="px-3 py-3 text-left text-gray-600">Aluno</th>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(q => (
-                <th key={q} className="px-2 py-3 text-center text-gray-600 min-w-[100px]">Q{q}</th>
+                <th key={q} className="px-2 py-3 text-center text-gray-600 min-w-[130px]">Q{q}</th>
               ))}
               <th className="px-3 py-3 text-center text-gray-600 min-w-[80px]">Total</th>
               <th className="px-3 py-3 text-center text-gray-600 min-w-[100px]">Faltou</th>
@@ -192,14 +204,17 @@ export default function LancarDiagnosticoPage() {
                     return (
                       <td key={q} className="px-2 py-2">
                         <div className="flex gap-1 justify-center">
-                          <button onClick={() => marcarResposta(aluno.id, q, 1)} disabled={resposta.faltou} className={`w-8 h-8 rounded ${valor === 1 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                          <button onClick={() => marcarResposta(aluno.id, q, 1)} disabled={resposta.faltou} className={`w-7 h-7 rounded text-xs ${valor === 1 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
                             ✓
                           </button>
-                          <button onClick={() => marcarResposta(aluno.id, q, 0)} disabled={resposta.faltou} className={`w-8 h-8 rounded ${valor === 0 && !resposta.faltou ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                          <button onClick={() => marcarResposta(aluno.id, q, 0)} disabled={resposta.faltou} className={`w-7 h-7 rounded text-xs ${valor === 0 ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
                             ✗
                           </button>
-                          <button onClick={() => marcarResposta(aluno.id, q, 0.5)} disabled={resposta.faltou} className={`w-8 h-8 rounded ${valor === 0.5 ? 'bg-yellow-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                          <button onClick={() => marcarResposta(aluno.id, q, 0.5)} disabled={resposta.faltou} className={`w-7 h-7 rounded text-xs ${valor === 0.5 ? 'bg-yellow-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
                             ½
+                          </button>
+                          <button onClick={() => marcarResposta(aluno.id, q, -1)} disabled={resposta.faltou} className={`w-7 h-7 rounded text-xs ${valor === -1 ? 'bg-gray-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                            ⬜
                           </button>
                         </div>
                       </td>
