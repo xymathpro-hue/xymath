@@ -45,12 +45,10 @@ export default function LancarDiagnosticoPage() {
     try {
       setLoading(true)
       
-      // 1. Carregar alunos
       const responseAlunos = await fetch(`/api/alunos?turma_id=${turmaId}`)
       const { data: alunosData } = await responseAlunos.json()
       setAlunos(alunosData)
       
-      // 2. Buscar respostas já salvas
       const responseRespostas = await fetch(
         `/api/base/diagnosticos/respostas?turma_id=${turmaId}&tipo=${tipo}&bimestre=${bimestre}`
       )
@@ -59,17 +57,14 @@ export default function LancarDiagnosticoPage() {
         ? await responseRespostas.json() 
         : { data: [] }
       
-      // 3. Criar Map de respostas
       const respostasIniciais = new Map<string, Resposta>()
       
       alunosData.forEach((aluno: Aluno) => {
-        // Procurar se já tem resposta salva
         const respostaSalva = respostasSalvas.data?.find(
           (r: any) => r.aluno_id === aluno.id
         )
         
         if (respostaSalva) {
-          // Usa resposta salva
           respostasIniciais.set(aluno.id, {
             aluno_id: aluno.id,
             questao_1: respostaSalva.questao_1,
@@ -85,7 +80,6 @@ export default function LancarDiagnosticoPage() {
             faltou: respostaSalva.faltou
           })
         } else {
-          // Cria resposta vazia
           respostasIniciais.set(aluno.id, {
             aluno_id: aluno.id,
             questao_1: -1,
@@ -283,47 +277,4 @@ export default function LancarDiagnosticoPage() {
       </div>
     </div>
   )
-}
-🆕 AGORA PRECISA CRIAR A API GET
-Arquivo: src/app/api/base/diagnosticos/respostas/route.ts
-ADICIONE este método GET no mesmo arquivo (junto com o POST):
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase-server'
-
-// GET - Buscar respostas salvas
-export async function GET(request: NextRequest) {
-  try {
-    const supabase = await createClient()
-    const { searchParams } = new URL(request.url)
-    
-    const turma_id = searchParams.get('turma_id')
-    const tipo = searchParams.get('tipo')
-    const bimestre = searchParams.get('bimestre')
-
-    if (!turma_id || !tipo || !bimestre) {
-      return NextResponse.json({ data: [] })
-    }
-
-    const { data, error } = await supabase
-      .from('diagnosticos_respostas')
-      .select('*')
-      .eq('turma_id', turma_id)
-      .eq('tipo_diagnostico', tipo)
-      .eq('bimestre', parseInt(bimestre))
-
-    if (error) {
-      console.error('Erro ao buscar respostas:', error)
-      return NextResponse.json({ data: [] })
-    }
-
-    return NextResponse.json({ data })
-  } catch (error) {
-    console.error('Erro:', error)
-    return NextResponse.json({ data: [] })
-  }
-}
-
-// POST - Salvar respostas (seu código atual continua aqui)
-export async function POST(request: NextRequest) {
-  // ... (código que já existe)
 }
