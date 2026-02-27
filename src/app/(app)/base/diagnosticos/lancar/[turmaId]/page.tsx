@@ -38,33 +38,69 @@ export default function LancarDiagnosticoPage() {
   const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-    carregarAlunos()
+    carregarDados()
   }, [])
 
-  async function carregarAlunos() {
+  async function carregarDados() {
     try {
       setLoading(true)
-      const response = await fetch(`/api/alunos?turma_id=${turmaId}`)
-      const { data } = await response.json()
       
-      setAlunos(data)
+      // 1. Carregar alunos
+      const responseAlunos = await fetch(`/api/alunos?turma_id=${turmaId}`)
+      const { data: alunosData } = await responseAlunos.json()
+      setAlunos(alunosData)
       
+      // 2. Buscar respostas já salvas
+      const responseRespostas = await fetch(
+        `/api/base/diagnosticos/respostas?turma_id=${turmaId}&tipo=${tipo}&bimestre=${bimestre}`
+      )
+      
+      const respostasSalvas = responseRespostas.ok 
+        ? await responseRespostas.json() 
+        : { data: [] }
+      
+      // 3. Criar Map de respostas
       const respostasIniciais = new Map<string, Resposta>()
-      data.forEach((aluno: Aluno) => {
-        respostasIniciais.set(aluno.id, {
-          aluno_id: aluno.id,
-          questao_1: -1,
-          questao_2: -1,
-          questao_3: -1,
-          questao_4: -1,
-          questao_5: -1,
-          questao_6: -1,
-          questao_7: -1,
-          questao_8: -1,
-          questao_9: -1,
-          questao_10: -1,
-          faltou: false
-        })
+      
+      alunosData.forEach((aluno: Aluno) => {
+        // Procurar se já tem resposta salva
+        const respostaSalva = respostasSalvas.data?.find(
+          (r: any) => r.aluno_id === aluno.id
+        )
+        
+        if (respostaSalva) {
+          // Usa resposta salva
+          respostasIniciais.set(aluno.id, {
+            aluno_id: aluno.id,
+            questao_1: respostaSalva.questao_1,
+            questao_2: respostaSalva.questao_2,
+            questao_3: respostaSalva.questao_3,
+            questao_4: respostaSalva.questao_4,
+            questao_5: respostaSalva.questao_5,
+            questao_6: respostaSalva.questao_6,
+            questao_7: respostaSalva.questao_7,
+            questao_8: respostaSalva.questao_8,
+            questao_9: respostaSalva.questao_9,
+            questao_10: respostaSalva.questao_10,
+            faltou: respostaSalva.faltou
+          })
+        } else {
+          // Cria resposta vazia
+          respostasIniciais.set(aluno.id, {
+            aluno_id: aluno.id,
+            questao_1: -1,
+            questao_2: -1,
+            questao_3: -1,
+            questao_4: -1,
+            questao_5: -1,
+            questao_6: -1,
+            questao_7: -1,
+            questao_8: -1,
+            questao_9: -1,
+            questao_10: -1,
+            faltou: false
+          })
+        }
       })
       
       setRespostas(respostasIniciais)
@@ -247,4 +283,47 @@ export default function LancarDiagnosticoPage() {
       </div>
     </div>
   )
+}
+🆕 AGORA PRECISA CRIAR A API GET
+Arquivo: src/app/api/base/diagnosticos/respostas/route.ts
+ADICIONE este método GET no mesmo arquivo (junto com o POST):
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase-server'
+
+// GET - Buscar respostas salvas
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { searchParams } = new URL(request.url)
+    
+    const turma_id = searchParams.get('turma_id')
+    const tipo = searchParams.get('tipo')
+    const bimestre = searchParams.get('bimestre')
+
+    if (!turma_id || !tipo || !bimestre) {
+      return NextResponse.json({ data: [] })
+    }
+
+    const { data, error } = await supabase
+      .from('diagnosticos_respostas')
+      .select('*')
+      .eq('turma_id', turma_id)
+      .eq('tipo_diagnostico', tipo)
+      .eq('bimestre', parseInt(bimestre))
+
+    if (error) {
+      console.error('Erro ao buscar respostas:', error)
+      return NextResponse.json({ data: [] })
+    }
+
+    return NextResponse.json({ data })
+  } catch (error) {
+    console.error('Erro:', error)
+    return NextResponse.json({ data: [] })
+  }
+}
+
+// POST - Salvar respostas (seu código atual continua aqui)
+export async function POST(request: NextRequest) {
+  // ... (código que já existe)
 }
