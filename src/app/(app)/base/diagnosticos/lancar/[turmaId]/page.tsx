@@ -244,7 +244,7 @@ export default function LancarDiagnosticoPage() {
                           <button 
                             onClick={() => marcarResposta(aluno.id, q, 0)} 
                             disabled={resposta.faltou} 
-                            className={`w-7 h-7 rounded text-xs ${(valor === 0 && valor !== -1) ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}
+                            className={`w-7 h-7 rounded text-xs ${Number(valor) === 0 ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}
                           >
                             ✗
                           </button>
