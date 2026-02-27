@@ -234,16 +234,32 @@ export default function LancarDiagnosticoPage() {
                     return (
                       <td key={q} className="px-2 py-2">
                         <div className="flex gap-1 justify-center">
-                          <button onClick={() => marcarResposta(aluno.id, q, 1)} disabled={resposta.faltou} className={`w-7 h-7 rounded text-xs ${valor === 1 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                          <button 
+                            onClick={() => marcarResposta(aluno.id, q, 1)} 
+                            disabled={resposta.faltou} 
+                            className={`w-7 h-7 rounded text-xs ${valor === 1 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}
+                          >
                             ✓
                           </button>
-                          <button onClick={() => marcarResposta(aluno.id, q, 0)} disabled={resposta.faltou} className={`w-7 h-7 rounded text-xs ${valor === 0 ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                          <button 
+                            onClick={() => marcarResposta(aluno.id, q, 0)} 
+                            disabled={resposta.faltou} 
+                            className={`w-7 h-7 rounded text-xs ${(valor === 0 && valor !== -1) ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}
+                          >
                             ✗
                           </button>
-                          <button onClick={() => marcarResposta(aluno.id, q, 0.5)} disabled={resposta.faltou} className={`w-7 h-7 rounded text-xs ${valor === 0.5 ? 'bg-yellow-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                          <button 
+                            onClick={() => marcarResposta(aluno.id, q, 0.5)} 
+                            disabled={resposta.faltou} 
+                            className={`w-7 h-7 rounded text-xs ${valor === 0.5 ? 'bg-yellow-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}
+                          >
                             ½
                           </button>
-                          <button onClick={() => marcarResposta(aluno.id, q, -1)} disabled={resposta.faltou} className={`w-7 h-7 rounded text-xs ${valor === -1 ? 'bg-gray-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                          <button 
+                            onClick={() => marcarResposta(aluno.id, q, -1)} 
+                            disabled={resposta.faltou} 
+                            className={`w-7 h-7 rounded text-xs ${valor === -1 ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} disabled:opacity-30 disabled:cursor-not-allowed`}
+                          >
                             ⬜
                           </button>
                         </div>
@@ -256,7 +272,10 @@ export default function LancarDiagnosticoPage() {
                   </td>
                   
                   <td className="px-3 py-2 text-center">
-                    <button onClick={() => marcarFaltou(aluno.id)} className={`px-3 py-1 rounded text-sm font-medium ${resposta.faltou ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+                    <button 
+                      onClick={() => marcarFaltou(aluno.id)} 
+                      className={`px-3 py-1 rounded text-sm font-medium ${resposta.faltou ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                    >
                       {resposta.faltou ? 'FALTOU' : 'Presente'}
                     </button>
                   </td>
