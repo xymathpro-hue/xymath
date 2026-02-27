@@ -1,6 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { searchParams } = new URL(request.url)
+    
+    const turma_id = searchParams.get('turma_id')
+    const tipo = searchParams.get('tipo')
+    const bimestre = searchParams.get('bimestre')
+
+    if (!turma_id || !tipo || !bimestre) {
+      return NextResponse.json({ data: [] })
+    }
+
+    const { data, error } = await supabase
+      .from('diagnosticos_respostas')
+      .select('*')
+      .eq('turma_id', turma_id)
+      .eq('tipo_diagnostico', tipo)
+      .eq('bimestre', parseInt(bimestre))
+
+    if (error) {
+      console.error('Erro ao buscar respostas:', error)
+      return NextResponse.json({ data: [] })
+    }
+
+    return NextResponse.json({ data })
+  } catch (error) {
+    console.error('Erro:', error)
+    return NextResponse.json({ data: [] })
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -19,7 +51,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { turma_id, tipo_diagnostico, bimestre, respostas } = body
 
-    // Validação
     if (!turma_id || !tipo_diagnostico || !bimestre || !respostas) {
       return NextResponse.json(
         { error: 'Dados incompletos' },
@@ -34,7 +65,6 @@ export async function POST(request: NextRequest) {
       total_respostas: respostas.length
     })
 
-    // 1. Salvar/Atualizar respostas no banco
     const respostasParaSalvar = respostas.map((r: any) => ({
       turma_id,
       aluno_id: r.aluno_id,
@@ -57,7 +87,6 @@ export async function POST(request: NextRequest) {
       )
     }))
 
-    // Usar upsert para inserir ou atualizar
     const { error: respostasError } = await supabase
       .from('diagnosticos_respostas')
       .upsert(respostasParaSalvar, {
@@ -72,7 +101,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 2. Buscar todos os diagnósticos do aluno para calcular média ponderada
     const alunosIds = respostas.map((r: any) => r.aluno_id)
     
     const { data: todasRespostas, error: buscaError } = await supabase
@@ -90,7 +118,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 3. Calcular média ponderada e classificação para cada aluno
     const alunosParaAtualizar = alunosIds.map((alunoId: string) => {
       const respostasAluno = todasRespostas?.filter(r => r.aluno_id === alunoId) || []
       
@@ -98,26 +125,23 @@ export async function POST(request: NextRequest) {
       const d2 = respostasAluno.find(r => r.tipo_diagnostico === 'D2')
       const d3 = respostasAluno.find(r => r.tipo_diagnostico === 'D3')
 
-      // Se não tem todos os diagnósticos, não classifica ainda
       if (!d1 || !d2 || !d3) {
         return null
       }
 
-      // Média ponderada: (D1×3 + D2×2 + D3×1) / 6
       const notaD1 = d1.faltou ? 0 : d1.total
       const notaD2 = d2.faltou ? 0 : d2.total
       const notaD3 = d3.faltou ? 0 : d3.total
 
       const mediaPonderada = (notaD1 * 3 + notaD2 * 2 + notaD3 * 1) / 6
 
-      // Classificação BASE
       let classificacao: 'A' | 'B' | 'C'
       if (mediaPonderada < 4.0) {
-        classificacao = 'A' // Apoio
+        classificacao = 'A'
       } else if (mediaPonderada < 7.0) {
-        classificacao = 'B' // Adaptação
+        classificacao = 'B'
       } else {
-        classificacao = 'C' // Regular
+        classificacao = 'C'
       }
 
       return {
@@ -127,7 +151,6 @@ export async function POST(request: NextRequest) {
       }
     }).filter(Boolean)
 
-    // 4. Atualizar classificação dos alunos
     if (alunosParaAtualizar.length > 0) {
       const { error: updateError } = await supabase
         .from('alunos')
@@ -137,7 +160,6 @@ export async function POST(request: NextRequest) {
 
       if (updateError) {
         console.error('Erro ao atualizar classificação:', updateError)
-        // Não retorna erro pois as respostas foram salvas
       }
     }
 
