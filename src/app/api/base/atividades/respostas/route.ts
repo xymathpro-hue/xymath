@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 
@@ -64,14 +63,16 @@ export async function POST(request: NextRequest) {
       questao_3_classe: r.questao_3_classe,
       questao_4_classe: r.questao_4_classe,
       questao_5_classe: r.questao_5_classe,
+      questao_6_classe: r.questao_6_classe,
       questao_1_casa: r.questao_1_casa,
       questao_2_casa: r.questao_2_casa,
       questao_3_casa: r.questao_3_casa,
       questao_4_casa: r.questao_4_casa,
       questao_5_casa: r.questao_5_casa,
-      total_classe: r.questao_1_classe + r.questao_2_classe + r.questao_3_classe + r.questao_4_classe + r.questao_5_classe,
-      total_casa: r.questao_1_casa + r.questao_2_casa + r.questao_3_casa + r.questao_4_casa + r.questao_5_casa,
-      total_geral: (r.questao_1_classe + r.questao_2_classe + r.questao_3_classe + r.questao_4_classe + r.questao_5_classe + r.questao_1_casa + r.questao_2_casa + r.questao_3_casa + r.questao_4_casa + r.questao_5_casa),
+      questao_6_casa: r.questao_6_casa,
+      total_classe: r.questao_1_classe + r.questao_2_classe + r.questao_3_classe + r.questao_4_classe + r.questao_5_classe + r.questao_6_classe,
+      total_casa: r.questao_1_casa + r.questao_2_casa + r.questao_3_casa + r.questao_4_casa + r.questao_5_casa + r.questao_6_casa,
+      total_geral: (r.questao_1_classe + r.questao_2_classe + r.questao_3_classe + r.questao_4_classe + r.questao_5_classe + r.questao_6_classe + r.questao_1_casa + r.questao_2_casa + r.questao_3_casa + r.questao_4_casa + r.questao_5_casa + r.questao_6_casa),
       faltou_classe: r.faltou_classe,
       faltou_casa: r.faltou_casa
     }))
