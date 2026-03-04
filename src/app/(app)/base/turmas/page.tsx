@@ -1,184 +1,200 @@
 'use client'
 
-import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
-export default function CriarAtividadePage() {
-  const params = useParams()
-  const router = useRouter()
-  const turmaId = params.turmaId as string
-  
-  const [titulo, setTitulo] = useState('')
-  const [habilidade, setHabilidade] = useState('')
-  const [data, setData] = useState('')
-  const [tipo, setTipo] = useState('classe_casa')
-  const [bimestre, setBimestre] = useState(1)
-  const [competencias, setCompetencias] = useState<string[]>([])
-  const [salvando, setSalvando] = useState(false)
+interface Turma {
+  id: string
+  nome: string
+  ano: string
+  ano_letivo: number
+}
 
-  function toggleCompetencia(comp: string) {
-    if (competencias.includes(comp)) {
-      setCompetencias(competencias.filter(c => c !== comp))
-    } else {
-      setCompetencias([...competencias, comp])
+interface Estatisticas {
+  total_turmas: number
+  usando_base: number
+  total_alunos: number
+  avaliacoes_aplicadas: number
+}
+
+export default function TurmasBasePage() {
+  const [turmas, setTurmas] = useState<Turma[]>([])
+  const [stats, setStats] = useState<Estatisticas | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    carregarDados()
+  }, [])
+
+  async function carregarDados() {
+    try {
+      setLoading(true)
+      
+      const response = await fetch('/api/turmas')
+      const { data } = await response.json()
+      
+      setTurmas(data || [])
+      
+      const totalAlunos = data?.reduce((acc: number, t: any) => {
+        return acc + (t.alunos_count || 0)
+      }, 0) || 0
+      
+      setStats({
+        total_turmas: data?.length || 0,
+        usando_base: data?.length || 0,
+        total_alunos: totalAlunos,
+        avaliacoes_aplicadas: 0
+      })
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
     }
   }
 
-  async function salvar() {
-    if (!titulo || !data) {
-      alert('Preencha título e data!')
+  async function deletarTurma(id: string, nome: string) {
+    if (!confirm(`Tem certeza que deseja excluir a turma "${nome}"?\n\nIsso vai apagar todos os dados, alunos, diagnósticos e atividades!`)) {
       return
     }
 
     try {
-      setSalvando(true)
-      
-      const response = await fetch('/api/base/atividades', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          turma_id: turmaId,
-          titulo,
-          habilidade_bncc: habilidade,
-          data_aplicacao: data,
-          tipo,
-          competencias,
-          bimestre
-        })
+      const response = await fetch(`/api/turmas/${id}`, {
+        method: 'DELETE'
       })
 
-      if (!response.ok) throw new Error('Erro ao salvar')
+      if (!response.ok) throw new Error('Erro ao deletar')
 
-      alert('✅ Atividade criada com sucesso!')
-      router.push(`/base/atividades/${turmaId}`)
+      alert('✅ Turma excluída com sucesso!')
+      carregarDados()
     } catch (err) {
-      alert('❌ Erro ao criar atividade')
+      alert('❌ Erro ao excluir turma')
       console.error(err)
-    } finally {
-      setSalvando(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="w-8 h-8 border-4 border-gray-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   return (
     <div className="container mx-auto p-6 bg-gray-50 min-h-screen">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-black">Nova Atividade BASE</h1>
-        <p className="text-sm text-black">Cadastrar atividade diferenciada por grupo</p>
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-black">Turmas - Método BASE</h1>
+          <p className="text-sm text-black">Gerencie suas turmas e acompanhe o progresso BASE</p>
+        </div>
+        <a
+          href="/base/turmas/criar"
+          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium no-underline"
+        >
+          + Nova Turma
+        </a>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6 border border-gray-200 max-w-2xl">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-bold text-black mb-2">
-              Título da Atividade *
-            </label>
-            <input
-              type="text"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              placeholder="Ex: Frações - Parte/Inteiro"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-black mb-2">
-              Habilidade BNCC
-            </label>
-            <input
-              type="text"
-              value={habilidade}
-              onChange={(e) => setHabilidade(e.target.value)}
-              placeholder="Ex: EF07MA13"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black placeholder-gray-400"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-bold text-black mb-2">
-                Data de Aplicação *
-              </label>
-              <input
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-black mb-2">
-                Bimestre
-              </label>
-              <select
-                value={bimestre}
-                onChange={(e) => setBimestre(parseInt(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-              >
-                <option value={1}>1º Bimestre</option>
-                <option value={2}>2º Bimestre</option>
-                <option value={3}>3º Bimestre</option>
-                <option value={4}>4º Bimestre</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-black mb-2">
-              Tipo de Atividade
-            </label>
-            <select
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-            >
-              <option value="classe_casa">Classe + Casa</option>
-              <option value="classe">Só Classe</option>
-              <option value="casa">Só Casa</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-black mb-2">
-              Competências BASE
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {['L', 'F', 'R', 'A', 'J', 'AV'].map((comp) => (
-                <button
-                  key={comp}
-                  type="button"
-                  onClick={() => toggleCompetencia(comp)}
-                  className={`px-4 py-2 rounded-lg font-bold ${
-                    competencias.includes(comp)
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-black hover:bg-gray-300'
-                  }`}
-                >
-                  {comp}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-black mt-2 font-medium">
-              L=Leitura, F=Fluência, R=Raciocínio, A=Aplicação, J=Justificativa, AV=Autoavaliação
-            </p>
-          </div>
+      {/* Estatísticas */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+          <p className="text-sm text-black mb-2">Total de Turmas</p>
+          <p className="text-4xl font-bold text-black">{stats?.total_turmas || 0}</p>
         </div>
+        <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+          <p className="text-sm text-black mb-2">Usando BASE</p>
+          <p className="text-4xl font-bold text-black">{stats?.usando_base || 0}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+          <p className="text-sm text-black mb-2">Total de Alunos</p>
+          <p className="text-4xl font-bold text-black">{stats?.total_alunos || 0}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+          <p className="text-sm text-black mb-2">Avaliações Aplicadas</p>
+          <p className="text-4xl font-bold text-black">{stats?.avaliacoes_aplicadas || 0}</p>
+        </div>
+      </div>
 
-        <div className="mt-6 flex gap-4">
+      {/* Lista de Turmas */}
+      {turmas.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
+          <p className="text-black text-lg mb-4">Nenhuma turma cadastrada ainda</p>
           <a
-            href={`/base/atividades/${turmaId}`}
-            className="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-black rounded-lg font-bold no-underline"
+            href="/base/turmas/criar"
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium no-underline inline-block"
           >
-            Cancelar
+            Criar primeira turma
           </a>
-          <button
-            onClick={salvar}
-            disabled={salvando}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold disabled:opacity-50"
-          >
-            {salvando ? 'Salvando...' : 'Criar Atividade'}
-          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {turmas.map((turma) => (
+            <div key={turma.id} className="bg-white rounded-lg shadow p-6 border border-gray-200">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-black">{turma.nome}</h3>
+                  <p className="text-sm text-black">{turma.ano} - {turma.ano_letivo}</p>
+                </div>
+                <button
+                  onClick={() => deletarTurma(turma.id, turma.nome)}
+                  className="text-red-500 hover:text-red-700"
+                  title="Excluir turma"
+                >
+                  🗑️
+                </button>
+              </div>
+
+              <div className="space-y-2 mb-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-black">Alunos:</span>
+                  <span className="font-bold text-black">41</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-black">Diagnósticos:</span>
+                  <span className="font-bold text-black">0/3</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <a
+                  href={`/base/turmas/${turma.id}/alunos`}
+                  className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded text-center font-medium no-underline flex items-center justify-center gap-2"
+                >
+                  👥 Gerenciar Alunos
+                </a>
+                <a
+                  href={`/base/diagnosticos/${turma.id}`}
+                  className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded text-center font-medium no-underline flex items-center justify-center gap-2"
+                >
+                  📋 Diagnósticos D1/D2/D3
+                </a>
+                <a
+                  href={`/base/dashboard/${turma.id}`}
+                  className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded text-center font-medium no-underline flex items-center justify-center gap-2"
+                >
+                  📊 Dashboard
+                </a>
+                <a
+                  href={`/base/atividades/${turma.id}`}
+                  className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded text-center font-medium no-underline flex items-center justify-center gap-2"
+                >
+                  📝 Atividades
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-8 bg-blue-50 rounded-lg p-6 border border-blue-200">
+        <h3 className="text-lg font-bold text-blue-900 mb-2 flex items-center gap-2">
+          💡 Como usar o Método BASE
+        </h3>
+        <div className="text-sm text-blue-800 space-y-2">
+          <p><strong>1. Criar turma</strong> e adicionar alunos</p>
+          <p><strong>2. Aplicar diagnósticos D1, D2 e D3</strong> (10 questões cada)</p>
+          <p><strong>3. Classificação automática</strong> em grupos A (Apoio), B (Adaptação), C (Regular)</p>
+          <p><strong>4. Atividades diferenciadas</strong> por grupo com acompanhamento contínuo</p>
+          <p><strong>5. Reclassificação</strong> após cada 3 atividades</p>
         </div>
       </div>
     </div>
