@@ -34,7 +34,6 @@ export default function TurmasBasePage() {
       
       setTurmas(data || [])
       
-      // Calcular estatísticas
       const totalAlunos = data?.reduce((acc: number, t: any) => {
         return acc + (t.alunos_count || 0)
       }, 0) || 0
@@ -84,8 +83,8 @@ export default function TurmasBasePage() {
     <div className="container mx-auto p-6 bg-gray-50 min-h-screen">
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-700">Turmas - Método BASE</h1>
-          <p className="text-sm text-gray-600">Gerencie suas turmas e acompanhe o progresso BASE</p>
+          <h1 className="text-3xl font-bold text-black">Turmas - Método BASE</h1>
+          <p className="text-sm text-black">Gerencie suas turmas e acompanhe o progresso BASE</p>
         </div>
         <a
           href="/base/turmas/criar"
@@ -98,27 +97,27 @@ export default function TurmasBasePage() {
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
-          <p className="text-sm text-gray-600 mb-2">Total de Turmas</p>
-          <p className="text-4xl font-bold text-gray-700">{stats?.total_turmas || 0}</p>
+          <p className="text-sm text-black mb-2">Total de Turmas</p>
+          <p className="text-4xl font-bold text-black">{stats?.total_turmas || 0}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
-          <p className="text-sm text-gray-600 mb-2">Usando BASE</p>
-          <p className="text-4xl font-bold text-gray-700">{stats?.usando_base || 0}</p>
+          <p className="text-sm text-black mb-2">Usando BASE</p>
+          <p className="text-4xl font-bold text-black">{stats?.usando_base || 0}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
-          <p className="text-sm text-gray-600 mb-2">Total de Alunos</p>
-          <p className="text-4xl font-bold text-gray-700">{stats?.total_alunos || 0}</p>
+          <p className="text-sm text-black mb-2">Total de Alunos</p>
+          <p className="text-4xl font-bold text-black">{stats?.total_alunos || 0}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
-          <p className="text-sm text-gray-600 mb-2">Avaliações Aplicadas</p>
-          <p className="text-4xl font-bold text-gray-700">{stats?.avaliacoes_aplicadas || 0}</p>
+          <p className="text-sm text-black mb-2">Avaliações Aplicadas</p>
+          <p className="text-4xl font-bold text-black">{stats?.avaliacoes_aplicadas || 0}</p>
         </div>
       </div>
 
       {/* Lista de Turmas */}
       {turmas.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-12 text-center border border-gray-200">
-          <p className="text-gray-500 text-lg mb-4">Nenhuma turma cadastrada ainda</p>
+          <p className="text-black text-lg mb-4">Nenhuma turma cadastrada ainda</p>
           <a
             href="/base/turmas/criar"
             className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium no-underline inline-block"
@@ -132,8 +131,8 @@ export default function TurmasBasePage() {
             <div key={turma.id} className="bg-white rounded-lg shadow p-6 border border-gray-200">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-xl font-bold text-gray-700">{turma.nome}</h3>
-                  <p className="text-sm text-gray-600">{turma.ano} - {turma.ano_letivo}</p>
+                  <h3 className="text-xl font-bold text-black">{turma.nome}</h3>
+                  <p className="text-sm text-black">{turma.ano} - {turma.ano_letivo}</p>
                 </div>
                 <button
                   onClick={() => deletarTurma(turma.id, turma.nome)}
@@ -146,12 +145,12 @@ export default function TurmasBasePage() {
 
               <div className="space-y-2 mb-4 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Alunos:</span>
-                  <span className="font-bold text-gray-700">41</span>
+                  <span className="text-black">Alunos:</span>
+                  <span className="font-bold text-black">41</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Diagnósticos:</span>
-                  <span className="font-bold text-gray-700">0/3</span>
+                  <span className="text-black">Diagnósticos:</span>
+                  <span className="font-bold text-black">0/3</span>
                 </div>
               </div>
 
