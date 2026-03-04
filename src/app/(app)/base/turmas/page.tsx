@@ -86,12 +86,20 @@ export default function TurmasBasePage() {
           <h1 className="text-3xl font-bold text-black">Turmas - Método BASE</h1>
           <p className="text-sm text-black">Gerencie suas turmas e acompanhe o progresso BASE</p>
         </div>
-        <a
-          href="/base/turmas/criar"
-          className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium no-underline"
-        >
-          + Nova Turma
-        </a>
+        <div className="flex gap-3">
+          <a
+            href="/base/atividades/criar"
+            className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium no-underline"
+          >
+            + Nova Atividade
+          </a>
+          <a
+            href="/base/turmas/criar"
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium no-underline"
+          >
+            + Nova Turma
+          </a>
+        </div>
       </div>
 
       {/* Estatísticas */}
@@ -193,8 +201,8 @@ export default function TurmasBasePage() {
           <p><strong>1. Criar turma</strong> e adicionar alunos</p>
           <p><strong>2. Aplicar diagnósticos D1, D2 e D3</strong> (10 questões cada)</p>
           <p><strong>3. Classificação automática</strong> em grupos A (Apoio), B (Adaptação), C (Regular)</p>
-          <p><strong>4. Atividades diferenciadas</strong> por grupo com acompanhamento contínuo</p>
-          <p><strong>5. Reclassificação</strong> após cada 3 atividades</p>
+          <p><strong>4. Criar atividades</strong> para uma ou mais turmas simultaneamente</p>
+          <p><strong>5. Acompanhar evolução</strong> e reclassificar após atividades</p>
         </div>
       </div>
     </div>
