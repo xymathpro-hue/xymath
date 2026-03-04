@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -28,11 +27,13 @@ interface Resposta {
   questao_3_classe: number
   questao_4_classe: number
   questao_5_classe: number
+  questao_6_classe: number
   questao_1_casa: number
   questao_2_casa: number
   questao_3_casa: number
   questao_4_casa: number
   questao_5_casa: number
+  questao_6_casa: number
   faltou_classe: boolean
   faltou_casa: boolean
 }
@@ -59,7 +60,7 @@ export default function LancarNotasAtividadePage() {
       // 1. Buscar atividade
       const responseAtividade = await fetch(`/api/base/atividades?turma_id=all`)
       const { data: todasAtividades } = await responseAtividade.json()
-      const atividadeEncontrada = todasAtividades?.find((a: Atividade) => a.id === atividadeId)
+      const atividadeEncontrada = todasAtividades?.find((a: any) => a.id === atividadeId)
       
       if (!atividadeEncontrada) {
         alert('Atividade não encontrada!')
@@ -94,11 +95,13 @@ export default function LancarNotasAtividadePage() {
             questao_3_classe: respostaSalva.questao_3_classe,
             questao_4_classe: respostaSalva.questao_4_classe,
             questao_5_classe: respostaSalva.questao_5_classe,
+            questao_6_classe: respostaSalva.questao_6_classe,
             questao_1_casa: respostaSalva.questao_1_casa,
             questao_2_casa: respostaSalva.questao_2_casa,
             questao_3_casa: respostaSalva.questao_3_casa,
             questao_4_casa: respostaSalva.questao_4_casa,
             questao_5_casa: respostaSalva.questao_5_casa,
+            questao_6_casa: respostaSalva.questao_6_casa,
             faltou_classe: respostaSalva.faltou_classe,
             faltou_casa: respostaSalva.faltou_casa
           })
@@ -111,11 +114,13 @@ export default function LancarNotasAtividadePage() {
             questao_3_classe: -1,
             questao_4_classe: -1,
             questao_5_classe: -1,
+            questao_6_classe: -1,
             questao_1_casa: -1,
             questao_2_casa: -1,
             questao_3_casa: -1,
             questao_4_casa: -1,
             questao_5_casa: -1,
+            questao_6_casa: -1,
             faltou_classe: false,
             faltou_casa: false
           })
@@ -146,7 +151,7 @@ export default function LancarNotasAtividadePage() {
     if (tipo === 'classe') {
       resposta.faltou_classe = !resposta.faltou_classe
       if (resposta.faltou_classe) {
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 6; i++) {
           const key = `questao_${i}_classe` as keyof Resposta
           resposta[key] = -1 as never
         }
@@ -154,7 +159,7 @@ export default function LancarNotasAtividadePage() {
     } else {
       resposta.faltou_casa = !resposta.faltou_casa
       if (resposta.faltou_casa) {
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 6; i++) {
           const key = `questao_${i}_casa` as keyof Resposta
           resposta[key] = -1 as never
         }
@@ -172,7 +177,7 @@ export default function LancarNotasAtividadePage() {
     if (tipo === 'casa' && resposta.faltou_casa) return 0
     
     let total = 0
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 6; i++) {
       const key = `questao_${i}_${tipo}` as keyof Resposta
       const valor = resposta[key] as number
       if (valor > 0) total += valor
@@ -181,8 +186,8 @@ export default function LancarNotasAtividadePage() {
   }
 
   function getCorTotal(total: number): string {
-    if (total >= 4) return 'text-green-700 font-bold'
-    if (total >= 2.5) return 'text-yellow-700 font-bold'
+    if (total >= 4.5) return 'text-green-700 font-bold'
+    if (total >= 3) return 'text-yellow-700 font-bold'
     return 'text-red-700 font-bold'
   }
 
@@ -198,7 +203,7 @@ export default function LancarNotasAtividadePage() {
       
       const respostasArray = Array.from(respostas.values()).map(r => {
         const resposta = { ...r }
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 6; i++) {
           const keyClasse = `questao_${i}_classe` as keyof Resposta
           const keyCasa = `questao_${i}_casa` as keyof Resposta
           if (resposta[keyClasse] === -1) resposta[keyClasse] = 0 as never
@@ -266,7 +271,7 @@ export default function LancarNotasAtividadePage() {
               : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
           }`}
         >
-          📝 Classe (5 questões)
+          📝 Classe (6 questões)
         </button>
         <button
           onClick={() => setTabAtiva('casa')}
@@ -276,7 +281,7 @@ export default function LancarNotasAtividadePage() {
               : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
           }`}
         >
-          🏠 Casa (5 questões)
+          🏠 Casa (6 questões)
         </button>
       </div>
 
@@ -287,7 +292,7 @@ export default function LancarNotasAtividadePage() {
               <th className="px-3 py-3 text-left text-gray-600">Nº</th>
               <th className="px-3 py-3 text-left text-gray-600">Aluno</th>
               <th className="px-3 py-3 text-center text-gray-600">Grupo</th>
-              {[1, 2, 3, 4, 5].map(q => (
+              {[1, 2, 3, 4, 5, 6].map(q => (
                 <th key={q} className="px-2 py-3 text-center text-gray-600 min-w-[130px]">Q{q}</th>
               ))}
               <th className="px-3 py-3 text-center text-gray-600 min-w-[80px]">Total</th>
@@ -310,7 +315,7 @@ export default function LancarNotasAtividadePage() {
                     </span>
                   </td>
                   
-                  {[1, 2, 3, 4, 5].map(q => {
+                  {[1, 2, 3, 4, 5, 6].map(q => {
                     const key = `questao_${q}_${tabAtiva}` as keyof Resposta
                     const valor = resposta[key] as number
                     
