@@ -56,15 +56,9 @@ const conteudoItems = [
   { href: '/biblioteca-bncc', label: 'Biblioteca BNCC', icon: Library },
 ]
 
-// 🎯 MÉTODO BASE (COM DIAGNÓSTICOS)
+// 🎯 MÉTODO BASE
 const metodoBaseItems = [
   { href: '/base/turmas', label: 'Minhas Turmas', icon: GraduationCap },
-  { href: '/base/diagnosticos/11111111-1111-1111-1111-111111111111', label: 'Diagnósticos D1/D2/D3', icon: Activity },
-  { href: '/base/dashboard/11111111-1111-1111-1111-111111111111', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/base/avaliacoes/11111111-1111-1111-1111-111111111111', label: 'Avaliações', icon: ClipboardList },
-  { href: '/base/atividades/11111111-1111-1111-1111-111111111111', label: 'Atividades', icon: FileEdit },
-  { href: '/base/heat-map/11111111-1111-1111-1111-111111111111', label: 'Heat Map', icon: Flame },
-  { href: '/base/notas/calcular/11111111-1111-1111-1111-111111111111', label: 'Calcular Notas', icon: Calculator },
 ]
 
 // ➕ MAIS
@@ -222,7 +216,7 @@ export function Sidebar() {
           {metodoBaseOpen && (
             <div className="ml-4 mt-1 space-y-1">
               {metodoBaseItems.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href.split('/').slice(0, 4).join('/'))
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                 return (
                   <Link
                     key={item.href}
