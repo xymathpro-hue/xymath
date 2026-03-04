@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase-browser'
 
 interface Aluno {
   id: string
@@ -57,20 +58,25 @@ export default function LancarNotasAtividadePage() {
     try {
       setLoading(true)
       
-      // 1. Buscar atividade
-      const responseAtividade = await fetch(`/api/base/atividades?turma_id=all`)
-      const { data: todasAtividades } = await responseAtividade.json()
-      const atividadeEncontrada = todasAtividades?.find((a: any) => a.id === atividadeId)
+      // 1. Buscar atividade diretamente do Supabase
+      const supabase = createClient()
       
-      if (!atividadeEncontrada) {
+      const { data: atividadeData, error: atividadeError } = await supabase
+        .from('base_atividades')
+        .select('*')
+        .eq('id', atividadeId)
+        .single()
+      
+      if (atividadeError || !atividadeData) {
         alert('Atividade não encontrada!')
+        console.error('Erro ao buscar atividade:', atividadeError)
         return
       }
       
-      setAtividade(atividadeEncontrada)
+      setAtividade(atividadeData)
       
       // 2. Carregar alunos
-      const responseAlunos = await fetch(`/api/alunos?turma_id=${atividadeEncontrada.turma_id}`)
+      const responseAlunos = await fetch(`/api/alunos?turma_id=${atividadeData.turma_id}`)
       const { data: alunosData } = await responseAlunos.json()
       setAlunos(alunosData.sort((a: Aluno, b: Aluno) => a.numero_chamada - b.numero_chamada))
       
@@ -129,7 +135,8 @@ export default function LancarNotasAtividadePage() {
       
       setRespostas(respostasIniciais)
     } catch (err) {
-      console.error(err)
+      console.error('Erro ao carregar dados:', err)
+      alert('Erro ao carregar dados!')
     } finally {
       setLoading(false)
     }
@@ -245,6 +252,7 @@ export default function LancarNotasAtividadePage() {
     return (
       <div className="container mx-auto p-6">
         <p>Atividade não encontrada</p>
+        <a href="/base/turmas" className="text-blue-600 hover:underline">Voltar para Turmas</a>
       </div>
     )
   }
